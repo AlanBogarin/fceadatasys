@@ -14,12 +14,12 @@ Las herramientas que se utilizara en el proyecto son:
 
 3. **opencode**
     ```
-    npm install -g opencode-ai --allow-scripts=opencode-ai
+    npm install -g opencode-ai --ignore-scripts=false
     ```
 
 4. **omniroute**
     ```
-    npm install -g omniroute --allow-scripts=omniroute
+    npm install -g omniroute --ignore-scripts=false
     ```
 
 ## Medidas de Seguridad
