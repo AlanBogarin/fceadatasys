@@ -7,17 +7,12 @@ Las herramientas que se utilizara en el proyecto son:
 1. **nodejs v24+**
     Instala manualmente desde un gestor de versiones node `nvm` o la web oficial de nodejs
 
-2. **herdr**
-    ```
-    powershell -ExecutionPolicy Bypass -c "irm https://herdr.dev/install.ps1 | iex"
-    ```
-
-3. **opencode**
+2. **opencode**
     ```
     npm install -g opencode-ai --ignore-scripts=false
     ```
 
-4. **omniroute**
+3. **omniroute**
     ```
     npm install -g omniroute --ignore-scripts=false
     ```
