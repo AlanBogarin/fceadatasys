@@ -1,6 +1,8 @@
 ---
 description: Implementa la API REST, reglas de negocio, validaciones, anti-duplicados, autenticación funcional, reportes y contratos con frontend.
 mode: subagent
+model: omniroute/combo-backend
+temperature: 0.1
 tools:
   read: true
   write: true

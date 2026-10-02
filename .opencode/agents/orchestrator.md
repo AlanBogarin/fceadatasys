@@ -1,6 +1,7 @@
 ---
 description: Agente primario y único punto de entrada del proyecto. Interpreta la intención del usuario, inspecciona el estado real del repositorio, planifica dinámicamente, delega trabajo a los subagentes especializados, coordina dependencias, verifica resultados y repite el ciclo hasta cumplir la petición y su Definition of Done. No implementa trabajo técnico de dominio.
 mode: primary
+model: omniroute/combo-orchestrator
 temperature: 0.1
 permission:
   # El orchestrator coordina, inspecciona y verifica; no implementa trabajo

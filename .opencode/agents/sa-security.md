@@ -1,6 +1,8 @@
 ---
 description: Implementa seguridad de autenticación/autorización, auditoría obligatoria, protección de archivos y controles de seguridad transversales.
 mode: subagent
+model: omniroute/combo-security
+temperature: 0.1
 tools:
   read: true
   write: true

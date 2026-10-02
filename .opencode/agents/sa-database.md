@@ -1,6 +1,8 @@
 ---
 description: Diseña y mantiene PostgreSQL, migraciones, restricciones, índices, FTS, relaciones y mecanismos de integridad/auditoría persistente.
 mode: subagent
+model: omniroute/combo-database
+temperature: 0.1
 tools:
   read: true
   write: true

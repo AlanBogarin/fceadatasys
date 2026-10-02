@@ -1,6 +1,8 @@
 ---
 description: Implementa el portal público y los paneles de Digitador/Administrador, consumo de API, filtros, formularios y experiencia de usuario.
 mode: subagent
+model: omniroute/combo-frontend
+temperature: 0.3
 tools:
   read: true
   write: true
