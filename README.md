@@ -179,53 +179,6 @@ Crea un api key en omniroute, crea un archivo `opencode.json` con el siguiente c
         }
       }
     }
-  },
-  "providers": {
-    "omniroute": {
-      "name": "OmniRoute",
-      "package": "@opencode-ai/ai/providers/openai-compatible",
-      "settings": {
-        "baseURL": "http://localhost:20128/v1",
-        "apiKey": "sk-5caadcb3185fcf18-e30d1a-fe943844"
-      },
-      "models": {
-        "combo-orchestrator": {
-          "name": "combo-orchestrator",
-          "limit": {
-            "context": 128000,
-            "output": 8192
-          }
-        },
-        "combo-backend": {
-          "name": "combo-backend",
-          "limit": {
-            "context": 128000,
-            "output": 8192
-          }
-        },
-        "combo-frontend": {
-          "name": "combo-frontend",
-          "limit": {
-            "context": 128000,
-            "output": 8192
-          }
-        },
-        "combo-database": {
-          "name": "combo-database",
-          "limit": {
-            "context": 128000,
-            "output": 8192
-          }
-        },
-        "combo-security": {
-          "name": "combo-security",
-          "limit": {
-            "context": 128000,
-            "output": 8192
-          }
-        }
-      }
-    }
   }
 }
 ```
