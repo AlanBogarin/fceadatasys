@@ -31,33 +31,31 @@ Quedan fuera de esta primera entrega la implementación completa de publicacione
 - Login: tres fallos consecutivos bloquean la cuenta por cinco minutos; bloqueo por usuario, respuesta que no permita enumerar cuentas y registro de intentos exitosos/fallidos.
 - Las operaciones sensibles de sesión y usuarios generan auditoría. Si falla la escritura de auditoría obligatoria, se cancela la operación que la requiere.
 - Mantener API versionada `/api/v1`, paginación en listados y errores según Problem Details del contrato del proyecto.
-- La política de recuperar contraseña no está especificada en las fuentes revisadas. Antes de construirla, cerrar contrato de token de un solo uso, expiración, invalidación, respuesta genérica y canal de entrega. No enviar claves nuevas por correo ni revelar si la cuenta existe. Seleccionar mecanismo/canal según el entorno real descubierto.
+- La recuperación sigue el contrato definido en `.orchestrator/decisions.md`: token aleatorio de un solo uso, hash persistido, expiración, respuesta anti-enumeración, canal SMTP institucional y revocación de sesiones. No enviar claves nuevas por correo ni revelar si la cuenta existe.
 - El menú debe ocultar acciones prohibidas y mostrar todas las secciones aplicables al rol; módulos incompletos deben llevar estado “En construcción” y no ofrecer una navegación rota.
 
 ## Plan por partes
 
 ### Parte 0 — Descubrimiento técnico y contratos mínimos
 
-**Estado:** `done_with_gates` (acuerdos de dirección recibidos; hay decisiones puntuales que deben cerrarse antes de implementar sus componentes)  
+**Estado:** `done` (dirección tecnológica y contratos de seguridad recibidos el 2026-10-06; precisión/verificación en implementación sigue siendo obligatoria)  
 **Ownership:** orchestrator coordina; `sa-frontend`, `sa-backend`, `sa-security`, `sa-database` inspeccionan únicamente sus dominios si se inicia implementación.
 
-- Dirección recibida: Node.js 24+ y TypeScript; React/Vite/Tailwind; PostgreSQL/Prisma; Argon2id; JWT con refresh cookie HttpOnly; ClamAV y SHA-256 para PDF; PDFMake/ExcelJS; carpetas `server/` y `client/`; `/api/v1` y Problem Details.
-- Dirección recibida de SMTP institucional y bootstrap ADMINISTRADOR desde secretos de entorno, sin credenciales por defecto en código.
-- Cerrar Express **o** Fastify antes de iniciar rutas/backend: el mensaje enumera ambos y no elige uno.
-- Antes de implementar auth, fijar en contratos: access/refresh TTL, rotación/reutilización, revocación y almacenamiento de refresh, protección CSRF para cookies, expiración de recuperación, rate limits y política de sesiones tras reset/cambio de contraseña.
-- Confirmar operativamente que SMTP está disponible en el entorno de ejecución. SMTP solo se configura con secretos fuera del repositorio (variables de entorno/gestor de secretos); nunca valores reales en archivos versionados o código.
-- Definir contratos de auth/usuarios/auditoría consumidos por frontend y backend, con formato Problem Details, permisos y paginación donde aplique. La estructura independiente `server/`/`client/` no debe producir contratos duplicados incompatibles.
-- Prisma/PostgreSQL FTS requiere validar versión/funcionalidad elegida. No asumir soporte nativo completo de `tsvector` ni de índices funcionales: si se usa Prisma, cubrir índices/consultas necesarias con migraciones SQL/TypedSQL y pruebas, o registrar alternativa.
-- Validar en implementación el entorno y comandos de ejecución; no hay aplicación versionada que permita probar ya el stack.
+- Stack decidido: Node.js 24+/TypeScript, Fastify, React/Vite/Tailwind, PostgreSQL/Prisma, Argon2id, JWT/refresh cookie, SMTP institucional, ClamAV/SHA-256, PDFMake/ExcelJS, carpetas `server/` y `client/`.
+- Contratos de tokens, cookies, rotación/reutilización, logout atómico, inyección/diagnóstico SMTP, recuperación de 15 minutos, límites/anti-enumeración y revocación de sesiones están registrados en `.orchestrator/decisions.md`.
+- El enfoque de FTS PostgreSQL con migración SQL `tsvector` + GIN y consulta parametrizada desde Prisma quedó decidido. La consulta debe buscar español e inglés para satisfacer `PROJECT_CONTEXT.md`, no solamente configurar el parser español.
+- Los contratos de API mantienen `/api/v1`, Problem Details, roles de `AGENTS.md` y autorización backend. El contrato compartido debe evitar divergencia entre `server/` y `client/`.
+- En implementación se comprobarán entorno, SMTP, compatibilidad de dependencias, esquema real y comandos; el repositorio aún no tiene aplicación versionada y estas decisiones no equivalen a pruebas ejecutadas.
 
-**Criterio de salida para cerrar las compuertas:** framework backend elegido; contrato de sesión/cookies y recuperación documentado; mecanismo seguro de secretos y disponibilidad SMTP confirmados; enfoque de Prisma/FTS documentado. La estructura y librerías de frontend se pueden comenzar a preparar mientras se cierran los contratos que las afectan.
+**Criterio de salida:** satisfecho para comenzar desarrollo. La disponibilidad de SMTP y la ejecución/rendimiento de servicios se validan al implementar y desplegar; no bloquean el inicio del esqueleto ni del modelo.
 
 ### Parte 1 — Fundamento de cuentas, sesión, autorización y auditoría
 
-**Estado:** `ready_with_gates`; depende de Parte 0. Se puede iniciar modelado de usuarios/auditoría y el esqueleto de client/server; endpoints y sesión quedan sujetos al cierre de contratos listados en Parte 0.  
+**Estado:** `ready`; Parte 0 cerrada.  
 **Ownership:** seguridad define/implementa auth, sesión, RBAC y auditoría; base de datos cubre cambios de persistencia; backend integra casos de uso/API.
 
 - Asegurar modelo de usuario compatible con CI, email, nombre, usuario único, hash de contraseña, rol y estado.
+- Crear persistencia acordada para `sesiones_usuario` y `tokens_recuperacion` en coordinación `sa-database`/`sa-security`; conservar hashes consumidos para detectar reutilización, expiración y vínculo con el usuario/familia de sesión. Las escrituras sensibles y `audit_logs` deben ser atómicas.
 - Proveer cuenta ADMINISTRADOR inicial mediante mecanismo seguro y documentado; nunca incluir contraseña predeterminada fija en código ni habilitar registro público.
 - Implementar sesiones y autorización del lado servidor; estados de usuario inactivo no autentican.
 - Implementar auditoría de auth y administración, incluyendo actor, rol, operación, recurso, fecha, IP, User-Agent, ID de sesión, resultado y motivo cuando corresponda; no incluir secretos.
@@ -71,12 +69,15 @@ Quedan fuera de esta primera entrega la implementación completa de publicacione
 **Ownership:** `sa-security` para controles y flujo seguro; `sa-backend` para endpoints/casos de uso; `sa-database` si se requiere persistir tokens/estado; `sa-frontend` para formularios y estados.
 
 - Login con usuario y contraseña obligatorios, mensajes seguros, bloqueo tras 3 intentos consecutivos por 5 minutos, restablecimiento del contador según contrato y auditoría de éxito/fallo.
-- Recuperación por solicitud y consumo de token aleatorio, de un solo uso, con vencimiento e invalidación tras cambio. Persistir solo hash del token cuando la arquitectura lo permita.
-- Responder igual ante cuenta existente/inexistente; aplicar límites de solicitudes y no revelar secretos. No registrar tokens.
-- No permitir el cambio de contraseña hasta validar el token; al completarlo invalidar el token y las sesiones según política acordada.
+- Endpoints de sesión: `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, solicitud de recuperación y `POST /api/v1/auth/reset-password`; documentar request/response/error Problem Details antes de integrar UI.
+- Recuperación con token criptográfico de 32 bytes (64 caracteres hex), almacenar solo SHA-256, válido 15 minutos y de un solo uso; límite 3 solicitudes por correo e IP por hora.
+- Responder HTTP 200 con el texto genérico acordado tanto para cuenta activa como desconocida/inactiva; al consumir token, actualizar hash Argon2id y revocar todas las sesiones en una operación consistente.
+- Si se reutiliza un refresh token consumido/revocado, generar alerta auditable e invalidar todas las sesiones activas de ese usuario.
+- Enviar solo mediante SMTP configurado fuera del código. `transporter.verify()` al arranque: si falla, API sigue activa en modo degradado, envío deshabilitado y respuesta externa sigue genérica; generar señal operacional sin filtrar detalles/secretos.
+- No registrar tokens. No enviar contraseñas temporales. Proteger reset frente a abuso y diferencias de enumeración.
 - Frontend: login, enlace “Olvidé mi contraseña”, solicitud, confirmación y establecimiento de contraseña nueva; estados de carga/error/éxito accesibles.
 
-**Criterios de aceptación:** login válido/inválido; usuario inexistente sin enumeración; tercer fallo bloquea cinco minutos; cuenta bloqueada no autentica; recuperación válida, vencida, reutilizada y desconocida; contraseña anterior deja de funcionar y nueva contraseña funciona; auditoría no contiene contraseña/token.
+**Criterios de aceptación:** login válido/inválido; usuario inexistente sin enumeración; tercer fallo bloquea cinco minutos; cuenta bloqueada no autentica; recuperación válida, vencida, reutilizada y desconocida; respuestas genéricas HTTP 200; límites por correo/IP; SMTP degradado no detiene API ni filtra detalles; refresh rota; reutilización revoca sesiones; al reset la contraseña anterior deja de funcionar, la nueva funciona y todas las sesiones previas quedan revocadas; auditoría no contiene contraseña/token.
 
 ### Parte 3 — Dashboard y menú completo por rol
 
@@ -118,11 +119,12 @@ Quedan fuera de esta primera entrega la implementación completa de publicacione
 
 ### Parte 6 — Cierre de sesión e integración de flujos
 
-**Estado:** `pending`; depende de Partes 1–5 (puede integrarse al terminar Parte 2 si las demás continúan).  
+**Estado:** `pending`; depende de Parte 1 (puede integrarse al terminar Parte 2 mientras continúan las Partes 3–5).  
 **Ownership:** security/backend para invalidar sesión y registrar logout; frontend para acción y navegación.
 
-- Invalidar en servidor la sesión/token según mecanismo real; limpiar estado local; navegar a login y bloquear back/direct URLs sin sesión.
-- Registrar logout y tiempo de sesión conforme al mecanismo de auditoría.
+- `POST /api/v1/auth/logout` revoca la sesión en PostgreSQL y registra logout/duración en `audit_logs` de forma atómica; ante fallo de audit, no reportar operación exitosa.
+- Expirar cookie con `Set-Cookie` y atributos coincidentes (no existe encabezado estándar `Clear-Cookie`); limpiar estado local, navegar a login y bloquear rutas sin sesión.
+- Rechazar access token ligado a sesión revocada; limitar vida máxima del access token a 15 minutos.
 - Asegurar logout por expiración/revocación donde corresponda y no confiar solo en ocultar el menú.
 
 **Criterios de aceptación:** la sesión deja de servir tras logout; rutas autenticadas exigen volver a iniciar sesión; evento auditado con duración cuando corresponda; fallo o repetición no crea sesión residual.
@@ -136,19 +138,18 @@ Quedan fuera de esta primera entrega la implementación completa de publicacione
 - Ejecutar pruebas existentes y nuevas apropiadas en cada dominio; revisar migraciones en base limpia y regresión integrada.
 - Resolver hallazgos bloqueantes y dejar riesgos conocidos explícitos. No declarar alcance completo si falla un criterio.
 
-## Contrato de recuperación a resolver antes de implementar
+## Contrato de recuperación definido
 
-Las fuentes actuales no definen canal de entrega, duración del token ni políticas de sesiones tras recuperar contraseña. Parte 0 debe verificar el entorno y acordar valores/operación. Requisitos no negociables del plan: token aleatorio, de un solo uso, con vencimiento; persistencia protegida; respuesta anti-enumeración; no enviar contraseña temporal; invalidación después del uso; auditoría sin token/clave. Si no hay canal verificable disponible, exponer una experiencia honesta de recuperación no operativa solo si el usuario aprueba un alcance alternativo; no afirmar que recuperar contraseña funciona.
+El canal es SMTP institucional y se utilizará el contrato de `.orchestrator/decisions.md`: token de un solo uso con vencimiento de 15 minutos y almacenamiento por hash; HTTP 200 genérico; rate limit por correo/IP; cambio de hash Argon2id y revocación de sesiones.
 
-La actualización propone SMTP institucional; esto cubre una opción de canal, pero no confirma por sí solo que las credenciales estén instaladas/disponibles en los entornos. El backend debe leerlas de configuración secreta inyectada y fallar de forma segura si no están configuradas, sin exponerlas en logs ni respuestas.
+La disponibilidad y credenciales SMTP son una verificación operacional de despliegue, no una decisión de diseño pendiente. El backend lee secretos inyectados, y si SMTP no está disponible mantiene la API activa en modo degradado sin revelar el estado a usuarios externos.
 
 ## Evaluación del estado técnico recibido
 
 - **Correcto como línea base:** stack y separación `server/`/`client/` dan dirección para iniciar; seed por secretos de entorno evita una contraseña fija; `/api/v1` y Problem Details coinciden con el contrato maestro.
-- **Debe precisarse antes de implementación dependiente:** Fastify o Express; semántica completa JWT/refresh/logout y protección CSRF; parámetros del token de recuperación y disponibilidad real del SMTP.
-- **Corrección de seguridad:** no configurar credenciales SMTP literalmente “directamente en backend”. El código lee nombres de variables; valores reales van en `.env` local ignorado o en el gestor de secretos del entorno, nunca en Git, `.env.example`, imagen o logs.
-- **Matiz de persistencia:** Prisma no elimina la necesidad de SQL/migraciones especiales para índices y consultas `tsvector`. El contrato maestro exige FTS PostgreSQL medible y apropiado para español/inglés; el equipo de base de datos debe verificarlo, no asumir que la elección del ORM lo resuelve.
-- **Resultado:** las definiciones son suficientes para iniciar tareas preparatorias de Parte 1 (estructura/modelado y contratos), pero no para terminar ni integrar auth ni declarar Parte 0 completamente cerrada. No existe aplicación en Git sobre la cual comprobar estas selecciones.
+- **Cerrado:** Fastify, contrato de access/refresh, recuperación, SMTP por secretos y camino de FTS están definidos en `.orchestrator/decisions.md`.
+- **Precisiones de implementación ya incorporadas:** CSRF/origin para endpoints con cookie, Set-Cookie expirado para logout, retención de hashes refresh consumidos para detección de reutilización y consulta FTS bilingüe real. No cambian la selección tecnológica.
+- **Resultado:** suficiente para iniciar desarrollo. La verificación de SMTP, compatibilidad de versiones, esquema, integración y métricas queda como validación de implementación; no puede marcarse como hecha antes de existir código.
 
 ## Paralelismo y dependencias
 
@@ -161,14 +162,14 @@ La actualización propone SMTP institucional; esto cubre una opción de canal, p
 
 ## Riesgos y pendientes iniciales
 
-- No hay código fuente del producto en Git: primero se necesita confirmar si la implementación aún no comenzó o vive fuera de este repositorio.
-- Stack y comandos de validación desconocidos; no elegir tecnologías ni comandos hasta inspeccionar el entorno real.
-- Recuperación requiere canal real (por ejemplo, servicio de correo institucional) y decisión de expiración/sesiones, actualmente no documentados.
+- No hay código fuente del producto en Git; confirmar al iniciar si la implementación aún no comenzó o vive fuera de este repositorio.
+- Versiones y comandos ejecutables deben confirmarse al inicializar server/client; FTS y seguridad aún no tienen validaciones reales.
+- Credenciales/disponibilidad SMTP deben confirmarse en cada entorno, sin bloquear el diseño ni exponer el estado a usuarios externos.
 - El alta inicial de ADMINISTRADOR y la entrega segura de credenciales son prerrequisitos operativos.
 - “Menú completo” requiere inventario por rol del alcance maestro; opciones aún pendientes deben ser visibles sin presentarse como operativas.
 
 ## Estado del plan
 
-- Implementación: no iniciada en este repositorio.
-- Parte 0: decisiones de dirección recibidas; quedan compuertas explícitas antes de completar la implementación de auth y persistencia FTS.
-- Próximo paso: iniciar Parte 1 en tareas preparatorias tras confirmar el estado real del repositorio; cerrar framework y contratos de sesión/secretos antes de implementar rutas de autenticación.
+- Implementación: no iniciada en este repositorio; las decisiones técnicas iniciales ya están definidas.
+- Parte 0: `done`; Parte 1: `ready`.
+- Próximo paso: iniciar Parte 1, inspeccionando nuevamente el estado real del repositorio y respetando ownership antes de modificar archivos de dominio.
