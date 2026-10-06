@@ -10,7 +10,7 @@ Entregar una primera versión operativa del sistema que permita autenticarse, re
 - `.opencode/agents/orchestrator.md`: flujo de orquestación, regla de guardar este plan en `.orchestrator/plan.md`, ownership y definición de terminado.
 - `.opencode/agents/sa-security.md`, `sa-backend.md`, `sa-database.md`, `sa-frontend.md`: límites de dominio y criterios de seguridad, API, persistencia y UI.
 - `PROJECT_CONTEXT.md` y `README.md`: contexto y requisitos generales del sistema.
-- El repositorio está limpio en `main`; no hay código de aplicación versionado ni plan/decisiones existentes en `.orchestrator/`. Por tanto, framework, estructura de aplicación, almacenamiento de sesión, persistencia y servicio de correo siguen por descubrir.
+- El repositorio no contiene código de aplicación versionado. Se recibieron acuerdos de dirección sobre stack, correo y estructura; se toman como decisiones del proyecto, no como evidencia de que ya existan servicios, credenciales operativas o código implementado.
 
 ## Alcance priorizado
 
@@ -38,20 +38,23 @@ Quedan fuera de esta primera entrega la implementación completa de publicacione
 
 ### Parte 0 — Descubrimiento técnico y contratos mínimos
 
-**Estado:** `ready`  
+**Estado:** `done_with_gates` (acuerdos de dirección recibidos; hay decisiones puntuales que deben cerrarse antes de implementar sus componentes)  
 **Ownership:** orchestrator coordina; `sa-frontend`, `sa-backend`, `sa-security`, `sa-database` inspeccionan únicamente sus dominios si se inicia implementación.
 
-- Confirmar con evidencia el stack y estructura de aplicación, base de datos/migraciones, proveedor de sesiones, pruebas disponibles y entorno de desarrollo.
-- Determinar qué servicios de correo/recuperación están disponibles; documentar restricciones operativas antes de escoger proveedor.
-- Definir un contrato común de auth, usuarios y navegación por rol: endpoints, payloads, estados, errores, paginación y permisos.
-- Acordar persistencia requerida para bloqueo, recuperación y auditoría, reutilizando mecanismos existentes cuando sean adecuados.
-- Revisar decisiones existentes y registrar en `.orchestrator/decisions.md` solo las decisiones nuevas que sean necesarias.
+- Dirección recibida: Node.js 24+ y TypeScript; React/Vite/Tailwind; PostgreSQL/Prisma; Argon2id; JWT con refresh cookie HttpOnly; ClamAV y SHA-256 para PDF; PDFMake/ExcelJS; carpetas `server/` y `client/`; `/api/v1` y Problem Details.
+- Dirección recibida de SMTP institucional y bootstrap ADMINISTRADOR desde secretos de entorno, sin credenciales por defecto en código.
+- Cerrar Express **o** Fastify antes de iniciar rutas/backend: el mensaje enumera ambos y no elige uno.
+- Antes de implementar auth, fijar en contratos: access/refresh TTL, rotación/reutilización, revocación y almacenamiento de refresh, protección CSRF para cookies, expiración de recuperación, rate limits y política de sesiones tras reset/cambio de contraseña.
+- Confirmar operativamente que SMTP está disponible en el entorno de ejecución. SMTP solo se configura con secretos fuera del repositorio (variables de entorno/gestor de secretos); nunca valores reales en archivos versionados o código.
+- Definir contratos de auth/usuarios/auditoría consumidos por frontend y backend, con formato Problem Details, permisos y paginación donde aplique. La estructura independiente `server/`/`client/` no debe producir contratos duplicados incompatibles.
+- Prisma/PostgreSQL FTS requiere validar versión/funcionalidad elegida. No asumir soporte nativo completo de `tsvector` ni de índices funcionales: si se usa Prisma, cubrir índices/consultas necesarias con migraciones SQL/TypedSQL y pruebas, o registrar alternativa.
+- Validar en implementación el entorno y comandos de ejecución; no hay aplicación versionada que permita probar ya el stack.
 
-**Criterio de salida:** contratos revisados por los dominios consumidores/productores; stack confirmado; dependencias externas conocidas; sin decisiones técnicas inventadas.
+**Criterio de salida para cerrar las compuertas:** framework backend elegido; contrato de sesión/cookies y recuperación documentado; mecanismo seguro de secretos y disponibilidad SMTP confirmados; enfoque de Prisma/FTS documentado. La estructura y librerías de frontend se pueden comenzar a preparar mientras se cierran los contratos que las afectan.
 
 ### Parte 1 — Fundamento de cuentas, sesión, autorización y auditoría
 
-**Estado:** `pending`; depende de Parte 0.  
+**Estado:** `ready_with_gates`; depende de Parte 0. Se puede iniciar modelado de usuarios/auditoría y el esqueleto de client/server; endpoints y sesión quedan sujetos al cierre de contratos listados en Parte 0.  
 **Ownership:** seguridad define/implementa auth, sesión, RBAC y auditoría; base de datos cubre cambios de persistencia; backend integra casos de uso/API.
 
 - Asegurar modelo de usuario compatible con CI, email, nombre, usuario único, hash de contraseña, rol y estado.
@@ -137,6 +140,16 @@ Quedan fuera de esta primera entrega la implementación completa de publicacione
 
 Las fuentes actuales no definen canal de entrega, duración del token ni políticas de sesiones tras recuperar contraseña. Parte 0 debe verificar el entorno y acordar valores/operación. Requisitos no negociables del plan: token aleatorio, de un solo uso, con vencimiento; persistencia protegida; respuesta anti-enumeración; no enviar contraseña temporal; invalidación después del uso; auditoría sin token/clave. Si no hay canal verificable disponible, exponer una experiencia honesta de recuperación no operativa solo si el usuario aprueba un alcance alternativo; no afirmar que recuperar contraseña funciona.
 
+La actualización propone SMTP institucional; esto cubre una opción de canal, pero no confirma por sí solo que las credenciales estén instaladas/disponibles en los entornos. El backend debe leerlas de configuración secreta inyectada y fallar de forma segura si no están configuradas, sin exponerlas en logs ni respuestas.
+
+## Evaluación del estado técnico recibido
+
+- **Correcto como línea base:** stack y separación `server/`/`client/` dan dirección para iniciar; seed por secretos de entorno evita una contraseña fija; `/api/v1` y Problem Details coinciden con el contrato maestro.
+- **Debe precisarse antes de implementación dependiente:** Fastify o Express; semántica completa JWT/refresh/logout y protección CSRF; parámetros del token de recuperación y disponibilidad real del SMTP.
+- **Corrección de seguridad:** no configurar credenciales SMTP literalmente “directamente en backend”. El código lee nombres de variables; valores reales van en `.env` local ignorado o en el gestor de secretos del entorno, nunca en Git, `.env.example`, imagen o logs.
+- **Matiz de persistencia:** Prisma no elimina la necesidad de SQL/migraciones especiales para índices y consultas `tsvector`. El contrato maestro exige FTS PostgreSQL medible y apropiado para español/inglés; el equipo de base de datos debe verificarlo, no asumir que la elección del ORM lo resuelve.
+- **Resultado:** las definiciones son suficientes para iniciar tareas preparatorias de Parte 1 (estructura/modelado y contratos), pero no para terminar ni integrar auth ni declarar Parte 0 completamente cerrada. No existe aplicación en Git sobre la cual comprobar estas selecciones.
+
 ## Paralelismo y dependencias
 
 - Parte 0 precede cualquier implementación.
@@ -156,6 +169,6 @@ Las fuentes actuales no definen canal de entrega, duración del token ni políti
 
 ## Estado del plan
 
-- Implementación: no iniciada.
-- Este artefacto es un plan; no se modificó código ni configuración del producto.
-- Próximo paso al iniciar implementación: ejecutar Parte 0 y luego reevaluar dependencias, ownership, estructura, pruebas y cambios existentes antes de delegar modificaciones.
+- Implementación: no iniciada en este repositorio.
+- Parte 0: decisiones de dirección recibidas; quedan compuertas explícitas antes de completar la implementación de auth y persistencia FTS.
+- Próximo paso: iniciar Parte 1 en tareas preparatorias tras confirmar el estado real del repositorio; cerrar framework y contratos de sesión/secretos antes de implementar rutas de autenticación.
