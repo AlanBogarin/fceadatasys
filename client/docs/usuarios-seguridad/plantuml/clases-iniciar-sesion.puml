@@ -1,0 +1,44 @@
+@startuml
+title Clases específicas Iniciar Sesión
+skinparam classAttributeIconSize 0
+class "userService.ts" as Servicio <<módulo>> {
+  +loginUser(state, username, password): Resultado
+}
+class "model.ts" as Modelo <<módulo>> {
+  +authenticate(state, username, password, now)
+  +hashPassword(password, salt): string
+}
+class User {
+  +id: string
+  +username: string
+  +passwordHash: string
+  +salt: string
+  +active: boolean
+  +role: Role
+  +failures: number
+  +lockedUntil: number
+}
+class "useSession.ts" as Sesion <<hook>> {
+  +session: string
+  +locked: boolean
+  +deadline: number
+  +login(userId)
+  +assertActive()
+  +logout()
+}
+class "security.ts" as Seguridad <<módulo>> {
+  +INACTIVITY_MINUTES: 10
+  +canOpenPage(role, page): boolean
+  +sessionExpired(deadline, now): boolean
+}
+class Resultado {
+  +exito: boolean
+  +mensaje: string
+  +datos: estado e identidad
+}
+Servicio ..> Modelo : verifica credenciales y RN-03
+Modelo ..> User
+Servicio ..> Resultado
+Sesion --> User : identidad autenticada
+Sesion ..> Seguridad : plazo y permisos RN-04
+@enduml

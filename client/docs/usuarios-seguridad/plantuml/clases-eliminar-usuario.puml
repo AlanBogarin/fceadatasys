@@ -1,0 +1,44 @@
+@startuml
+title Clases específicas Eliminar Usuario
+skinparam classAttributeIconSize 0
+class "userService.ts" as Servicio <<módulo>> {
+  +deleteUser(state, actorId, userId): Resultado
+}
+class "relations.ts" as Relaciones <<módulo>> {
+  +userDependencies(state, userId): string[]
+}
+class User {
+  +id: string
+  +role: Role
+  +active: boolean
+}
+class RepositoryLink {
+  +userId: string
+  +recordId: string
+  +kind: investigación o revisión o documento o transacción
+}
+class CatalogRecord {
+  +id: string
+  +name: string
+  +active: boolean
+  +participantIds: string[] opcional
+}
+class Recovery {
+  +userId: string
+  +hash: string
+  +expiresAt: number
+}
+class Resultado {
+  +exito: boolean
+  +mensaje: string
+  +datos: State
+}
+Servicio ..> Relaciones : consulta antes de eliminar
+Relaciones ..> RepositoryLink
+Relaciones ..> CatalogRecord
+User "1" <-- "0..*" RepositoryLink : userId
+User "0..*" <-- "0..*" CatalogRecord : participantIds
+User "1" <-- "0..*" Recovery : revoca si se elimina
+Servicio ..> User : elimina solo sin vínculos
+Servicio ..> Resultado
+@enduml

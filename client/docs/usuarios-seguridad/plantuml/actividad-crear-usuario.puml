@@ -1,0 +1,35 @@
+@startuml
+title Actividad Crear Usuario
+start
+:Administrador solicita Nuevo usuario;
+:Comprobar sesión vigente y permiso;
+if (¿Autorizado?) then (sí)
+  :Mostrar formulario vacío;
+else (no)
+  :Mostrar acceso restringido o bloqueo;
+  stop
+endif
+:Ingresar datos y confirmar contraseña;
+:Validar obligatorios, formatos y contraseña;
+:Comprobar CI, correo y usuario únicos;
+if (¿Datos válidos?) then (sí)
+  :Crear ID, sal y hash de contraseña;
+else (no)
+  :Mostrar errores sin registrar la cuenta;
+  :Permitir corregir o cancelar;
+  stop
+endif
+:Revalidar sesión y versión local antes de guardar;
+if (¿Sesión vigente y datos actuales?) then (sí)
+  :Persistir nuevo estado local;
+else (no)
+  :Abortar y solicitar autenticación o recarga;
+  stop
+endif
+if (¿Persistencia correcta?) then (sí)
+  :Actualizar listado y mostrar Usuario creado;
+else (no)
+  :Mostrar error de almacenamiento sin éxito;
+endif
+stop
+@enduml

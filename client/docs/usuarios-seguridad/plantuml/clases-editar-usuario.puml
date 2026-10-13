@@ -1,0 +1,37 @@
+@startuml
+title Clases específicas Editar Usuario
+skinparam classAttributeIconSize 0
+class "userService.ts" as Servicio <<módulo>> {
+  +loadUserForEdit(state, actorId, userId): Resultado
+  +editUser(state, actorId, userId, input): Resultado
+}
+class "model.ts" as Modelo <<módulo>> {
+  +updateUser(state, actorId, userId, input): State
+  +validateUser(input, users, editingId): UserInput
+}
+class User {
+  +id: string
+  +name: string
+  +ci: string
+  +email: string
+  +username: string
+  +role: Role
+  +active: boolean
+}
+class State {
+  +users: User[]
+}
+class "relations.ts" as Relaciones <<módulo>> {
+  +userDependencies(state, userId): string[]
+}
+class Resultado {
+  +exito: boolean
+  +mensaje: string
+  +datos: User o State
+}
+Servicio ..> User : consulta y precarga copia
+Servicio ..> Modelo : aplica RN-01 y protección admin
+Modelo ..> Relaciones : RN-02 al inactivar
+State "1" o-- "0..*" User
+Servicio ..> Resultado
+@enduml

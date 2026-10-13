@@ -1,0 +1,39 @@
+@startuml
+title Clases específicas Crear Usuario
+skinparam classAttributeIconSize 0
+class "userService.ts" as Servicio <<módulo>> {
+  +createUser(state, actorId, input, password): Resultado
+}
+class "model.ts" as Modelo <<módulo>> {
+  +guardAdmin(state, actorId)
+  +validateUser(input, users): UserInput
+  +makeUser(input, password): User
+}
+class User {
+  +id: string
+  +name: string
+  +ci: string
+  +email: string
+  +username: string
+  +role: Role
+  +active: boolean
+  +passwordHash: string
+  +salt: string
+  +createdAt: string
+  +failures: number
+  +lockedUntil: number
+}
+class State {
+  +users: User[]
+}
+class Resultado {
+  +exito: boolean
+  +mensaje: string
+  +datos: State
+}
+Servicio ..> Modelo : valida y crea
+Modelo ..> User : construye
+State "1" o-- "0..*" User
+Servicio ..> Resultado : devuelve
+Resultado --> State
+@enduml

@@ -1,0 +1,47 @@
+@startuml
+title Actividad Editar Usuario
+start
+:Administrador selecciona Editar;
+:Comprobar sesión vigente y permiso;
+if (¿Autorizado?) then (sí)
+  :Consultar usuario actual por ID;
+else (no)
+  :Rechazar apertura;
+  stop
+endif
+if (¿Existe el usuario?) then (sí)
+  :Copiar y precargar datos actuales;
+else (no)
+  :Mostrar usuario no encontrado;
+  stop
+endif
+if (¿Rol actual Público?) then (sí)
+  :Marcar Nombre Completo como solo lectura;
+else (no)
+  :Habilitar Nombre Completo;
+endif
+:Mostrar formulario precargado;
+:Ingresar cambios o cancelar;
+if (¿Confirma guardar?) then (sí)
+  :Revalidar permiso, existencia y precarga vigente;
+  :Validar formatos, unicidad y RN-01;
+  :Si se asigna Público, conservar nombre original;
+  :Proteger cuenta propia y último administrador;
+  :Si se inactiva, consultar dependencias RN-02;
+else (no)
+  stop
+endif
+if (¿Cumple las reglas?) then (sí)
+  :Revalidar sesión y versión local;
+  :Intentar persistir estado actualizado;
+else (no)
+  :Mostrar restricción sin aplicar cambios;
+  stop
+endif
+if (¿Guardado correcto?) then (sí)
+  :Actualizar listado y confirmar cambios;
+else (no)
+  :Mostrar error y conservar datos anteriores;
+endif
+stop
+@enduml
