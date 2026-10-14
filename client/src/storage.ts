@@ -22,6 +22,16 @@ export async function load(): Promise<State> {
       );
     }
     const upgraded = migrateCatalogs(state);
+    if (
+      (state.publications !== undefined &&
+        !Array.isArray(state.publications)) ||
+      (state.publicationAudit !== undefined &&
+        !Array.isArray(state.publicationAudit))
+    ) {
+      throw Error(
+        "Los datos de investigaciones no son compatibles. Se conservaron sin cambios.",
+      );
+    }
     if (JSON.stringify(upgraded) !== raw) save(upgraded);
     return upgraded;
   }

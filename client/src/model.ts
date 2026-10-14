@@ -1,4 +1,5 @@
 import { userDependencies } from "./relations";
+import type { Publication, PublicationAudit } from "./publications";
 import { emptyCatalogs, type Catalogs } from "./catalogs";
 // Adaptador local de demostración. No constituye autenticación ni autorización de servidor.
 export const ROLES = ["ADMINISTRADOR", "DIGITADOR", "PUBLICO"] as const;
@@ -37,6 +38,8 @@ export type State = {
   recovery: Recovery[];
   catalogs: Catalogs;
   repositoryLinks?: RepositoryLink[];
+  publications?: Publication[];
+  publicationAudit?: PublicationAudit[];
 };
 export const DEMO_PASSWORD = "Fcea2026!";
 export const roleLabel: Record<Role, string> = {

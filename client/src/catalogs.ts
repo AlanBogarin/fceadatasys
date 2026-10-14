@@ -1,4 +1,5 @@
 import type { State, Role } from "./model";
+import { publicationUsesCatalog } from "./publications";
 export const CATALOG_KEYS = [
   "autores",
   "tutores",
@@ -280,6 +281,16 @@ export function setCatalogActive(
   active: boolean,
 ): State {
   guardCatalog(state, actorId, key);
+  if (
+    !active &&
+    (state.publications ?? []).some((publication) =>
+      publicationUsesCatalog(publication, key, targetId),
+    )
+  ) {
+    throw Error(
+      "No se puede inactivar: el registro está vinculado a una investigación registrada.",
+    );
+  }
   if (!state.catalogs[key].some((entry) => entry.id === targetId)) {
     throw Error("No se encontró el registro.");
   }

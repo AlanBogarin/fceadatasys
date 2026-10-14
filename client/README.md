@@ -1,4 +1,4 @@
-# FCEA-Datasys · Usuarios, autenticación y catálogos
+# FCEA-Datasys · Usuarios, catálogos, registro y reporte de investigaciones
 
 ## Actualización para la segunda evaluación
 
@@ -11,9 +11,9 @@ Documentación: [fichas y reglas](docs/usuarios-seguridad/Casos-de-uso-y-reglas.
 
 El código se organiza en `UserPages.tsx`, `AuthPage.tsx`, `userService.ts`, `model.ts`, `relations.ts`, `security.ts` y `useSession.ts`. Los servicios devuelven `{ exito, mensaje, datos }`; los errores se muestran sin informar éxito si la persistencia falla.
 
-El control estricto de integridad en PostgreSQL y los permisos de servidor siguen pendientes de la implementación del backend. Esta entrega cubre las reglas en la demostración local. La transacción y su reporte exigidos por la evaluación no se implementan en esta actualización.
+El control estricto de integridad en PostgreSQL y los permisos de servidor siguen pendientes de la implementación del backend. Esta entrega cubre las reglas en la demostración local. La ampliación del 13/10/2026 agrega el registro de investigaciones con enlace externo y su reporte PDF/Excel. Ver docs/TRANSACCION-Y-REPORTE.md para el recorrido de presentación.
 
-Interfaz React y TypeScript inspirada en las referencias de Stitch. Alcance solicitado: login, recuperación, menú completo según rol, mantenimiento de usuarios, perfil personal, cambio de contraseña y cierre de sesión. Incluye mantenimiento local de autores, tutores, carreras, facultades, sedes/filiales, tipos de publicación y niveles académicos. No se implementa backend ni gestión de publicaciones.
+Interfaz React y TypeScript inspirada en las referencias de Stitch. Alcance solicitado: login, recuperación, menú completo según rol, mantenimiento de usuarios, perfil personal, cambio de contraseña y cierre de sesión. Incluye mantenimiento local de autores, tutores, carreras, facultades, sedes/filiales, tipos de publicación y niveles académicos. Se agrega el registro de publicaciones externas y su reporte; no se implementa backend ni otros procesos de publicaciones.
 
 ## Abrir
 
@@ -54,7 +54,7 @@ Los usuarios se conservan en localStorage y la sesión en sessionStorage (por pe
 
 La fuente Inter se carga de Google Fonts; si no hay internet se usa Segoe UI. Iconos y estilos están empaquetados localmente. Se usa React/Vite/TypeScript y CSS propio para reproducir el diseño sin depender de Tailwind por CDN.
 
-Para reiniciar la demostración, eliminar en las herramientas del navegador la entrada localStorage `fcea-datasys.frontend.v1` y sessionStorage `fcea-datasys.session`, y recargar. Esto elimina únicamente las cuentas locales de esta demostración.
+Para reiniciar la demostración, eliminar en las herramientas del navegador la entrada localStorage `fcea-datasys.frontend.v1` y sessionStorage `fcea-datasys.session`, y recargar. Esto elimina las cuentas, catálogos e investigaciones locales de esta demostración.
 
 ## Verificación
 
@@ -96,3 +96,4 @@ Los requisitos del proyecto ubican PDF y Excel en Reportes (Administrador) y la 
 ### Integración posterior
 
 Estos registros son exclusivamente locales. El backend deberá establecer el contrato de cada entidad, replicar permisos y unicidad, auditar cambios y controlar referencias antes de inactivar registros vinculados a publicaciones activas. No existen todavía publicaciones ni relaciones N:M en esta demostración. Las pantallas de publicaciones, parámetros generales, reportes y auditoría siguen pendientes. La matriz de roles describe también permisos de módulos futuros y los identifica como pendientes.
+
