@@ -1,6 +1,7 @@
 import { Brand, errorText, initials } from "./ui";
 import { UsersPage, Profile, ChangePassword } from "./UserPages";
 import { Auth } from "./AuthPage";
+import { PublicationsPage, PublicationReportsPage } from "./PublicationPages";
 import { useSession } from "./useSession";
 import { canOpenPage, INACTIVITY_MINUTES } from "./security";
 import {
@@ -109,6 +110,7 @@ const groups: {
     items: [
       {
         id: "gestion-publicaciones",
+        ready: true,
         label: "Publicaciones",
         icon: FileText,
         roles: editors,
@@ -195,7 +197,8 @@ const groups: {
       },
       {
         id: "reportes",
-        label: "Reportes estadísticos",
+        ready: true,
+        label: "Reporte de investigaciones",
         icon: FileText,
         roles: admins,
       },
@@ -312,6 +315,7 @@ export default function App() {
   stateRef.current = state;
   const [page, setPage] = useState(route);
   const [toast, setToast] = useState("");
+  const [reportPublicationId, setReportPublicationId] = useState("");
   const [mobile, setMobile] = useState(false);
   useEffect(() => {
     load()
@@ -471,6 +475,30 @@ export default function App() {
     if (page === "roles") {
       return <RolesPage />;
     }
+    if (page === "gestion-publicaciones") {
+      return (
+        <PublicationsPage
+          state={state!}
+          user={user!}
+          commit={commit}
+          notify={setToast}
+          showReport={(publicationId) => {
+            setReportPublicationId(publicationId);
+            navigate("reportes");
+          }}
+        />
+      );
+    }
+    if (page === "reportes") {
+      return (
+        <PublicationReportsPage
+          state={state!}
+          user={user!}
+          initialId={reportPublicationId}
+          assertActive={sessionControl.assertActive}
+        />
+      );
+    }
     if (page === "usuarios") {
       return (
         <UsersPage
@@ -608,7 +636,7 @@ export default function App() {
         </main>
         <footer className="workspace-footer">
           <span>FCEA · Universidad Nacional de Concepción</span>
-          <span>Usuarios y seguridad · Demostración local</span>
+          <span>Repositorio de investigaciones · Demostración local</span>
         </footer>
       </div>
       {toast && (
@@ -630,6 +658,17 @@ function Dashboard({
   navigate: (targetId: string) => void;
 }) {
   const cards = [
+    ...(user.role !== "PUBLICO"
+      ? [
+          {
+            id: "gestion-publicaciones",
+            label: "Registrar investigación",
+            desc: "Trabajos aprobados y su información bibliográfica.",
+            icon: FileText,
+            pending: false,
+          },
+        ]
+      : []),
     ...(user.role !== "PUBLICO"
       ? [
           {

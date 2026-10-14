@@ -1,0 +1,27 @@
+FCEA-DATASYS - ENTREGA: TRANSACCION Y REPORTE
+
+1. Extraer todo el ZIP en una carpeta nueva.
+2. Ejecutar Iniciar-Frontend.cmd. Tener Node.js instalado.
+3. Esperar la instalación inicial y abrir la dirección junto a Local.
+4. Ingresar con admin / Fcea2026! (contraseña inicial de demostración).
+5. Cargar autores, tutores, carreras, niveles, tipos y sedes si están vacíos.
+6. Ir a Publicaciones > Registrar investigación y guardar el trabajo.
+7. En el detalle guardado, pulsar Reporte de esta investigación.
+8. Descargar PDF o Excel. Los reportes se habilitan para Administrador.
+
+El menú Reporte de investigaciones permite filtrar por fecha de registro,
+carrera y nivel. Sin resultados, las descargas están deshabilitadas.
+
+Guía para presentar y defender: docs/TRANSACCION-Y-REPORTE.md
+
+Este avance conserva usuarios, catálogos y seguridad. Agrega UNA transacción:
+registro de una investigación aprobada con enlace externo al documento,
+y el reporte generado a partir de los datos guardados de esa transacción.
+
+Alcance: frontend local, SIN backend. Los datos quedan en el navegador de
+cada equipo, no dentro del ZIP. Usar el mismo navegador y dirección/puerto
+para volver a encontrar los datos. No borrar el almacenamiento.
+
+No hace falta instalar Visual Studio Code para abrirlo. Node.js y las
+dependencias del proyecto sí son necesarios; el iniciador las instala.
+Mantener abierta la ventana del iniciador mientras se utiliza el sistema.
