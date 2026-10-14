@@ -7,6 +7,8 @@ where npm.cmd >nul 2>nul
 if errorlevel 1 goto node_missing
 if not exist "node_modules\.bin\vite.cmd" goto install
 if not exist "node_modules\react\package.json" goto install
+if not exist "node_modules\jspdf\package.json" goto install
+if not exist "node_modules\exceljs\package.json" goto install
 goto start
 :install
 echo Instalando o reparando las dependencias. Espera a que termine...

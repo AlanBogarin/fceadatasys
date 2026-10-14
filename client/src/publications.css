@@ -1,0 +1,220 @@
+.publication-form,
+.publication-detail,
+.report-filters {
+  background: #fff;
+  border: 1px solid #dfe8e7;
+  border-radius: 16px;
+  padding: 28px;
+  margin-bottom: 24px;
+}
+.publication-form section + section {
+  border-top: 1px solid #e3e9e8;
+  margin-top: 28px;
+  padding-top: 24px;
+}
+.publication-form h2,
+.report-filters h2,
+.report-heading h2 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+.publication-form .field {
+  margin-top: 18px;
+}
+.publication-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 24px;
+  margin: 18px 0;
+}
+.publication-grid .field {
+  margin-top: 0;
+}
+.publication-form textarea {
+  width: 100%;
+  min-height: 115px;
+  padding: 12px;
+  border: 1px solid #cbd8d8;
+  border-radius: 8px;
+  resize: vertical;
+  font: inherit;
+}
+.people-picker {
+  border: 1px solid #dfe8e7;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 18px;
+}
+.people-picker legend {
+  font-weight: 600;
+  padding: 0 6px;
+}
+.people-picker p {
+  font-size: 13px;
+  color: #5d737b;
+}
+.people-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+  margin-top: 12px;
+}
+.people-options label,
+.publication-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  cursor: pointer;
+}
+.people-options input,
+.publication-confirm input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: #590d31;
+}
+.publication-confirm {
+  margin-top: 20px;
+  background: #f5f9f8;
+  border-radius: 8px;
+}
+.publication-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.publication-form > .publication-actions {
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+.catalog-prerequisites {
+  padding: 20px;
+  background: #fff6df;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+.catalog-prerequisites ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 30px;
+  padding-left: 20px;
+}
+.catalog-prerequisites a {
+  text-decoration: underline;
+  color: #590d31;
+}
+.publication-toolbar,
+.report-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 22px 0;
+}
+.publication-toolbar .field {
+  flex: 1;
+  max-width: 560px;
+  min-width: 220px;
+}
+.publication-table {
+  overflow-x: auto;
+  background: white;
+  border: 1px solid #dfe8e7;
+  border-radius: 14px;
+}
+.publication-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.publication-table th,
+.publication-table td {
+  text-align: left;
+  padding: 16px;
+  border-bottom: 1px solid #edf1f0;
+}
+.publication-table th {
+  background: #f7f9f8;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #5d737b;
+}
+.publication-table td small {
+  display: block;
+  color: #62777e;
+  margin-top: 6px;
+}
+.publication-table td:nth-child(2) {
+  min-width: 240px;
+  max-width: 460px;
+  overflow-wrap: anywhere;
+}
+.publication-empty {
+  padding: 44px 24px;
+  text-align: center;
+  color: #61757b;
+  background: white;
+  border-radius: 12px;
+}
+.publication-empty h2 {
+  font-size: 20px;
+  color: #263f46;
+  margin: 16px 0 8px;
+}
+.publication-detail h2 {
+  font-size: 25px;
+  line-height: 1.35;
+  margin: 10px 0 24px;
+  overflow-wrap: anywhere;
+}
+.publication-detail h3 {
+  font-size: 15px;
+  margin: 24px 0 8px;
+  color: #590d31;
+}
+.publication-detail p {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.publication-detail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 20px;
+  background: #f6f9f8;
+  border-radius: 10px;
+}
+.publication-detail dt {
+  color: #61757b;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.publication-detail dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.document-link {
+  color: #590d31;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .publication-grid,
+  .people-options,
+  .publication-detail dl {
+    grid-template-columns: 1fr;
+  }
+  .publication-form,
+  .publication-detail,
+  .report-filters {
+    padding: 18px;
+  }
+  .publication-actions button {
+    flex: 1;
+  }
+}
