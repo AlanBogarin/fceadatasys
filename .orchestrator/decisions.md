@@ -2,7 +2,7 @@
 
 ## Línea base de implementación inicial
 
-**Actualizado:** 2026-10-06. Estas decisiones resuelven las condiciones técnicas de cierre previas. Son contratos para la implementación, no evidencia de que el software ya exista o haya sido probado. El repositorio aún no contiene código de aplicación.
+**Línea base:** 2026-10-06; **revisión de estado:** 2026-10-15. Estas decisiones son contratos para implementar el servidor, no evidencia de servicios probados. Existe una demostración frontend versionada y `server/` está vacío. Las precisiones del 15/10 al final actualizan las diferencias con la implementación local.
 
 | Área | Decisión | Condiciones de implementación |
 |---|---|---|
@@ -48,3 +48,37 @@ Estas precisiones no reabren las elecciones técnicas; convierten los requisitos
 - implementar consulta bilingüe real: el ejemplo de tsquery únicamente español no satisface por sí solo búsqueda del abstract inglés;
 - verificar tipo de `palabras_clave`, definición SQL de columna generada y uso efectivo de GIN;
 - probar atomicidad, revocación, rate limits, anti-enumeración, fallos SMTP y rendimiento FTS en entorno representativo.
+
+## Precisiones de integración del 15 de octubre de 2026
+
+Revisión solicitada: análisis y planificación, sin implementación. Se conserva el stack de servidor acordado; no se instalaron paquetes ni se cambió código.
+
+### Interfaz existente
+
+**Decisión:** reutilizar React/Vite/TypeScript y CSS propio existentes. Tailwind, Shadcn/Radix, TanStack Query y Zod no están instalados en el cliente; su mención en la línea base no exige reconstruir pantallas para integrar el servidor.
+
+**Motivo e impacto:** funcionan usuarios, siete catálogos, registro externo y reportes locales. Integrar servicios/estado mediante consultas y mutaciones HTTP con DTO autorizados, sin refactor de diseño ajeno al objetivo. Backend conserva esquemas Zod/JSON Schema. **Responsable:** frontend con contratos de backend.
+
+### Separación entre demostración y sistema integrado
+
+**Decisión:** no importar automáticamente State del navegador, credenciales, recuperaciones o bitácora. El modo integrado no autentica con localStorage/sessionStorage ni vuelve a demo si falla API. Access JWT solo en memoria conforme al contrato previo.
+
+**Motivo e impacto:** State contiene todas las cuentas con hashes/sales y es manipulable. Servidor devuelve DTO por recurso, deriva actor/rol de sesión y mantiene bootstrap seguro. Datos demo conservados; rescate de metadatos mediante importación separada, validada y auditada si se solicita. **Responsables:** backend, security y frontend; database para eventual importación.
+
+### Alcance y dependencias
+
+**Decisión:** primer hito integrado cubre fundamentos, auditoría, auth y usuarios/perfil. El plan contempla catálogos/parámetros, publicaciones, consulta PUBLICO, FTS, reportes, auditoría administrativa y archivos como hitos posteriores.
+
+**Motivo e impacto:** el plan anterior describía una primera interfaz aún inexistente. No marcar pendientes pantallas ya demostradas ni completas garantías de servidor ausentes. PDFMake/ExcelJS se conserva para servidor; jsPDF/ExcelJS describe reportes del cliente. **Responsable:** coordinación.
+
+### Precisiones a formalizar antes de código
+
+- Trasladar RN-01 a RN-04 y protección del último Admin a API/persistencia. Definir baja preservando relaciones/auditoría; eliminación local no establece automáticamente un endpoint autorizado.
+- Propuesta de sesión: cambio propio conserva la actual y revoca otras; cambio administrativo/reset revoca sesiones de la cuenta afectada, conservando la del Admin que opera sobre otra cuenta. Formalizar rotación de credenciales de la sesión conservada y probarla.
+- Mantener inactividad a los 10 minutos con tiempo de servidor y reautenticación; documentar actividad aceptada. Refresh automático no cuenta como interacción. Resolver refresh entre pestañas antes de integrar.
+- El mensaje previo de recuperación afirma envío mientras el contrato SMTP prohíbe afirmarlo en modo degradado. Al formalizar API usar el mismo texto neutral en todos los casos: “Si la dirección corresponde a una cuenta registrada y activa, recibirás las instrucciones para restablecer tu contraseña.” Sustituye el mensaje de la línea base; mantener HTTP 200 sin revelar existencia ni disponibilidad SMTP. El envío efectivo depende del transportador y su diagnóstico.
+- DTO tipados y paginación HTTP reemplazan State/Resultado como contrato de red. Mapear nombre/correo/orc_id, N:M y snapshots históricos; generar código INV concurrentemente en servidor.
+- Formalizar corpus de normalización, conteo de palabras y límites de caracteres; 300 inicial configurable. No permitir coexistencia de duplicados por simple inactivación.
+- Eventos rechazados no desaparecen al revertir negocio: diseñar persistencia del rechazo sin cambios de negocio. SMTP/almacenamiento/entrega requieren secuenciación y compensación fuera de la transacción PostgreSQL.
+
+Estas precisiones no son endpoints ni mecanismos implementados. Detalle y aceptación en `plan.md`; contratos API y pruebas de servidor pendientes.

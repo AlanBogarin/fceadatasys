@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMINISTRADOR
+  DIGITADOR
+  PUBLICO
+
+  @@map("rol_usuario")
+}
+
+enum AuditStatus {
+  EXITO
+  FALLIDO
+
+  @@map("estado_auditoria")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String    @map("nombre") @db.VarChar(160)
+  ci           String    @unique(map: "usuarios_ci_key") @db.VarChar(30)
+  email        String    @map("correo") @db.VarChar(254)
+  emailKey     String    @unique(map: "usuarios_correo_clave_key") @map("correo_clave") @db.VarChar(254)
+  username     String    @map("usuario") @db.VarChar(80)
+  usernameKey  String    @unique(map: "usuarios_usuario_clave_key") @map("usuario_clave") @db.VarChar(80)
+  role         Role      @map("rol")
+  active       Boolean   @default(true) @map("activo")
+  passwordHash String    @map("contrasena_hash") @db.Text
+  failures     Int       @default(0) @map("intentos_fallidos")
+  lockedUntil  DateTime? @map("bloqueado_hasta") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  sessions       Session[]
+  recoveryTokens RecoveryToken[]
+  auditLogs      AuditLog[]
+
+  @@index([role, active], map: "usuarios_rol_activo_idx")
+  @@map("usuarios")
+}
+
+model Session {
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @map("usuario_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("creado_en") @db.Timestamptz(3)
+  lastActivityAt DateTime       @default(now()) @map("ultima_actividad_en") @db.Timestamptz(3)
+  expiresAt      DateTime       @map("vence_en") @db.Timestamptz(3)
+  revokedAt      DateTime?      @map("revocado_en") @db.Timestamptz(3)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+
+  @@index([userId, revokedAt], map: "sesiones_usuario_revocacion_idx")
+  @@index([expiresAt], map: "sesiones_vencimiento_idx")
+  @@map("sesiones")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  sessionId  String    @map("sesion_id") @db.Uuid
+  hash       String    @unique(map: "tokens_refresh_hash_key") @db.Char(64)
+  createdAt  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+  expiresAt  DateTime  @map("vence_en") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumido_en") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revocado_en") @db.Timestamptz(3)
+  session    Session   @relation(fields: [sessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([sessionId], map: "tokens_refresh_sesion_idx")
+  @@index([expiresAt], map: "tokens_refresh_vencimiento_idx")
+  @@map("tokens_refresh")
+}
+
+model RecoveryToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("usuario_id") @db.Uuid
+  hash       String    @unique(map: "tokens_recuperacion_hash_key") @db.Char(64)
+  createdAt  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+  expiresAt  DateTime  @map("vence_en") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumido_en") @db.Timestamptz(3)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([userId], map: "tokens_recuperacion_usuario_idx")
+  @@index([expiresAt], map: "tokens_recuperacion_vencimiento_idx")
+  @@map("tokens_recuperacion")
+}
+
+model RecoveryRate {
+  key         String   @id @map("clave") @db.VarChar(128)
+  windowStart DateTime @map("inicio_ventana") @db.Timestamptz(3)
+  count       Int      @map("cantidad")
+
+  @@index([windowStart], map: "limites_recuperacion_ventana_idx")
+  @@map("limites_recuperacion")
+}
+
+model AuditLog {
+  id            String      @id @default(uuid()) @db.Uuid
+  createdAt     DateTime    @default(now()) @map("creado_en") @db.Timestamptz(3)
+  userId        String?     @map("usuario_id") @db.Uuid
+  role          Role?       @map("rol")
+  operation     String      @map("operacion") @db.VarChar(80)
+  resource      String      @map("recurso") @db.VarChar(80)
+  resourceId    String?     @map("recurso_id") @db.VarChar(128)
+  publicationId String?     @map("publicacion_id") @db.Uuid
+  ip            String      @db.VarChar(64)
+  userAgent     String      @map("user_agent") @db.VarChar(1024)
+  sessionId     String?     @map("sesion_id") @db.Uuid
+  status        AuditStatus @map("estado")
+  detail        String?     @map("detalle") @db.Text
+  before        Json?       @map("valores_anteriores") @db.JsonB
+  after         Json?       @map("valores_nuevos") @db.JsonB
+  user          User?       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  session       Session?    @relation(fields: [sessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([createdAt, id], map: "auditoria_fecha_id_idx")
+  @@index([userId, createdAt], map: "auditoria_usuario_fecha_idx")
+  @@index([operation, createdAt], map: "auditoria_operacion_fecha_idx")
+  @@index([sessionId], map: "auditoria_sesion_idx")
+  @@index([publicationId], map: "auditoria_publicacion_idx")
+  @@map("auditoria")
+}

@@ -1,0 +1,69 @@
+# Servidor FCEA Datasys
+
+Primera implementación de Fastify/TypeScript, PostgreSQL/Prisma, autenticación y usuarios/perfil. El frontend existente permanece intacto y todavía no consume estos endpoints. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
+
+## Preparación
+
+Requiere Node.js 24.11+ de la rama 24, npm y PostgreSQL 18 (entorno validado). Desde `server/`:
+
+```powershell
+npm ci
+Copy-Item .env.example .env
+npm run db:generate
+```
+
+Configurar `.env` con credenciales propias y un `JWT_SECRET` aleatorio de al menos 32 caracteres. Los valores de ejemplo no sirven como secretos. `.env`, `.env.test`, `.tmp`, node_modules y dist están ignorados; no versionar credenciales. npm conserva la política global `min-release-age=7`; no se desactiva para instalar novedades.
+
+Crear base vacía y roles separados para migración y aplicación siguiendo [docs/DATABASE.md](docs/DATABASE.md). Inyectar `DATABASE_URL` del propietario para `npm run db:migrate`, aplicar `scripts/runtime-grants.sql` y volver al rol runtime. Las variables ya inyectadas prevalecen sobre `.env`; no ejecutar API con el usuario propietario. No se inicializa ninguna base existente automáticamente.
+
+Inyectar `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_CI`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`; ejecutar `npm run db:bootstrap` con el rol runtime. Solo crea la primera cuenta en una base vacía y registra auditoría; no hay credenciales de demostración. Retirar las variables de bootstrap después.
+
+```powershell
+npm run build
+npm start
+# Durante desarrollo:
+npm run dev
+```
+
+`HOST=127.0.0.1`, `PORT=3000` de forma predeterminada. `/health` comprueba proceso, `/health/ready` conexión PostgreSQL. CORS exige orígenes exactos separados por comas. Producción requiere HTTPS en orígenes/RECOVERY_URL y cookies Secure. `SECURE_COOKIES=false` solo para desarrollo HTTP explícito. El servicio no confía en encabezados de proxy por defecto.
+
+Variables SMTP opcionales: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE`. Sin SMTP verificado, la recuperación devuelve el mismo mensaje público y no entrega correos. SMTP caído no impide otros endpoints. Reiniciar para volver a verificar el transportador; todavía no existe un mecanismo de reintento/cola durable.
+
+## Login y ciclo de sesión
+
+El backend admite login, consulta de identidad/plazos mediante `GET /api/v1/auth/session`, actividad explícita, refresh rotatorio y logout idempotente. Tres contraseñas incorrectas consecutivas bloquean la cuenta cinco minutos; la respuesta pública conserva el error genérico. Access token de quince minutos, sesión con máximo de siete días e inactividad de diez minutos. Los plazos se comprueban en PostgreSQL; consultar o refrescar no renueva actividad.
+
+La integración futura debe guardar el access token solo en memoria, enviar Bearer en operaciones protegidas y `credentials:"include"` para transportar el refresh HttpOnly. Login/refresh/logout necesitan origen permitido. El logout puede cerrar con la cookie aun con JWT expirado o sesión inactiva; credenciales que identifican sesiones distintas se rechazan. Reautenticar usa el mismo login y crea una sesión nueva. El contrato completo, incluidos errores y finalización auditada, está en [docs/API.md](docs/API.md).
+
+`client/` conserva su demostración local. Todavía requiere un adaptador HTTP para consumir este ciclo de servidor; estos endpoints no conectan automáticamente sus pantallas.
+
+## Validación
+
+```powershell
+npm run build
+npm run test:typecheck
+npm run test:unit
+npm test
+```
+
+`test:unit` ejecuta `test/unit/` sin PostgreSQL, servidor HTTP escuchando, SMTP ni lectura de `.env`/`.env.test`. Cubre reglas de usuarios, esquemas/DTO, configuración inyectada, reintentos transaccionales y seguridad/auditoría. Los casos de Problem Details y contrato de consulta de sesión usan Fastify `inject` y un stub de persistencia: son pruebas de componente en memoria, sin DB ni red; el contrato de sesión usa el verificador JWT real. Los reintentos usan errores Prisma reales y transacciones simuladas; no prueban aislamiento PostgreSQL.
+
+`test:typecheck` comprueba tipos de fuentes y tests unitarios sin emitir archivos. `test:unit:coverage` añade cobertura V8 experimental de Node 24, sin dependencias adicionales ni umbral artificial. El reporte incluye módulos importados: una cobertura baja en handlers/SMTP no implica que las unitarias validen sus flujos completos, que corresponden a integración. La matriz de regresión y límites están en [docs/TESTING.md](docs/TESTING.md).
+
+`npm test` ejecuta unitarias y luego `test:integration`. Las dos suites de integración existentes se omiten cuando no se inyecta su URL; no confundir un skip con una integración aprobada. `test:integration` permite ejecutarlas por separado y carga `.env.test` si existe. Preparar bases locales separadas, migradas y con rol runtime limitado, cuyos nombres coincidan con `fceadatasys_*test`:
+
+```powershell
+$env:USERS_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_users_test'
+$env:TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_security_test'
+npm run test:integration
+```
+
+La suite usuarios reserva las identidades `fixture.admin.a` y `fixture.admin.b` dentro de su base exclusiva, las reactiva al preparar cada ejecución y verifica que no existan otros administradores. Los fixtures se conservan junto a sus audit logs; no se borra auditoría para repetir pruebas. Usa llamadas HTTP `app.inject` contra transacciones PostgreSQL reales para verificar permisos, DTO, unicidad, RN-01, revocación, cambios concurrentes y rollback ante fallo de auditoría.
+
+Pruebas de DB/roles, migración y recuperación del esquema se describen en DATABASE.md. La base temporal del desarrollo se crea aparte bajo `.tmp/`; no es parte del despliegue ni una base institucional.
+
+## Dependencias y alcance
+
+Prisma 7.10, Fastify 5, Zod 4/type provider 6, pg/adapter-pg, Argon2id y JWT. Lockfile versionado para `npm ci`. Se fijan overrides de `deepmerge-ts=8.0.2` y `mysql2=3.24.5` por vulnerabilidades transitivas de Prisma; `nodemailer=10.0.16` es una versión corregida elegible bajo la política temporal npm. Validar generación/migración/build/pruebas al actualizar Prisma u overrides.
+
+`GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes: integración frontend, catálogos, autores/tutores, publicaciones/FTS, archivos/antimalware, parámetros, reportes, consulta/exportación de auditoría; retención de tokens/logs, backups operacionales y alertas/reintentos SMTP. Este servidor inicial no constituye el catálogo institucional completo.

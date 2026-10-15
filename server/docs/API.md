@@ -1,0 +1,123 @@
+# API inicial — autenticación, usuarios y perfil
+
+Contrato implementado en este hito. Base `/api/v1`; JSON UTF-8; UUID; fechas ISO 8601 UTC. Los cuerpos de datos y filtros definidos rechazan propiedades desconocidas. Refresh, logout y actividad admiten cuerpo ausente o `{}`, sin campos adicionales. El cliente actual sigue usando almacenamiento local: este trabajo no cambia `client/` ni conecta sus pantallas.
+
+## Identidad y transporte
+
+Roles canónicos: `ADMINISTRADOR`, `DIGITADOR`, `PUBLICO`. Actor, rol y sesión se obtienen exclusivamente del JWT validado y PostgreSQL; nunca se acepta `actorId`, hash ni bitácora del navegador.
+
+DTO User, usado por autenticación, usuarios y perfil:
+
+```json
+{"id":"d0347d10-079a-423d-a191-bf55608f1e38","name":"Persona","ci":"1234567","email":"persona@example.org","username":"persona","role":"PUBLICO","active":true,"createdAt":"2026-10-15T00:00:00.000Z"}
+```
+
+No se incluyen hashes, sal, contadores de intentos, bloqueos, tokens de recuperación ni claves normalizadas. Las respuestas llevan `Cache-Control: no-store`.
+
+El acceso usa `Authorization: Bearer <accessToken>`, con vigencia 900 segundos, algoritmo HS256 y emisor/audiencia configurados. Los claims `sub`, `sid`, `iat` y `exp` son obligatorios; usuario y sesión deben ser UUID válidos, e `iat`/`exp` deben ser números finitos, también al cerrar sesión con un JWT expirado. Esta validación de tipos no añade una política de antigüedad máxima distinta de los plazos documentados. Guardarlo solo en memoria al integrar el cliente. Cada operación protegida comprueba cuenta activa, rol actual y sesión no revocada/vencida. La sesión tiene vencimiento absoluto de siete días e inactividad de diez minutos. Consultas y refresh no reinician inactividad; el cliente comunica interacción mediante `POST /auth/activity`. No debe enviar actividad desde un temporizador sin interacción humana.
+
+El refresh aleatorio de 64 bytes se transporta exclusivamente en cookie `refresh_token`, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`, `Secure` en producción. PostgreSQL conserva solo SHA-256. Login, refresh y logout requieren `Origin` permitido o `Referer` cuyo origen sea permitido. CORS solo devuelve autorización a los orígenes configurados. Solicitudes de herramientas HTTP deben enviar el origen permitido.
+
+## Autenticación
+
+| Método/ruta | Cuerpo/autorización | Respuesta |
+| --- | --- | --- |
+| POST `/auth/login` | `{username,password}`, origen permitido | 200, token pair + User; Set-Cookie refresh |
+| POST `/auth/refresh` | Cookie refresh y origen permitido | 200, nuevo token pair + User; Set-Cookie rotada |
+| GET `/auth/session` | Bearer vigente | 200, identidad y plazos de la sesión, sin renovar actividad |
+| POST `/auth/logout` | Origen permitido; Bearer firmado o cookie refresh conocida | 204, cierre idempotente y cookie expirada |
+| POST `/auth/activity` | Bearer | 204, actualiza interacción si sesión sigue vigente |
+| POST `/auth/recover-password` | `{email}` | 200, `{message}` genérico |
+| POST `/auth/reset-password` | `{token,newPassword}` | 204, consumo único y revocación total |
+| PATCH `/me/password` | Bearer; `{currentPassword,newPassword}` | 200, nuevo token pair + User |
+| PATCH `/usuarios/:id/password` | Admin; `{newPassword}` | 204, revoca sesiones de cuenta afectada |
+
+Token pair: `{accessToken,tokenType:"Bearer",expiresIn:900,user:User}`. Refresh consume el token anterior de forma atómica. Reutilizar uno consumido/revocado revoca todas las sesiones de la cuenta y se audita; un token desconocido simplemente se rechaza. Coordinar refresh entre pestañas: dos llamadas con la misma cookie cuentan como reutilización, incluso si provienen del mismo navegador.
+
+`GET /auth/session` devuelve el rol actual de PostgreSQL y este contrato seguro:
+
+```json
+{"user":{"id":"d0347d10-079a-423d-a191-bf55608f1e38","name":"Persona","ci":"1234567","email":"persona@example.org","username":"persona","role":"PUBLICO","active":true,"createdAt":"2026-10-15T00:00:00.000Z"},"session":{"id":"e2c71b98-2253-40aa-a2f4-97b2e4f7cb91","createdAt":"2026-10-15T12:00:00.000Z","lastActivityAt":"2026-10-15T12:01:00.000Z","expiresAt":"2026-10-22T12:00:00.000Z","idleExpiresAt":"2026-10-15T12:11:00.000Z"},"serverTime":"2026-10-15T12:02:00.000Z"}
+```
+
+`idleExpiresAt` es la última actividad más diez minutos; el límite efectivo es el menor entre ese plazo y `expiresAt`. `serverTime` permite presentar los plazos sin confiar en el reloj del navegador. Consultar sesión no altera ninguno de esos plazos. Una cookie sola no autoriza esta consulta; usar refresh para obtener un nuevo access token cuando la sesión siga activa.
+
+Logout admite JWT expirado únicamente para identificar y cerrar su sesión: siguen siendo obligatorias firma, algoritmo, emisor y audiencia válidos. También puede identificarla mediante el refresh conocido, incluso si ya se consumió/revocó o venció; no lo consume como refresh ni revoca las otras sesiones por reutilización. Si ambas credenciales identifican sesiones distintas, devuelve `403 SESSION_MISMATCH` sin cerrar ninguna ni eliminar la cookie. Corregir el estado local antes de repetir.
+
+Logout sin credenciales conocidas, o repetido tras cerrar la sesión, devuelve 204 y expira la cookie tras registrar auditoría. No confirma existencia de una sesión. Repetir no modifica el instante de cierre ni duplica su finalización. Un fallo de auditoría cancela el cierre y se responde 503. Origen no permitido se rechaza antes de estas operaciones. Se puede cerrar una sesión inactiva o vencida aunque otros endpoints ya la rechacen.
+
+Al detectar inactividad o vencimiento, el servidor finaliza la sesión de manera transaccional, revoca sus refresh y registra una sola `SESION_FINALIZADA`. El instante efectivo es el menor entre vencimiento absoluto y última actividad más diez minutos; una solicitud tardía no infla su duración. El cierre es diferido hasta detectar el vencimiento en una operación, sin un proceso programado adicional. Los intentos posteriores siguen rechazándose y pueden producir eventos de rechazo.
+
+Reautenticación usa nuevamente `POST /auth/login` con usuario y contraseña; crea un ID de sesión nuevo. Refresh no recupera una sesión inactiva/vencida. Login conserva las otras sesiones que siguen activas y finaliza las de esa cuenta que ya alcanzaron su plazo de vencimiento o inactividad. El cliente debe descartar su access token al recibir 401, mostrar el formulario correspondiente y conservar las credenciales fuera de almacenamiento persistente. Ante un refresh malformado o desconocido, la API también expira su cookie.
+
+Tres contraseñas incorrectas consecutivas bloquean la cuenta cinco minutos. Usuario inexistente, contraseña errónea y bloqueo responden `401 INVALID_CREDENTIALS`, evitando informar existencia/bloqueo. Una cuenta inactiva responde `403 ACCOUNT_INACTIVE` solamente después de verificar la contraseña (RN-03). Login exitoso reinicia contador/bloqueo.
+
+Contraseñas nuevas: 8–128 caracteres, al menos una letra ASCII y un número; no se recortan. Argon2id, memoria 19 MiB (19456 KiB), costo temporal 2 y paralelismo 1; calibrar en despliegue. Cambio personal verifica contraseña actual, conserva la sesión actual, revoca las demás y rota su refresh. Cambio administrativo no permite la propia cuenta: usar cambio personal. Cambio administrativo/reset invalidan recuperaciones pendientes y sesiones de la cuenta afectada.
+
+Recuperación: token de 32 bytes en hexadecimal, SHA-256 persistido, quince minutos y un uso. Límite compartido en BD de tres solicitudes por email normalizado y por IP cada hora; el límite, cuenta inexistente/inactiva y SMTP indisponible devuelven el mismo HTTP 200 y mensaje. Mensaje exacto: “Si la dirección corresponde a una cuenta registrada y activa, recibirás las instrucciones para restablecer tu contraseña.” No confirma entrega. El token se añade como query `token` a `RECOVERY_URL`; al integrar frontend, elegir una URL que la pantalla pueda interpretar. Los tokens nunca se registran en logs.
+
+SMTP se comprueba al arrancar. Sin SMTP o ante fallo continúa la API en modo degradado. Después de confirmar la transacción, el correo se procesa en segundo plano mediante una cola en memoria de hasta 100 tareas; la respuesta HTTP no espera a SMTP. Fallo de envío invalida el token y registra el fallo en otra transacción. El cierre ordenado espera tareas pendientes; una caída del proceso puede perder envíos encolados. No existe cola durable ni atomicidad distribuida PostgreSQL/SMTP. Recuperar disponibilidad del transportador requiere reiniciar la API en este hito.
+
+## Usuarios y perfil
+
+| Método/ruta | Permiso | Cuerpo/respuesta |
+| --- | --- | --- |
+| GET `/usuarios` | Admin | 200 `{data:User[],pagination:{page,pageSize,total,totalPages}}` |
+| GET `/usuarios/:id` | Admin | 200 User o 404 |
+| POST `/usuarios` | Admin | Todos los campos editables + `password`; 201 User y Location |
+| PATCH `/usuarios/:id` | Admin | Uno o más campos editables; 200 User |
+| GET `/me` | Autenticado | 200 User de sesión |
+| PATCH `/me` | Autenticado | Uno o más de `name,email,username`; 200 User |
+
+Campos editables: `name,ci,email,username,role,active`. En alta todos son obligatorios; PATCH es parcial. Nombre 1–100 caracteres tras NFKC/trim; CI 5–12 dígitos tras NFKC/trim; email válido hasta 254 caracteres, NFKC/trim/minúsculas; username 3–40 caracteres ASCII (`A–Z a–z 0–9 . _ -`) tras NFKC/trim. Unicidad de CI y claves de email/username en PostgreSQL; no se limita la comprobación a un listado previamente descargado.
+
+Filtros GET `/usuarios`: `page` entero 1–100000 (predeterminado 1), `pageSize` entero 1–100 (predeterminado 20), `search` hasta 100 caracteres sobre nombre/email/usuario/CI, `role`, `active=true|false`. Orden estable `createdAt DESC,id ASC`. Listado vacío: `data:[]`, total y totalPages cero. Conteo y página se consultan con un mismo snapshot.
+
+RN-01: el nombre Público es de solo lectura, también si el PATCH convierte desde/hacia Público. Un administrador no puede cambiar su propio rol/estado. Los cambios se serializan y revalidan actor/sesión dentro de la transacción; debe quedar al menos un administrador activo. Cambio de rol o estado revoca sesiones y recuperaciones pendientes de la cuenta afectada.
+
+No existe DELETE de usuarios. La inactivación es `PATCH {active:false}`, conserva cuenta y auditoría. RN-02 sobre referencias bibliográficas queda pendiente de sus modelos futuros; este hito no implementa ni promete eliminación física condicionada a publicaciones.
+
+## Errores
+
+`Content-Type: application/problem+json`, formato RFC 7807 con extensiones documentadas:
+
+```json
+{"type":"about:blank","status":400,"code":"VALIDATION_ERROR","title":"Error de validación de datos","detail":"Los datos enviados no son válidos.","timestamp":"2026-10-15T00:00:00.000Z","path":"/api/v1/usuarios/:id","invalid_params":[{"name":"body.ci","reason":"La CI debe contener entre 5 y 12 dígitos."}]}
+```
+
+`path` es la plantilla de la ruta identificada por Fastify (incluye `:id`), o el pathname sin query si la ruta no existe. No incluye tokens de query. `invalid_params` siempre es un arreglo; puede estar vacío. JSON malformado, campos desconocidos y formatos inválidos son 400. Límite de cuerpo: 64 KiB (413). Rate limit global por proceso/IP: 120/minuto; recuperación tiene además límites persistidos indicados antes. Despliegues con varias instancias requieren store compartido para el límite general. `trustProxy=false`: configurar un proxy requiere revisión explícita de IP confiables.
+
+| HTTP | code | Significado |
+| --- | --- | --- |
+| 400 | VALIDATION_ERROR | Cuerpo/query/params o solicitud inválidos |
+| 400 | PUBLIC_NAME_READONLY | RN-01 |
+| 400 | SELF_PRIVILEGE_CHANGE | Cambio propio de rol/estado |
+| 400 | SELF_ADMIN_PASSWORD_CHANGE | Cambio administrativo contra sí mismo |
+| 400 | INVALID_CURRENT_PASSWORD | Contraseña personal actual incorrecta |
+| 400 | PASSWORD_UNCHANGED | La contraseña nueva coincide con la actual |
+| 400 | INVALID_RECOVERY_TOKEN | Token inválido, consumido o vencido |
+| 401 | UNAUTHENTICATED | Falta acceso válido o sesión revocada/vencida/inactiva |
+| 401 | INVALID_CREDENTIALS | Credenciales inválidas o bloqueo |
+| 403 | FORBIDDEN | Rol insuficiente |
+| 403 | ORIGIN_FORBIDDEN | Origen no permitido en operación con cookie |
+| 403 | ACCOUNT_INACTIVE | Cuenta inactiva con contraseña verificada |
+| 403 | SESSION_MISMATCH | Bearer y cookie identifican distintas sesiones al cerrar |
+| 404 | NOT_FOUND | Recurso/ruta inexistente |
+| 409 | DUPLICATE_USER | CI/email/username duplicados |
+| 409 | LAST_ADMIN_REQUIRED | Se requiere un Administrador activo |
+| 413 | VALIDATION_ERROR | Cuerpo demasiado grande |
+| 429 | RATE_LIMITED | Límite general excedido |
+| 500 | INTERNAL_ERROR | Fallo interno sin exponer detalles sensibles |
+| 503 | AUDIT_UNAVAILABLE | Auditoría falló; mutación cancelada |
+
+Rechazos se auditan separadamente para sobrevivir al rollback. Si falla esa escritura se responde 503. Éxito de mutaciones y su audit log comparten transacción. Ningún endpoint permite UPDATE/DELETE de auditoría.
+
+Operaciones de auditoría de este hito: `USER_BOOTSTRAP`, `LOGIN`, `LOGOUT`, `REFRESH`, `REFRESH_REUTILIZADO`, `ACTIVIDAD_SESION`, `SESION_FINALIZADA`, `SESION_RECHAZADA`, `RECUPERACION_SOLICITADA`, `RECUPERACION_ENVIO_FALLIDO`, `CONTRASENA_RESTABLECIDA`, `CONTRASENA_PERSONAL_MODIFICADA`, `CONTRASENA_ADMIN_MODIFICADA`, `USUARIO_CREADO`, `USUARIO_MODIFICADO`, `USUARIO_INACTIVADO`, `ROL_ASIGNADO`, `PERFIL_MODIFICADO`, `OPERACION_RECHAZADA`. `SESION_FINALIZADA` conserva motivo, instante efectivo, duración y última actividad, sin tokens. Antes/después contienen DTO seguros; no credenciales. Consultar/exportar auditoría pertenece a un hito posterior.
+
+## Salud
+
+`GET /health`: 200 `{status:"ok"}` sin acceso DB. `GET /health/ready`: 200 `{status:"ready"}` si PostgreSQL responde, 503 `{status:"unavailable"}` de otro modo. No revelan configuración/credenciales; readiness actual comprueba BD, no disponibilidad SMTP. No sustituyen monitoreo administrativo.
+
+`GET /api/v1/status`, solo ADMINISTRADOR: 200 `{status:"ready",smtp:"ready"}` si el transportador está disponible, o `{status:"degraded",smtp:"unavailable"}` en modo degradado. No revela host, credenciales ni errores SMTP. Para usar cookies desde navegador al integrar frontend, enviar `credentials:"include"` en login/refresh/logout; el access token se envía por Bearer.
+
+Catálogos, publicaciones, parámetros, reportes, consulta/exportación de auditoría y archivos no tienen rutas implementadas en este hito.
