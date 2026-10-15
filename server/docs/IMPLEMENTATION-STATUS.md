@@ -75,3 +75,31 @@ La validación actual reúne **141 pruebas aprobadas: 116 sin servicios y 25 con
 Los datos de integración pertenecen a bases locales aisladas. El cluster temporal quedó detenido y sus datos se conservaron bajo `server/.tmp/`: `pg_ctl` confirmó `server stopped` y luego `no server running`. El código de salida 1 de la consulta de estado corresponde al servidor detenido, no a un fallo del cierre.
 
 Límites: el cierre por abandono se detecta de forma diferida al volver a operar o autenticar; no existe un proceso programado que cierre sesiones sin solicitudes. El cliente deberá comunicar interacción real, coordinar refresh entre pestañas, manejar 401 y descartar access tokens locales. Continúan pendientes SMTP/despliegue institucional y los dominios bibliográficos indicados anteriormente. La ampliación de sesión no acredita esos módulos ni una integración de navegador.
+
+## Cierre del mantenimiento de usuarios
+
+La inspección de CU02 y del formulario existente confirmó el rechazo de precargas desactualizadas como comportamiento documentado. La API incorpora ETags fuertes sobre el DTO seguro y exige If-Match en `PATCH /usuarios/:id`, incluidos cambios de estado. GET detalle, POST y PATCH emiten el tag; se documentan 428 por ausencia, 400 por formato no admitido y 412 por conflicto. La comparación se hace bajo bloqueo; no se añade un contador de versión ni se cambia el esquema. CORS permite el encabezado y expone ETag/Location para una integración futura.
+
+También se normaliza la búsqueda con NFKC y se escapan metacaracteres de ILIKE para coincidir con la búsqueda literal de la interfaz. Las revocaciones de sesión/recuperación por rol/estado usan el reloj inyectado. La sesión del actor se comprueba nuevamente después de esperar el bloqueo del destino, cubriendo el cruce de inactividad durante esa espera.
+
+Crear, consultar, editar, filtrar y activar/inactivar conservan las restricciones de rol, RN-01, cuenta propia/último Admin, unicidad, historia y auditoría. Reactivar no restaura sesiones revocadas. No hay DELETE ni reglas bibliográficas ficticias; RN-02 sobre esos vínculos sigue dependiendo de sus modelos. `client/` continúa sin cambios y necesita adaptar la precarga HTTP y los errores antes de conectarse.
+
+Validación final de esta fase: build y tipos correctos, **122 pruebas sin servicios aprobadas** y **34 pruebas PostgreSQL aprobadas: 24 de seguridad y 10 de usuarios**, para **156 aprobadas** en el conjunto vigente, sin fallos ni omitidas pendientes. Las cifras históricas de las fases anteriores se conservan separadas.
+
+La primera ejecución integrada aprobó las unitarias y seguridad, pero encontró tres fixtures de recuperación con `createdAt` del reloj real y `expiresAt` del reloj de pruebas. Se alinearon ambas fechas en los tres fixtures y se repitió únicamente usuarios: nueve subcasos y su contenedor aprobados. No se modificó fuente, esquema ni constraint para resolver esas fechas, ni se afirma que el primer `npm test` completo hubiera aprobado.
+
+La revisión final confirmó `git diff --check`, esquema/dependencias/lockfile intactos y SHA-256 idéntico de los 49 archivos rastreados de `client/`. El cluster aislado quedó detenido en el mismo contexto autorizado, con los datos conservados. Las acciones de mantenimiento de usuarios y sus regresiones quedan validadas en este alcance de servidor; la adaptación del cliente y los futuros modelos bibliográficos conservan su alcance separado.
+
+## Ampliación de perfil y cambio de contraseña
+
+La inspección del perfil y sus requisitos mantuvo `GET/PATCH /me` sin If-Match: solo nombre, email y username son editables, con RN-01 para Público. CI, rol, estado y credenciales permanecen fuera de ese cuerpo. Las restricciones de unicidad y la revalidación del actor se aplican bajo transacción; la auditoría de perfil registra explícitamente el rol vigente releído bajo bloqueo.
+
+Se cerró una brecha de recuperación: cambiar el email normalizado, por perfil o administración, consume los enlaces pendientes en la misma transacción que el cambio y su auditoría. Una representación equivalente del email no los consume. La edición de perfil mantiene contraseña, sesiones y plazos. Un fallo de auditoría revierte también email y consumo; un enlace enviado previamente al correo anterior no puede restablecer después del cambio confirmado.
+
+El cambio administrativo de contraseña revalida sesión/rol después de esperar el bloqueo del destino. El cambio personal conserva el mismo ID y plazos de sesión, revoca las otras y rota el refresh. Su respuesta requiere `credentials:"include"` para aceptar la cookie desde el futuro navegador; reemplazar el access token y coordinar refresh entre pestañas. El access token anterior sigue válido mientras la sesión siga vigente, hasta el vencimiento del token. Cambio administrativo responde 204 sin cookie y conserva la sesión del actor. Ninguna ruta de contraseña exige el ETag de metadatos.
+
+Se añadieron regresiones de componente y una suite PostgreSQL específica de perfil, compartiendo explícitamente la base aislada de seguridad mediante `PROFILE_TEST_DATABASE_URL`; los fixtures usan prefijos únicos y no agregan administradores a la base exclusiva de usuarios. No se añaden dependencias, tablas ni migraciones; `client/` continúa como referencia de lectura y necesita su adaptador HTTP futuro.
+
+Validación final de esta fase: build y tipos correctos con las fuentes estables; **198 pruebas aprobadas: 150 sin servicios y 48 PostgreSQL (31 seguridad, 10 usuarios y 7 perfil)**, cero fallos y cero omitidas. La primera ejecución integrada de esta ampliación pasó sin reparaciones. Se validaron los nuevos cambios concurrentes, refresh/reset, invalidación por correo y rollback real de perfil/contraseñas, además de las regresiones de mantenimiento de usuarios. Las 156 pruebas de la fase previa conservan su registro histórico independiente.
+
+El runner coordinado terminó con `tests_exit=0`, `stop_exit=0` y salida final cero. Confirmó el cluster aislado detenido (`server stopped`, `no server running`) en el mismo contexto autorizado, con datos conservados. No quedan fallos conocidos de este alcance de perfil/contraseñas; SMTP real, despliegue institucional, integración del frontend y los dominios bibliográficos siguen fuera de esta validación.

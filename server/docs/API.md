@@ -52,7 +52,9 @@ Reautenticación usa nuevamente `POST /auth/login` con usuario y contraseña; cr
 
 Tres contraseñas incorrectas consecutivas bloquean la cuenta cinco minutos. Usuario inexistente, contraseña errónea y bloqueo responden `401 INVALID_CREDENTIALS`, evitando informar existencia/bloqueo. Una cuenta inactiva responde `403 ACCOUNT_INACTIVE` solamente después de verificar la contraseña (RN-03). Login exitoso reinicia contador/bloqueo.
 
-Contraseñas nuevas: 8–128 caracteres, al menos una letra ASCII y un número; no se recortan. Argon2id, memoria 19 MiB (19456 KiB), costo temporal 2 y paralelismo 1; calibrar en despliegue. Cambio personal verifica contraseña actual, conserva la sesión actual, revoca las demás y rota su refresh. Cambio administrativo no permite la propia cuenta: usar cambio personal. Cambio administrativo/reset invalidan recuperaciones pendientes y sesiones de la cuenta afectada.
+Contraseñas nuevas: 8–128 caracteres, al menos una letra ASCII y un número; no se recortan. Argon2id, memoria 19 MiB (19456 KiB), costo temporal 2 y paralelismo 1; calibrar en despliegue. Cambio personal verifica contraseña actual, conserva el mismo ID y plazos de la sesión actual, revoca las demás y rota su refresh, invalidando los refresh anteriores. Responde 200 con un nuevo access token y Set-Cookie: el adaptador debe sustituir su token en memoria y usar `credentials:"include"` también en `PATCH /me/password`. Serializar este cambio y los refresh entre pestañas; reutilizar un refresh anterior activa la protección de reutilización. El access token anterior de la sesión conservada sigue válido hasta expirar, sujeto a las comprobaciones centrales de sesión; no existe una versión independiente por access token.
+
+Cambio administrativo no permite la propia cuenta: usar cambio personal. Revalida sesión/rol del administrador después de bloquear el destino, responde 204 sin Set-Cookie y conserva la sesión del actor. Cambio administrativo/reset invalidan recuperaciones pendientes y sesiones de la cuenta afectada. Las rutas de contraseña no exigen If-Match: los ETags de usuarios representan metadatos seguros, no credenciales. Ningún cambio de contraseña renueva el plazo de inactividad por sí mismo.
 
 Recuperación: token de 32 bytes en hexadecimal, SHA-256 persistido, quince minutos y un uso. Límite compartido en BD de tres solicitudes por email normalizado y por IP cada hora; el límite, cuenta inexistente/inactiva y SMTP indisponible devuelven el mismo HTTP 200 y mensaje. Mensaje exacto: “Si la dirección corresponde a una cuenta registrada y activa, recibirás las instrucciones para restablecer tu contraseña.” No confirma entrega. El token se añade como query `token` a `RECOVERY_URL`; al integrar frontend, elegir una URL que la pantalla pueda interpretar. Los tokens nunca se registran en logs.
 
@@ -63,19 +65,40 @@ SMTP se comprueba al arrancar. Sin SMTP o ante fallo continúa la API en modo de
 | Método/ruta | Permiso | Cuerpo/respuesta |
 | --- | --- | --- |
 | GET `/usuarios` | Admin | 200 `{data:User[],pagination:{page,pageSize,total,totalPages}}` |
-| GET `/usuarios/:id` | Admin | 200 User o 404 |
-| POST `/usuarios` | Admin | Todos los campos editables + `password`; 201 User y Location |
-| PATCH `/usuarios/:id` | Admin | Uno o más campos editables; 200 User |
+| GET `/usuarios/:id` | Admin | 200 User y ETag fuerte, o 404 |
+| POST `/usuarios` | Admin | Todos los campos editables + `password`; 201 User, Location y ETag |
+| PATCH `/usuarios/:id` | Admin | Uno o más campos editables e If-Match obligatorio; 200 User y ETag actual |
 | GET `/me` | Autenticado | 200 User de sesión |
 | PATCH `/me` | Autenticado | Uno o más de `name,email,username`; 200 User |
 
 Campos editables: `name,ci,email,username,role,active`. En alta todos son obligatorios; PATCH es parcial. Nombre 1–100 caracteres tras NFKC/trim; CI 5–12 dígitos tras NFKC/trim; email válido hasta 254 caracteres, NFKC/trim/minúsculas; username 3–40 caracteres ASCII (`A–Z a–z 0–9 . _ -`) tras NFKC/trim. Unicidad de CI y claves de email/username en PostgreSQL; no se limita la comprobación a un listado previamente descargado.
 
-Filtros GET `/usuarios`: `page` entero 1–100000 (predeterminado 1), `pageSize` entero 1–100 (predeterminado 20), `search` hasta 100 caracteres sobre nombre/email/usuario/CI, `role`, `active=true|false`. Orden estable `createdAt DESC,id ASC`. Listado vacío: `data:[]`, total y totalPages cero. Conteo y página se consultan con un mismo snapshot.
+Filtros GET `/usuarios`: `page` entero 1–100000 (predeterminado 1), `pageSize` entero 1–100 (predeterminado 20), `search` hasta 100 caracteres después de NFKC/trim sobre nombre/email/usuario/CI, `role`, `active=true|false`. La búsqueda ignora mayúsculas/minúsculas y compara subcadenas literales: `%`, `_` y `\` no son comodines. No elimina acentos. Los filtros se combinan con AND; los cuatro campos buscados se combinan con OR. Orden estable `createdAt DESC,id ASC`. Listado vacío: `data:[]`, total y totalPages cero. Una página fuera de rango devuelve `data:[]` conservando el total real. Conteo y página se consultan con un mismo snapshot.
 
-RN-01: el nombre Público es de solo lectura, también si el PATCH convierte desde/hacia Público. Un administrador no puede cambiar su propio rol/estado. Los cambios se serializan y revalidan actor/sesión dentro de la transacción; debe quedar al menos un administrador activo. Cambio de rol o estado revoca sesiones y recuperaciones pendientes de la cuenta afectada.
+CU02 exige revalidar la precarga antes de guardar. Para editar o activar/inactivar, el futuro adaptador debe consultar `GET /usuarios/:id`, conservar el encabezado `ETag` y enviarlo como `If-Match` en PATCH, también cuando solo cambia `active`:
+
+```http
+PATCH /api/v1/usuarios/d0347d10-079a-423d-a191-bf55608f1e38
+Authorization: Bearer <accessToken>
+If-Match: "sha256-<64 caracteres hexadecimales minúsculos emitidos por la API>"
+Content-Type: application/json
+
+{"active":false}
+```
+
+El ETag fuerte tiene formato exacto `"sha256-<digest>"`, donde digest es SHA-256 del JSON del DTO seguro. Tratarlo como valor opaco y devolverlo literalmente, incluidas las comillas; no calcularlo desde un objeto del navegador. Solo se admite un tag fuerte: sin comodín, lista ni prefijo `W/`. Ausente: `428 PRECONDITION_REQUIRED`; formato inválido: `400 VALIDATION_ERROR`; tag válido que ya no coincide: `412 USER_VERSION_CONFLICT`. Ante 412, conservar el formulario, informar el conflicto y volver a consultar/reabrir; no sobrescribir ni reintentar automáticamente con la nueva versión.
+
+La comparación ocurre después de bloquear y releer el destino y revalidar al actor. Dos PATCH que parten de la misma representación y cambian sus metadatos no pueden sobrescribirse silenciosamente: el segundo recibe 412. La versión representa contenido, no un contador; el mismo DTO produce el mismo tag. Cambios internos de login, contadores o contraseña no generan falsos conflictos. Este contrato corresponde a `PATCH /usuarios/:id`; las rutas de perfil/contraseña mantienen sus contratos existentes. CORS permite `If-Match` y expone `ETag`/`Location` a los orígenes autorizados.
+
+RN-01: el nombre Público es de solo lectura, también si el PATCH convierte desde/hacia Público. Un administrador no puede cambiar su propio rol/estado. Los cambios se serializan y revalidan actor/sesión después de esperar el bloqueo del destino; debe quedar al menos un administrador activo. Cambio de rol o estado revoca sesiones y recuperaciones pendientes de la cuenta afectada usando el mismo reloj del servidor. Reactivar conserva identidad e historia y permite un login nuevo con la contraseña vigente; no revive JWT ni sesiones revocados. Alta, modificación, inactivación/reactivación y asignación de rol se auditan transaccionalmente sin credenciales.
+
+Perfil usa exclusivamente la identidad autenticada: `GET /me` no acepta otro usuario y `PATCH /me` solo permite `name,email,username`. CI, rol, estado, fechas y credenciales son de solo lectura. El cuerpo debe incluir al menos un campo; propiedades desconocidas producen 400 y duplicados normalizados producen 409, también ante peticiones concurrentes. Nombre Público mantiene RN-01. La sesión y el rol se releen bajo bloqueo antes de modificar y `PERFIL_MODIFICADO` conserva el rol revalidado. Este contrato no exige If-Match en `/me`; la serialización evita mutaciones simultáneas sin aislamiento, pero no añade rechazo de precarga a formularios personales. Un cambio de perfil sí modifica el ETag de metadatos obtenido previamente por un administrador.
+
+Cambiar el correo efectivo normalizado, mediante perfil o edición administrativa, consume las recuperaciones pendientes en la misma transacción que los datos y su auditoría. Cambios equivalentes de mayúsculas/Unicode/espacios no invalidan enlaces innecesariamente. La edición de correo o username conserva contraseña, sesiones y plazos; no requiere contraseña actual ni verifica entrega al correo nuevo. Un mensaje ya encolado al correo anterior puede llegar, pero su enlace consumido no permite restablecer la contraseña. Si falla la auditoría, también se revierten el correo y el consumo de recuperaciones.
 
 No existe DELETE de usuarios. La inactivación es `PATCH {active:false}`, conserva cuenta y auditoría. RN-02 sobre referencias bibliográficas queda pendiente de sus modelos futuros; este hito no implementa ni promete eliminación física condicionada a publicaciones.
+
+El cierre previo de mantenimiento de usuarios conserva su evidencia histórica de 156 aprobadas. La ampliación de perfil/contraseñas fue validada con build/tipos correctos y **198 pruebas aprobadas: 150 sin servicios y 48 PostgreSQL (31 seguridad, 10 usuarios y 7 perfil)**, cero fallos y cero omitidas. Evidencia y límites de cada fase en [TESTING.md](TESTING.md).
 
 ## Errores
 
@@ -105,7 +128,9 @@ No existe DELETE de usuarios. La inactivación es `PATCH {active:false}`, conser
 | 404 | NOT_FOUND | Recurso/ruta inexistente |
 | 409 | DUPLICATE_USER | CI/email/username duplicados |
 | 409 | LAST_ADMIN_REQUIRED | Se requiere un Administrador activo |
+| 412 | USER_VERSION_CONFLICT | El usuario cambió desde la precarga identificada por If-Match |
 | 413 | VALIDATION_ERROR | Cuerpo demasiado grande |
+| 428 | PRECONDITION_REQUIRED | Falta If-Match al editar/activar/inactivar un usuario |
 | 429 | RATE_LIMITED | Límite general excedido |
 | 500 | INTERNAL_ERROR | Fallo interno sin exponer detalles sensibles |
 | 503 | AUDIT_UNAVAILABLE | Auditoría falló; mutación cancelada |
@@ -118,6 +143,6 @@ Operaciones de auditoría de este hito: `USER_BOOTSTRAP`, `LOGIN`, `LOGOUT`, `RE
 
 `GET /health`: 200 `{status:"ok"}` sin acceso DB. `GET /health/ready`: 200 `{status:"ready"}` si PostgreSQL responde, 503 `{status:"unavailable"}` de otro modo. No revelan configuración/credenciales; readiness actual comprueba BD, no disponibilidad SMTP. No sustituyen monitoreo administrativo.
 
-`GET /api/v1/status`, solo ADMINISTRADOR: 200 `{status:"ready",smtp:"ready"}` si el transportador está disponible, o `{status:"degraded",smtp:"unavailable"}` en modo degradado. No revela host, credenciales ni errores SMTP. Para usar cookies desde navegador al integrar frontend, enviar `credentials:"include"` en login/refresh/logout; el access token se envía por Bearer.
+`GET /api/v1/status`, solo ADMINISTRADOR: 200 `{status:"ready",smtp:"ready"}` si el transportador está disponible, o `{status:"degraded",smtp:"unavailable"}` en modo degradado. No revela host, credenciales ni errores SMTP. Para usar cookies desde navegador al integrar frontend, enviar `credentials:"include"` en login/refresh/logout y cambio personal de contraseña; el access token se envía por Bearer.
 
 Catálogos, publicaciones, parámetros, reportes, consulta/exportación de auditoría y archivos no tienen rutas implementadas en este hito.

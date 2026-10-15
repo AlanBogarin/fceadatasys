@@ -10,7 +10,7 @@ export class AppError extends Error {
 }
 export { AppError as ProblemError };
 
-const titles: Record<number, string> = { 400: 'Error de validación de datos', 401: 'Autenticación requerida', 403: 'Operación no permitida', 404: 'Recurso no encontrado', 409: 'Conflicto de datos', 423: 'Cuenta bloqueada', 429: 'Demasiadas solicitudes', 500: 'Error interno del servidor', 503: 'Servicio no disponible' };
+const titles: Record<number, string> = { 400: 'Error de validación de datos', 401: 'Autenticación requerida', 403: 'Operación no permitida', 404: 'Recurso no encontrado', 409: 'Conflicto de datos', 412: 'La cuenta fue modificada', 423: 'Cuenta bloqueada', 428: 'Precondición requerida', 429: 'Demasiadas solicitudes', 500: 'Error interno del servidor', 503: 'Servicio no disponible' };
 
 export function installErrorHandler(app: FastifyInstance, prisma: PrismaClient) {
   app.setNotFoundHandler(async request => { throw new AppError(404, 'NOT_FOUND', 'El recurso solicitado no existe.'); });

@@ -37,6 +37,20 @@ La integración futura debe guardar el access token solo en memoria, enviar Bear
 
 `client/` conserva su demostración local. Todavía requiere un adaptador HTTP para consumir este ciclo de servidor; estos endpoints no conectan automáticamente sus pantallas.
 
+## Mantenimiento de usuarios
+
+ADMINISTRADOR puede crear, consultar, buscar/filtrar, editar y activar/inactivar usuarios. El listado es paginado y combina texto, rol y estado. El texto se normaliza NFKC y busca subcadenas literales; no interpreta `%`, `_` o `\` como patrones. La inactivación conserva datos e invalida sesiones; reactivar permite un login nuevo y conserva la historia.
+
+Antes de editar o alternar estado, consultar `GET /api/v1/usuarios/:id` y conservar su encabezado `ETag`. `PATCH /api/v1/usuarios/:id` exige ese tag fuerte en `If-Match`: sin precarga responde 428, con formato inválido 400 y con datos cambiados desde la consulta 412. No repetir una modificación conflictiva sin revisión. La API expone ETag/Location mediante CORS para el adaptador futuro. El DTO no añade campos de versión ni credenciales; los cambios internos de autenticación no alteran el tag de metadatos. Detalles en [docs/API.md](docs/API.md).
+
+Nombre Público de solo lectura, protección de cuenta propia/último Admin, unicidad y cambios con auditoría se verifican en servidor. No existe DELETE de usuarios; las reglas sobre futuras referencias bibliográficas se incorporarán con esos modelos.
+
+## Perfil y contraseña
+
+Cada rol consulta su identidad mediante `GET /api/v1/me` y modifica únicamente nombre, correo y username con PATCH, sin If-Match. CI, rol, estado y credenciales no se aceptan en ese cuerpo; el nombre Público conserva su restricción. Un cambio efectivo de correo consume los enlaces de recuperación pendientes en la misma transacción, tanto desde perfil como desde administración. Correo equivalente normalizado no los consume. Editar perfil mantiene contraseña, sesiones y plazos; la auditoría usa el rol revalidado.
+
+`PATCH /api/v1/me/password` verifica la contraseña actual y devuelve un token nuevo y una cookie refresh rotada. Usar Bearer y `credentials:"include"`, reemplazar el access token en memoria y coordinar esta operación con refresh entre pestañas. Conserva el mismo ID/plazos de sesión, revoca otras sesiones y los refresh anteriores; el access token anterior sigue válido mientras la sesión siga vigente, hasta el vencimiento del token. `PATCH /api/v1/usuarios/:id/password` exige Admin, rechaza la propia cuenta, revoca las sesiones del destino y responde 204 sin cookie; conserva la sesión del actor. Estas rutas no usan If-Match. Detalles y errores en [docs/API.md](docs/API.md).
+
 ## Validación
 
 ```powershell
@@ -50,15 +64,22 @@ npm test
 
 `test:typecheck` comprueba tipos de fuentes y tests unitarios sin emitir archivos. `test:unit:coverage` añade cobertura V8 experimental de Node 24, sin dependencias adicionales ni umbral artificial. El reporte incluye módulos importados: una cobertura baja en handlers/SMTP no implica que las unitarias validen sus flujos completos, que corresponden a integración. La matriz de regresión y límites están en [docs/TESTING.md](docs/TESTING.md).
 
-`npm test` ejecuta unitarias y luego `test:integration`. Las dos suites de integración existentes se omiten cuando no se inyecta su URL; no confundir un skip con una integración aprobada. `test:integration` permite ejecutarlas por separado y carga `.env.test` si existe. Preparar bases locales separadas, migradas y con rol runtime limitado, cuyos nombres coincidan con `fceadatasys_*test`:
+`npm test` ejecuta unitarias y luego `test:integration`. Las tres suites de integración se omiten cuando no se inyecta su URL; no confundir un skip con una integración aprobada. `test:integration` permite ejecutarlas sin repetir unitarias y carga `.env.test` si existe. Preparar bases locales separadas, migradas y con rol runtime limitado, cuyos nombres coincidan con `fceadatasys_*test`:
 
 ```powershell
 $env:USERS_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_users_test'
 $env:TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_security_test'
+$env:PROFILE_TEST_DATABASE_URL=$env:TEST_DATABASE_URL
 npm run test:integration
 ```
 
 La suite usuarios reserva las identidades `fixture.admin.a` y `fixture.admin.b` dentro de su base exclusiva, las reactiva al preparar cada ejecución y verifica que no existan otros administradores. Los fixtures se conservan junto a sus audit logs; no se borra auditoría para repetir pruebas. Usa llamadas HTTP `app.inject` contra transacciones PostgreSQL reales para verificar permisos, DTO, unicidad, RN-01, revocación, cambios concurrentes y rollback ante fallo de auditoría.
+
+Perfil comparte explícitamente la base de seguridad mediante `PROFILE_TEST_DATABASE_URL`, con prefijos únicos `profile.<id>`. No necesita una tercera base ni debe apuntar a la base exclusiva de usuarios. Su suite comprueba edición por rol, unicidad concurrente, preservación de sesión, invalidación de recuperación y rollback real; seguridad cubre los cambios personal/administrativo de contraseña y sus carreras.
+
+Validación final de perfil/contraseñas: build/tipos correctos y **198 pruebas aprobadas: 150 sin servicios y 48 PostgreSQL (31 seguridad, 10 usuarios y 7 perfil)**, cero fallos y cero omitidas. La primera ejecución integrada de esta fase pasó sin reparaciones; el cluster aislado quedó detenido, con datos conservados.
+
+El cierre anterior de usuarios conserva su evidencia histórica de 156 aprobadas: allí se corrigieron fechas de tres fixtures y se repitió solo usuarios, sin afirmar que el primer `npm test` completo hubiera aprobado. Los 49 archivos rastreados de `client/` conservaron su SHA-256 en aquella revisión. Evidencia y límites por fase en [docs/TESTING.md](docs/TESTING.md).
 
 Pruebas de DB/roles, migración y recuperación del esquema se describen en DATABASE.md. La base temporal del desarrollo se crea aparte bajo `.tmp/`; no es parte del despliegue ni una base institucional.
 

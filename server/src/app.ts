@@ -14,7 +14,7 @@ export async function createApp(config: AppConfig, prisma: PrismaClient, options
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   installErrorHandler(app, prisma);
-  await app.register(cors, { origin: (origin, callback) => callback(null, !origin || config.allowedOrigins.includes(origin)), credentials: true, methods: ['GET', 'POST', 'PATCH', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] });
+  await app.register(cors, { origin: (origin, callback) => callback(null, !origin || config.allowedOrigins.includes(origin)), credentials: true, methods: ['GET', 'POST', 'PATCH', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'If-Match'], exposedHeaders: ['ETag', 'Location'] });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute', errorResponseBuilder: () => new AppError(429, 'RATE_LIMITED', 'Se excedió el límite de solicitudes.') });
   app.get('/health', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {

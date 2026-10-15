@@ -84,3 +84,38 @@ La revisión final también debe ejecutar regresiones de usuarios/recuperación 
 La fase suma **141 aprobadas: 116 sin servicios y 25 con PostgreSQL real**, junto a build y comprobación de tipos correctos. El intento inicial bajo sandbox devolvió `EACCES` al conectar; se repitió mediante ejecución autorizada y las suites pasaron. Se distingue esa restricción del entorno de un fallo funcional o un rechazo automático. Los resultados anteriores se conservan como evidencia histórica independiente.
 
 El cluster temporal quedó detenido, confirmado mediante `pg_ctl` (`server stopped` y `no server running`); el código 1 de la consulta de estado es el resultado esperado al estar detenido. Se conservaron sus datos bajo `server/.tmp/`. SMTP real, despliegue institucional e integración de navegador siguen fuera de esta evidencia.
+
+## Ampliación del mantenimiento de usuarios
+
+Esta fase conserva la evidencia anterior de autenticación y amplía la protección de precarga de CU02 mediante ETag/If-Match, los filtros literales NFKC y la gestión de estados. `test/unit/users.test.ts` comprueba versiones de metadatos independientes de secretos/contadores, formato obligatorio, CORS para If-Match y ETag y un reloj que cruza el límite de sesión mientras espera el bloqueo del destino. Los componentes HTTP usan Fastify/JWT reales y persistencia sustituida; no acreditan PostgreSQL.
+
+`users.integration.test.ts` conserva su recorrido original y añade subcasos de permisos por rol y endpoint, validación/404, filtros combinados y paginación/vacíos, coincidencias literales de `%`/`_`/`\`, edición permitida/RN-01, precarga stale y dos PATCH concurrentes, unicidad concurrente por cada clave, reactivación/roles y rollback de auditoría para editar/inactivar/activar/asignar rol. Solo prepara los dos administradores reservados; las otras cuentas no se promueven a Admin y los listados/conteos de fixtures usan un prefijo único por ejecución para permitir repetir sin borrar auditoría.
+
+Resultados finales de esta fase:
+
+- Build y comprobación de tipos correctos; no hubo cambios posteriores en las fuentes que requirieran repetirlos.
+- **122 pruebas sin servicios aprobadas**, cero fallos y cero omitidas.
+- **24 pruebas PostgreSQL de seguridad aprobadas** —23 subcasos y su contenedor— en la primera ejecución integrada.
+- La primera ejecución de usuarios encontró tres fixtures de recuperación con fechas incompatibles: `expiresAt` usaba el reloj inyectado y `createdAt` el reloj real de PostgreSQL. Se fijó `createdAt: clock` en esos tres fixtures, conservando fuentes, esquema y constraints.
+- Se repitió **solo la integración de usuarios** después de esa corrección: **10 aprobadas —nueve subcasos y su contenedor—, cero fallos y cero omitidas**. Reactivación, roles y rollback de edición/inactivación/activación/asignación de rol quedaron comprobados en PostgreSQL real.
+
+El conjunto vigente suma **156 aprobadas: 122 sin servicios y 34 PostgreSQL (24 seguridad + 10 usuarios)**. Esto combina las ejecuciones indicadas; no significa que el primer `npm test` completo hubiera aprobado. La revisión final confirmó `git diff --check` y SHA-256 idéntico de los 49 archivos rastreados de `client/`; esquema, dependencias y lockfile conservan su contenido. El runner confirmó el cluster aislado detenido en el mismo contexto autorizado, con datos de pruebas conservados.
+
+## Ampliación de perfil y cambio de contraseña
+
+La fase siguiente conserva el registro de 156 pruebas anterior. Añade componentes HTTP de perfil con Fastify/JWT reales y persistencia sustituida: los tres roles, campos prohibidos, normalización, identidad propia, rol revalidado para auditoría, actor vencido/inactivo/revocado después del bloqueo y conservación de sesiones. Estos casos no requieren PostgreSQL ni prueban rollback real.
+
+`test/profile.integration.test.ts` usa `PROFILE_TEST_DATABASE_URL`, que debe apuntar explícitamente a la misma base local aislada de seguridad (`TEST_DATABASE_URL`), nunca a `fceadatasys_users_test`. Sus fixtures `profile.<id>` no interfieren con los administradores reservados de usuarios; conserva cuentas y auditoría, sin requerir una tercera base. Comprueba GET/PATCH por rol, campos de solo lectura/RN-01, unicidad normalizada concurrente, conservación de contraseña/sesiones/plazos, consumo de recuperaciones al cambiar correo, rechazo del enlace antiguo y rollback de perfil/correo/recuperación si falla su auditoría. Una edición personal también vuelve desactualizado el ETag administrativo anterior.
+
+La suite PostgreSQL de seguridad amplía cambio personal/administrativo: contraseña actual y nueva, payload estricto, permisos, rotación de refresh, preservación de la sesión actual y revocación de otras, reutilización estricta, recuperaciones pendientes, cambios concurrentes y rollback. Incluye revalidación del administrador después de bloquear el destino, con reloj que cruza el límite mientras espera. El cambio personal conserva el access token anterior de la misma sesión hasta su vencimiento; las pruebas no prometen una versión de access token inexistente.
+
+El script `test:integration` incluye seguridad, usuarios y perfil. Sin las tres URLs, las suites correspondientes se omiten; ejecutar con URLs ausentes comprueba carga/sintaxis, no persistencia. Antes de habilitar PostgreSQL, los tres archivos de integración cargaron correctamente con sus URLs ausentes: tres suites omitidas, sin presentarlas como integración aprobada.
+
+Resultados finales de esta ampliación:
+
+- `npm run build`: generación Prisma 7.10.0 y compilación correctas con las fuentes estables.
+- `npm run test:typecheck`: correcto con los fixtures finales.
+- `npm test`, en la primera ejecución integrada de esta fase, sin reparaciones: **150 pruebas sin servicios aprobadas y 48 PostgreSQL aprobadas**, cero fallos y cero omitidas.
+- Las 48 pruebas PostgreSQL se reparten en **31 de seguridad (30 subcasos y su contenedor), 10 de usuarios y 7 de perfil (seis subcasos y su contenedor)**. Se comprobaron concurrencia, refresh/reset, rollback de contraseña/perfil/cambio de correo y las regresiones anteriores de usuarios.
+
+La fase reúne **198 pruebas aprobadas**. El runner coordinado confirmó `tests_exit=0`, `stop_exit=0` y salida final cero; PostgreSQL quedó detenido en el mismo contexto autorizado (`server stopped`, `no server running`), con los datos aislados conservados bajo `server/.tmp/`. Estos resultados añaden evidencia a la fase anterior de 156, sin sustituir su historial de corrección de fixtures. SMTP real e integración del navegador continúan fuera de esta evidencia.

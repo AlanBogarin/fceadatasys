@@ -45,6 +45,8 @@ test('Seguridad HTTP con PostgreSQL real', { skip: !process.env.TEST_DATABASE_UR
   const refreshCookie = (response: { headers: Record<string, unknown> }) => String(response.headers['set-cookie']).split(';')[0]!;
   const refresh = (cookie: string) => app.inject({ method: 'POST', url: '/api/v1/auth/refresh', remoteAddress: '198.19.0.1', headers: { origin, cookie } });
   const me = (accessToken: string) => app.inject({ method: 'GET', url: '/api/v1/me', remoteAddress: '198.19.0.2', headers: bearer(accessToken) });
+  const changeOwn = (accessToken: string, currentPassword: string, newPassword: string) => app.inject({ method: 'PATCH', url: '/api/v1/me/password', remoteAddress: '198.19.0.3', headers: bearer(accessToken), payload: { currentPassword, newPassword } });
+  const changeManaged = (accessToken: string, userId: string, newPassword: string) => app.inject({ method: 'PATCH', url: `/api/v1/usuarios/${userId}/password`, remoteAddress: '198.19.0.4', headers: bearer(accessToken), payload: { newPassword } });
   const advance = (milliseconds: number) => { clock = new Date(clock.getTime() + milliseconds); };
   const recovery = (email: string, ip: string) => app.inject({ method: 'POST', url: '/api/v1/auth/recover-password', remoteAddress: ip, payload: { email } });
   try {
@@ -111,7 +113,17 @@ test('Seguridad HTTP con PostgreSQL real', { skip: !process.env.TEST_DATABASE_UR
       assert.equal((await me(expiredAccess)).statusCode, 401);
       const roleDenied = await app.inject({ method: 'GET', url: '/api/v1/usuarios', headers: bearer(body.accessToken) });
       assert.equal(roleDenied.statusCode, 403);
-      await prisma.user.update({ where: { id: user.id }, data: { active: false } });
+      const admin = await account('ADMINISTRADOR');
+      const adminLogin = await login(admin.username);
+      const adminHeaders = bearer(adminLogin.json().accessToken);
+      const detail = await app.inject({ url: `/api/v1/usuarios/${user.id}`, headers: adminHeaders });
+      assert.equal(detail.statusCode, 200, detail.body);
+      const etag = detail.headers.etag;
+      assert.equal(typeof etag, 'string', 'el detalle debe emitir un ETag para editar/inactivar');
+      assert.ok(!String(etag).startsWith('W/'), 'la precondición requiere un ETag fuerte');
+      const inactivated = await app.inject({ method: 'PATCH', url: `/api/v1/usuarios/${user.id}`,
+        headers: { ...adminHeaders, 'if-match': String(etag) }, payload: { active: false } });
+      assert.equal(inactivated.statusCode, 200, inactivated.body);
       assert.equal((await me(body.accessToken)).statusCode, 401);
     });
 
@@ -403,6 +415,149 @@ test('Seguridad HTTP con PostgreSQL real', { skip: !process.env.TEST_DATABASE_UR
       assert.equal((await me(adminLogin.json().accessToken)).statusCode, 200);
       assert.equal((await me(changed.json().accessToken)).statusCode, 401);
       assert.equal((await login(user.username, 'Otra2026!')).statusCode, 200);
+    });
+
+    await t.test('contraseña personal por cada rol conserva plazos/sid, invalida recuperaciones y desbloquea credencial', async () => {
+      for (const role of ['ADMINISTRADOR', 'DIGITADOR', 'PUBLICO'] as const) {
+        const user = await account(role);
+        const current = await login(user.username);
+        const other = await login(user.username);
+        const sid = app.jwt.decode<{ sid: string }>(current.json().accessToken).sid;
+        const sessionBefore = await prisma.session.findUniqueOrThrow({ where: { id: sid } });
+        await prisma.user.update({ where: { id: user.id }, data: { failures: 3, lockedUntil: new Date(clock.getTime() + 300000) } });
+        const recovery = await prisma.recoveryToken.create({ data: { userId: user.id, hash: tokenHash(randomToken(32)), createdAt: clock, expiresAt: new Date(clock.getTime() + 900000) } });
+        const response = await changeOwn(current.json().accessToken, password, 'NuevaPersonal2026!');
+        assert.equal(response.statusCode, 200, response.body);
+        assert.equal(app.jwt.decode<{ sid: string }>(response.json().accessToken).sid, sid);
+        assert.deepEqual(await prisma.session.findUniqueOrThrow({ where: { id: sid } }), sessionBefore);
+        assert.equal((await me(current.json().accessToken)).statusCode, 200, 'JWT anterior de la sesión conservada sigue autorizado');
+        assert.equal((await me(other.json().accessToken)).statusCode, 401);
+        assert.equal(await prisma.session.count({ where: { userId: user.id, revokedAt: null } }), 1);
+        assert.equal(await prisma.refreshToken.count({ where: { sessionId: sid, revokedAt: null } }), 1);
+        assert.ok((await prisma.refreshToken.findUniqueOrThrow({ where: { hash: tokenHash(refreshCookie(current).split('=')[1]!) } })).revokedAt);
+        assert.ok((await prisma.recoveryToken.findUniqueOrThrow({ where: { id: recovery.id } })).consumedAt);
+        const saved = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+        assert.equal(saved.failures, 0);
+        assert.equal(saved.lockedUntil, null);
+        assert.equal(saved.role, role);
+        assert.equal(saved.active, true);
+        assert.equal(await verifyPassword(saved.passwordHash, 'NuevaPersonal2026!'), true);
+        assert.equal(await verifyPassword(saved.passwordHash, password), false);
+      }
+    });
+
+    await t.test('dos cambios personales simultáneos con contraseña actual vieja no pueden sobrescribirse', async () => {
+      const user = await account();
+      const current = await login(user.username);
+      const next = ['Primera2026!', 'Segunda2026!'];
+      const responses = await Promise.all(next.map(secret => changeOwn(current.json().accessToken, password, secret)));
+      assert.deepEqual(responses.map(response => response.statusCode).sort(), [200, 400]);
+      const winner = responses.findIndex(response => response.statusCode === 200);
+      assert.equal(responses[1 - winner]!.json().code, 'INVALID_CURRENT_PASSWORD');
+      assert.equal(responses[1 - winner]!.headers['set-cookie'], undefined);
+      const saved = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+      assert.equal(await verifyPassword(saved.passwordHash, next[winner]!), true);
+      assert.equal(await verifyPassword(saved.passwordHash, next[1 - winner]!), false);
+      assert.equal((await me(current.json().accessToken)).statusCode, 200);
+      assert.equal(await prisma.auditLog.count({ where: { userId: user.id, operation: 'CONTRASENA_PERSONAL_MODIFICADA' } }), 1);
+    });
+
+    await t.test('dos sesiones que cambian contraseña simultáneamente dejan vigente solo la ganadora', async () => {
+      const user = await account();
+      const first = await login(user.username);
+      const second = await login(user.username);
+      const responses = await Promise.all([changeOwn(first.json().accessToken, password, 'Primera2026!'), changeOwn(second.json().accessToken, password, 'Segunda2026!')]);
+      assert.deepEqual(responses.map(response => response.statusCode).sort(), [200, 401]);
+      const winner = responses.find(response => response.statusCode === 200)!;
+      assert.equal((await me(winner.json().accessToken)).statusCode, 200);
+      assert.equal(await prisma.session.count({ where: { userId: user.id, revokedAt: null } }), 1);
+      assert.equal(responses.find(response => response.statusCode === 401)!.headers['set-cookie'], undefined);
+    });
+
+    await t.test('cambio personal frente a refresh conserva rotación estricta y detecta la credencial histórica', async () => {
+      const user = await account();
+      const current = await login(user.username);
+      const [changed, refreshed] = await Promise.all([changeOwn(current.json().accessToken, password, 'NuevaConcurrente2026!'), refresh(refreshCookie(current))]);
+      assert.equal(changed.statusCode, 200, changed.body);
+      assert.ok([200, 401].includes(refreshed.statusCode), refreshed.body);
+      const historicalCookie = refreshed.statusCode === 200 ? refreshCookie(refreshed) : refreshCookie(current);
+      if (refreshed.statusCode === 200) assert.equal((await me(changed.json().accessToken)).statusCode, 200);
+      assert.equal((await refresh(historicalCookie)).statusCode, 401, 'refresh invalidado por el cambio se considera reutilización');
+      assert.equal(await prisma.session.count({ where: { userId: user.id, revokedAt: null } }), 0);
+      assert.equal((await me(changed.json().accessToken)).statusCode, 401);
+      assert.equal(await verifyPassword((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).passwordHash, 'NuevaConcurrente2026!'), true);
+      assert.ok(await prisma.auditLog.count({ where: { userId: user.id, operation: 'REFRESH_REUTILIZADO' } }) >= 1);
+    });
+
+    await t.test('cambio personal frente a reset serializa credenciales sin revivir token ni sesión perdedora', async () => {
+      const user = await account();
+      const current = await login(user.username);
+      const raw = randomToken(32);
+      const recovery = await prisma.recoveryToken.create({ data: { userId: user.id, hash: tokenHash(raw), createdAt: clock, expiresAt: new Date(clock.getTime() + 900000) } });
+      const [changed, reset] = await Promise.all([
+        changeOwn(current.json().accessToken, password, 'Cambio2026!'),
+        app.inject({ method: 'POST', url: '/api/v1/auth/reset-password', remoteAddress: '198.19.0.5', payload: { token: raw, newPassword: 'Reset2026!' } }),
+      ]);
+      assert.ok((changed.statusCode === 200 && reset.statusCode === 400) || (changed.statusCode === 401 && reset.statusCode === 204), `${changed.statusCode}/${reset.statusCode}: ${changed.body} ${reset.body}`);
+      const winnerPassword = changed.statusCode === 200 ? 'Cambio2026!' : 'Reset2026!';
+      assert.equal(await verifyPassword((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).passwordHash, winnerPassword), true);
+      assert.ok((await prisma.recoveryToken.findUniqueOrThrow({ where: { id: recovery.id } })).consumedAt);
+      assert.equal((await me(current.json().accessToken)).statusCode, changed.statusCode === 200 ? 200 : 401);
+    });
+
+    await t.test('contraseña administrativa de cuenta inactiva conserva actor/estado/rol y rechaza contraseña anterior', async () => {
+      const admin = await account('ADMINISTRADOR');
+      const actor = await login(admin.username);
+      const target = await account('PUBLICO', false);
+      const response = await changeManaged(actor.json().accessToken, target.id, 'Administrada2026!');
+      assert.equal(response.statusCode, 204, response.body);
+      assert.equal(response.headers['set-cookie'], undefined);
+      const saved = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+      assert.equal(saved.active, false);
+      assert.equal(saved.role, 'PUBLICO');
+      assert.equal(await verifyPassword(saved.passwordHash, 'Administrada2026!'), true);
+      assert.equal((await login(target.username)).statusCode, 401);
+      const inactive = await login(target.username, 'Administrada2026!');
+      assert.equal(inactive.statusCode, 403);
+      assert.equal(inactive.json().code, 'ACCOUNT_INACTIVE');
+      assert.equal((await me(actor.json().accessToken)).statusCode, 200);
+    });
+
+    await t.test('fallo de auditoría de cambio propio/administrativo revierte hash, bloqueo, sesiones, refresh y recuperación', async () => {
+      const admin = await account('ADMINISTRADOR');
+      const actor = await login(admin.username);
+      let blockedOperation = '';
+      const failingPrisma = prisma.$extends({ query: { auditLog: { async create({ args, query }) {
+        if (args.data.operation === blockedOperation) throw new Error('Fallo de auditoría simulado');
+        return query(args);
+      } } } }) as unknown as PrismaClient;
+      const failing = await createApp(config, failingPrisma, { logger: false, security: { mailer, now: () => new Date(clock) } });
+      try {
+        for (const own of [true, false]) {
+          const target = await account();
+          const current = await login(target.username);
+          await login(target.username);
+          await prisma.user.update({ where: { id: target.id }, data: { failures: 2 } });
+          await prisma.recoveryToken.create({ data: { userId: target.id, hash: tokenHash(randomToken(32)), createdAt: clock, expiresAt: new Date(clock.getTime() + 900000) } });
+          const beforeUser = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+          const beforeSessions = await prisma.session.findMany({ where: { userId: target.id }, orderBy: { id: 'asc' } });
+          const beforeRefresh = await prisma.refreshToken.findMany({ where: { session: { userId: target.id } }, orderBy: { id: 'asc' } });
+          const beforeRecovery = await prisma.recoveryToken.findMany({ where: { userId: target.id }, orderBy: { id: 'asc' } });
+          blockedOperation = own ? 'CONTRASENA_PERSONAL_MODIFICADA' : 'CONTRASENA_ADMIN_MODIFICADA';
+          const response = await failing.inject({ method: 'PATCH', url: own ? '/api/v1/me/password' : `/api/v1/usuarios/${target.id}/password`,
+            headers: bearer(own ? current.json().accessToken : actor.json().accessToken),
+            payload: own ? { currentPassword: password, newPassword: 'Cancelada2026!' } : { newPassword: 'Cancelada2026!' } });
+          assert.equal(response.statusCode, 503, response.body);
+          assert.equal(response.headers['set-cookie'], undefined);
+          assert.equal(response.json().accessToken, undefined);
+          assert.deepEqual(await prisma.user.findUniqueOrThrow({ where: { id: target.id } }), beforeUser);
+          assert.deepEqual(await prisma.session.findMany({ where: { userId: target.id }, orderBy: { id: 'asc' } }), beforeSessions);
+          assert.deepEqual(await prisma.refreshToken.findMany({ where: { session: { userId: target.id } }, orderBy: { id: 'asc' } }), beforeRefresh);
+          assert.deepEqual(await prisma.recoveryToken.findMany({ where: { userId: target.id }, orderBy: { id: 'asc' } }), beforeRecovery);
+          assert.equal((await me(current.json().accessToken)).statusCode, 200);
+          assert.equal((await me(actor.json().accessToken)).statusCode, 200);
+        }
+      } finally { await failing.close(); }
     });
 
     await t.test('recuperación neutral con SMTP degradado y cola desacoplada', async () => {

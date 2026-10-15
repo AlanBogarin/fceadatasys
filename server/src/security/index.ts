@@ -406,12 +406,15 @@ export async function registerSecurity(app: FastifyInstance, input: PrismaClient
     const passwordHash = await hashPassword(body.newPassword);
     await prisma.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(741901)`;
-      const actor = await lockedSession(tx, request.auth!.userId, request.auth!.sessionId, now);
-      const time = actor.time;
-      if (actor.user.role !== 'ADMINISTRADOR') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta operación.');
+      const initialActor = await lockedSession(tx, request.auth!.userId, request.auth!.sessionId, now);
+      if (initialActor.user.role !== 'ADMINISTRADOR') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta operación.');
       const exists = await tx.user.findUnique({ where: { id } });
       if (!exists) throw new AppError(404, 'NOT_FOUND', 'El usuario no existe.');
       const target = await lockUser(tx, id);
+      // The target lock can outlive the actor's session deadline.
+      const actor = await lockedSession(tx, request.auth!.userId, request.auth!.sessionId, now);
+      const time = actor.time;
+      if (actor.user.role !== 'ADMINISTRADOR') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta operación.');
       if (await verifyPassword(target.passwordHash, body.newPassword)) throw new AppError(400, 'PASSWORD_UNCHANGED', 'La nueva contraseña debe ser diferente de la actual.');
       await tx.user.update({ where: { id }, data: { passwordHash, failures: 0, lockedUntil: null } });
       await tx.recoveryToken.updateMany({ where: { userId: id, consumedAt: null }, data: { consumedAt: time } });

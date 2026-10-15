@@ -191,19 +191,21 @@ test('finalización tardía registra duración efectiva del límite y revoca tod
 });
 
 /** Simulates only time elapsing during locks; writes are captured, not applied in a fake database. */
-async function clockCrossingFixture() {
-  const session = storedSession();
+async function clockCrossingFixture(adminTarget = false) {
+  const session = storedSession(adminTarget ? 'ADMINISTRADOR' : 'PUBLICO');
+  const target = { ...session.user, id: OTHER_ID, role: 'PUBLICO' };
   session.lastActivityAt = new Date(NOW.getTime() - 599999);
   let clock = new Date(NOW);
   let locks = 0;
-  const writes = { sessions: [] as unknown[], tokens: [] as unknown[], audits: [] as { data: Record<string, unknown> }[] };
+  const writes = { users: [] as unknown[], sessions: [] as unknown[], tokens: [] as unknown[], recoveries: [] as unknown[], audits: [] as { data: Record<string, unknown> }[] };
   const auditLog = { async create(event: { data: Record<string, unknown> }) { writes.audits.push(event); return {}; } };
   const tx = {
     async $executeRaw() { return 1; },
-    async $queryRaw() { if (++locks === 2) clock = new Date(NOW.getTime() + 2); return []; },
-    user: { async findUnique() { return session.user; } },
-    session: { async findUnique() { return session; }, async findUniqueOrThrow() { return session; }, async update(event: unknown) { writes.sessions.push(event); return session; } },
+    async $queryRaw(_sql: unknown, id: string) { if (adminTarget ? id === OTHER_ID : ++locks === 2) clock = new Date(NOW.getTime() + 2); return []; },
+    user: { async findUnique({ where }: { where: { id: string } }) { return where.id === OTHER_ID ? target : session.user; }, async update(event: unknown) { writes.users.push(event); return target; } },
+    session: { async findUnique() { return session; }, async findUniqueOrThrow() { return session; }, async update(event: unknown) { writes.sessions.push(event); return session; }, async updateMany(event: unknown) { writes.sessions.push(event); return { count: 1 }; } },
     refreshToken: { async updateMany(event: unknown) { writes.tokens.push(event); return { count: 1 }; } }, auditLog,
+    recoveryToken: { async updateMany(event: unknown) { writes.recoveries.push(event); return { count: 1 }; } },
   };
   const prisma = { session: { async findUnique() { return session; } }, auditLog,
     async $transaction(callback: (transaction: typeof tx) => Promise<unknown>) { return callback(tx); },
@@ -241,6 +243,192 @@ test('logout evalúa el deadline después de esperar locks y conserva la duraci�
   assert.deepEqual(writes.sessions, [{ where: { id: SESSION_ID }, data: { revokedAt: endedAt } }]);
   const event = writes.audits.find(event => event.data.operation === 'SESION_FINALIZADA');
   assert.deepEqual(event?.data.after, { reason: 'INACTIVITY', endedAt: endedAt.toISOString(), durationSeconds: 120, lastActivityAt: session.lastActivityAt.toISOString() });
+});
+
+test('cambio administrativo revalida actor tras esperar target y no revoca ni cambia contraseña si venció', async t => {
+  const { app, writes, headers } = await clockCrossingFixture(true);
+  t.after(() => app.close());
+  const response = await app.inject({ method: 'PATCH', url: `/api/v1/usuarios/${OTHER_ID}/password`, headers, payload: { newPassword: 'Nueva2026!' } });
+  assert.equal(response.statusCode, 401, response.body);
+  assert.equal(response.json().code, 'UNAUTHENTICATED');
+  assert.equal(response.headers['set-cookie'], undefined);
+  assert.deepEqual(writes.users, []);
+  assert.deepEqual(writes.sessions, []);
+  assert.deepEqual(writes.tokens, []);
+  assert.deepEqual(writes.recoveries, []);
+  assert.deepEqual(writes.audits.map(event => [event.data.operation, event.data.status]), [['OPERACION_RECHAZADA', 'FALLIDO']]);
+});
+
+/** Endpoint contracts with read snapshots and write spies; SQL rollback is tested separately in PostgreSQL. */
+async function passwordFixture(options: { role?: Role; missingTarget?: boolean; targetInactive?: boolean; blockedAudit?: string; actorRoleAfterTarget?: Role } = {}) {
+  const previousPassword = 'Anterior2026!';
+  const session = storedSession(options.role ?? 'PUBLICO');
+  session.user.passwordHash = await hashPassword(previousPassword);
+  const target: User = { ...session.user, id: OTHER_ID, name: 'Otra persona', username: 'otra.persona', usernameKey: 'otra.persona', role: 'PUBLICO', active: !options.targetInactive };
+  let targetLocked = false;
+  const calls = { transactions: 0, users: [] as { where: { id: string }; data: Partial<User> }[],
+    sessions: [] as unknown[], refreshUpdates: [] as unknown[], refreshCreates: [] as { data: { sessionId: string; hash: string; expiresAt: Date; createdAt: Date } }[],
+    recoveries: [] as unknown[], audits: [] as { data: Record<string, unknown> }[] };
+  const auditLog = { async create(event: { data: Record<string, unknown> }) {
+    calls.audits.push(event);
+    if (event.data.operation === options.blockedAudit) throw new Error('PRIVATE_AUDIT_ERROR');
+    return {};
+  } };
+  const tx = {
+    async $executeRaw() { return 1; },
+    async $queryRaw(_sql: unknown, id: string) { if (id === OTHER_ID) targetLocked = true; return []; },
+    user: {
+      async findUnique({ where }: { where: { id: string } }) {
+        if (where.id === OTHER_ID) return options.missingTarget ? null : target;
+        return targetLocked && options.actorRoleAfterTarget ? { ...session.user, role: options.actorRoleAfterTarget } : session.user;
+      },
+      async update(event: { where: { id: string }; data: Partial<User> }) { calls.users.push(event); return { ...(event.where.id === OTHER_ID ? target : session.user), ...event.data }; },
+    },
+    session: { async findUnique() { return session; }, async updateMany(event: unknown) { calls.sessions.push(event); return { count: 1 }; } },
+    refreshToken: { async updateMany(event: unknown) { calls.refreshUpdates.push(event); return { count: 1 }; },
+      async create(event: typeof calls.refreshCreates[number]) { calls.refreshCreates.push(event); return {}; } },
+    recoveryToken: { async updateMany(event: unknown) { calls.recoveries.push(event); return { count: 1 }; } }, auditLog,
+  };
+  const prisma = { session: { async findUnique() { return session; } }, auditLog,
+    async $transaction(callback: (transaction: typeof tx) => Promise<unknown>) { calls.transactions++; return callback(tx); },
+  } as unknown as PrismaClient;
+  const config: AppConfig = { nodeEnv: 'test', host: '127.0.0.1', port: 3000, databaseUrl: 'postgresql://unused@127.0.0.1/never_connect',
+    jwtSecret: 'unit-password-contract-secret-'.repeat(3), jwtIssuer: 'unit-issuer', jwtAudience: 'unit-audience', allowedOrigins: [ORIGIN], secureCookies: true, recoveryUrl: `${ORIGIN}/reset` };
+  const app = await createApp(config, prisma, { logger: false, security: { now: () => new Date(NOW),
+    mailer: { available: false, verify: async () => false, sendRecovery: async () => { throw new Error('SMTP must not run'); } },
+  } });
+  const token = app.jwt.sign({ sub: USER_ID, sid: SESSION_ID, role: 'ADMINISTRADOR' }, { expiresIn: 900 });
+  return { app, calls, session, target, previousPassword, headers: { authorization: `Bearer ${token}` } };
+}
+
+test('cambio personal permite todos los roles, conserva sid, revoca otras sesiones y rota refresh sin exponer secretos', async t => {
+  for (const role of ['ADMINISTRADOR', 'DIGITADOR', 'PUBLICO'] as const) await t.test(role, async child => {
+    const { app, calls, session, headers, previousPassword } = await passwordFixture({ role });
+    child.after(() => app.close());
+    const response = await app.inject({ method: 'PATCH', url: '/api/v1/me/password', headers, payload: { currentPassword: previousPassword, newPassword: 'Nueva2026!' } });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json().user.role, role);
+    const claims = app.jwt.decode<{ sid: string }>(response.json().accessToken);
+    assert.ok(claims);
+    assert.equal(claims.sid, SESSION_ID);
+    assert.equal(response.json().user.passwordHash, undefined);
+    assert.ok(!response.body.includes('Nueva2026!'));
+    assert.ok(!response.body.includes('$argon2'));
+    assert.equal(calls.users.length, 1);
+    assert.deepEqual(Object.keys(calls.users[0]!.data).sort(), ['failures', 'lockedUntil', 'passwordHash']);
+    assert.equal(await verifyPassword(calls.users[0]!.data.passwordHash!, 'Nueva2026!'), true);
+    assert.equal(await verifyPassword(calls.users[0]!.data.passwordHash!, previousPassword), false);
+    assert.deepEqual(calls.sessions, [{ where: { userId: USER_ID, revokedAt: null, id: { not: SESSION_ID } }, data: { revokedAt: NOW } }]);
+    assert.deepEqual(calls.recoveries, [{ where: { userId: USER_ID, consumedAt: null }, data: { consumedAt: NOW } }]);
+    assert.deepEqual(calls.refreshUpdates.at(-1), { where: { sessionId: SESSION_ID, revokedAt: null }, data: { revokedAt: NOW } });
+    assert.equal(calls.refreshCreates.length, 1);
+    const refresh = String(response.headers['set-cookie']).split(';')[0]!.split('=')[1]!;
+    assert.match(refresh, /^[a-f0-9]{128}$/);
+    assert.equal(calls.refreshCreates[0]!.data.hash, tokenHash(refresh));
+    assert.equal(calls.refreshCreates[0]!.data.expiresAt, session.expiresAt);
+    assert.equal(session.user.passwordHash.startsWith('$argon2id$'), true);
+    assert.equal(calls.audits.filter(event => event.data.operation === 'CONTRASENA_PERSONAL_MODIFICADA').length, 1);
+    assert.ok(!JSON.stringify(calls.audits).includes(previousPassword));
+    assert.ok(!JSON.stringify(calls.audits).includes(refresh));
+  });
+});
+
+test('cambio personal rechaza actual incorrecta, contraseña igual y payload fuera del contrato sin escrituras', async t => {
+  const { app, calls, headers, previousPassword } = await passwordFixture();
+  t.after(() => app.close());
+  const cases = [
+    { payload: { currentPassword: 'Incorrecta2026!', newPassword: 'Nueva2026!' }, code: 'INVALID_CURRENT_PASSWORD' },
+    { payload: { currentPassword: previousPassword, newPassword: previousPassword }, code: 'PASSWORD_UNCHANGED' },
+    { payload: { newPassword: 'Nueva2026!' }, code: 'VALIDATION_ERROR' },
+    { payload: { currentPassword: previousPassword, newPassword: 'weak' }, code: 'VALIDATION_ERROR' },
+    { payload: { currentPassword: previousPassword, newPassword: 'Nueva2026!', actorId: OTHER_ID }, code: 'VALIDATION_ERROR' },
+  ];
+  for (const scenario of cases) {
+    const response = await app.inject({ method: 'PATCH', url: '/api/v1/me/password', headers, payload: scenario.payload });
+    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(response.json().code, scenario.code);
+    assert.equal(response.headers['set-cookie'], undefined);
+  }
+  assert.deepEqual(calls.users, []);
+  assert.deepEqual(calls.sessions, []);
+  assert.deepEqual(calls.refreshUpdates, []);
+  assert.deepEqual(calls.refreshCreates, []);
+  assert.deepEqual(calls.recoveries, []);
+});
+
+test('solo Admin puede asignar contraseña ajena y el rol se revalida tras esperar al destinatario', async t => {
+  for (const role of ['PUBLICO', 'DIGITADOR'] as const) await t.test(role, async child => {
+    const { app, calls, headers } = await passwordFixture({ role }); child.after(() => app.close());
+    const response = await app.inject({ method: 'PATCH', url: `/api/v1/usuarios/${OTHER_ID}/password`, headers, payload: { newPassword: 'Nueva2026!' } });
+    assert.equal(response.statusCode, 403);
+    assert.deepEqual(calls.users, []);
+    assert.equal(calls.transactions, 0);
+  });
+  const { app, calls, headers } = await passwordFixture({ role: 'ADMINISTRADOR', actorRoleAfterTarget: 'PUBLICO' });
+  t.after(() => app.close());
+  const response = await app.inject({ method: 'PATCH', url: `/api/v1/usuarios/${OTHER_ID}/password`, headers, payload: { newPassword: 'Nueva2026!' } });
+  assert.equal(response.statusCode, 403, response.body);
+  assert.deepEqual(calls.users, []);
+  assert.deepEqual(calls.sessions, []);
+});
+
+test('Admin modifica contraseña de cuenta inactiva sin activarla, cambiar rol ni afectar su sesión de actor', async t => {
+  const { app, calls, headers, target } = await passwordFixture({ role: 'ADMINISTRADOR', targetInactive: true });
+  t.after(() => app.close());
+  const response = await app.inject({ method: 'PATCH', url: `/api/v1/usuarios/${OTHER_ID}/password`, headers, payload: { newPassword: 'Nueva2026!' } });
+  assert.equal(response.statusCode, 204, response.body);
+  assert.equal(response.headers['set-cookie'], undefined);
+  assert.deepEqual(Object.keys(calls.users[0]!.data).sort(), ['failures', 'lockedUntil', 'passwordHash']);
+  assert.equal(calls.users[0]!.where.id, OTHER_ID);
+  assert.equal(target.active, false);
+  assert.equal(target.role, 'PUBLICO');
+  assert.deepEqual(calls.sessions, [{ where: { userId: OTHER_ID, revokedAt: null }, data: { revokedAt: NOW } }]);
+  assert.deepEqual(calls.recoveries, [{ where: { userId: OTHER_ID, consumedAt: null }, data: { consumedAt: NOW } }]);
+  assert.deepEqual(calls.refreshCreates, []);
+});
+
+test('Admin rechaza cambio propio, usuario inexistente y contraseña sin cambios sin mutaciones', async t => {
+  for (const scenario of [
+    { id: USER_ID, missingTarget: false, next: 'Nueva2026!', code: 'SELF_ADMIN_PASSWORD_CHANGE', status: 400 },
+    { id: OTHER_ID, missingTarget: true, next: 'Nueva2026!', code: 'NOT_FOUND', status: 404 },
+    { id: OTHER_ID, missingTarget: false, next: 'Anterior2026!', code: 'PASSWORD_UNCHANGED', status: 400 },
+  ]) await t.test(scenario.code, async child => {
+    const { app, calls, headers } = await passwordFixture({ role: 'ADMINISTRADOR', missingTarget: scenario.missingTarget });
+    child.after(() => app.close());
+    const response = await app.inject({ method: 'PATCH', url: `/api/v1/usuarios/${scenario.id}/password`, headers, payload: { newPassword: scenario.next } });
+    assert.equal(response.statusCode, scenario.status, response.body);
+    assert.equal(response.json().code, scenario.code);
+    assert.deepEqual(calls.users, []);
+    assert.deepEqual(calls.refreshUpdates, []);
+  });
+});
+
+test('cambio administrativo rechaza payload incompleto, débil o con campos ajenos sin emitir cookie', async t => {
+  const { app, calls, headers } = await passwordFixture({ role: 'ADMINISTRADOR' });
+  t.after(() => app.close());
+  for (const payload of [{}, { newPassword: 'weak' }, { newPassword: 'Nueva2026!', role: 'ADMINISTRADOR' }, { newPassword: 'Nueva2026!', confirm: 'Nueva2026!' }]) {
+    const response = await app.inject({ method: 'PATCH', url: `/api/v1/usuarios/${OTHER_ID}/password`, headers, payload });
+    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(response.json().code, 'VALIDATION_ERROR');
+    assert.equal(response.headers['set-cookie'], undefined);
+  }
+  assert.equal(calls.transactions, 0);
+  assert.deepEqual(calls.users, []);
+});
+
+test('fallo auditado de cambio propio/administrativo nunca emite éxito, access token ni Set-Cookie', async t => {
+  for (const own of [true, false]) await t.test(own ? 'personal' : 'administrativo', async child => {
+    const operation = own ? 'CONTRASENA_PERSONAL_MODIFICADA' : 'CONTRASENA_ADMIN_MODIFICADA';
+    const { app, headers, previousPassword } = await passwordFixture({ role: 'ADMINISTRADOR', blockedAudit: operation });
+    child.after(() => app.close());
+    const response = await app.inject({ method: 'PATCH', url: own ? '/api/v1/me/password' : `/api/v1/usuarios/${OTHER_ID}/password`, headers,
+      payload: own ? { currentPassword: previousPassword, newPassword: 'Nueva2026!' } : { newPassword: 'Nueva2026!' } });
+    assert.equal(response.statusCode, 503, response.body);
+    assert.equal(response.json().code, 'AUDIT_UNAVAILABLE');
+    assert.equal(response.json().accessToken, undefined);
+    assert.equal(response.headers['set-cookie'], undefined);
+    assert.ok(!response.body.includes('PRIVATE_AUDIT_ERROR'));
+  });
 });
 
 test('JWT firmado con iat/exp malformados no autentica ni tiene autoridad para cerrar sesión', async t => {
