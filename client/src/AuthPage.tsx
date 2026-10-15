@@ -179,8 +179,8 @@ export function Auth({
               <div>
                 <strong>Sesión bloqueada por inactividad</strong>
                 <p>
-                  Pasaron {INACTIVITY_MINUTES} minutos sin actividad. Volvé a
-                  autenticarte como {lockedUsername}.
+                  Pasaron {INACTIVITY_MINUTES} minutos sin actividad. Voler a
+                  autenticarse como {lockedUsername}.
                 </p>
                 <button className="text-button" type="button" onClick={onExit}>
                   Cerrar sesión y usar otra cuenta
