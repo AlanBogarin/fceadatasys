@@ -18,6 +18,7 @@ export type CatalogRecord = {
   createdAt: string;
   updatedAt: string;
   participantIds?: string[];
+  demoKey?: string;
 };
 export type CatalogInput = Pick<CatalogRecord, "name" | "fields">;
 export type Catalogs = Record<CatalogKey, CatalogRecord[]>;
@@ -253,6 +254,7 @@ export function saveCatalogRecord(
   const now = new Date().toISOString();
   const record: CatalogRecord = {
     id: old?.id ?? crypto.randomUUID(),
+    ...(old?.demoKey ? { demoKey: old.demoKey } : {}),
     name,
     fields,
     active: old?.active ?? true,
@@ -331,4 +333,34 @@ export function filterCatalog(
     .sort((left, right) =>
       left.name.localeCompare(right.name, "es", { sensitivity: "base" }),
     );
+}
+
+export function deleteCatalogRecord(
+  state: State,
+  actorId: string,
+  catalog: CatalogKey,
+  targetId: string,
+): State {
+  // Paso 1: exigir un administrador activo, incluso si se evita la pantalla.
+  const administrator = state.users.find((account) => account.id === actorId);
+  if (!administrator?.active || administrator.role !== "ADMINISTRADOR") {
+    throw Error("No tenés permiso para eliminar registros de catálogos.");
+  }
+
+  // Paso 2: comprobar existencia y referencias antes de eliminar físicamente.
+  if (!state.catalogs[catalog].some((record) => record.id === targetId)) {
+    throw Error("No se encontró el registro.");
+  }
+  if ((state.publications ?? []).some((publication) => publicationUsesCatalog(publication, catalog, targetId))) {
+    throw Error("No se puede eliminar: el registro está vinculado a una investigación registrada. Sus datos deben conservarse.");
+  }
+
+  // Paso 3: preparar el nuevo estado sin modificar el original ni sus investigaciones.
+  return {
+    ...state,
+    catalogs: {
+      ...state.catalogs,
+      [catalog]: state.catalogs[catalog].filter((record) => record.id !== targetId),
+    },
+  };
 }

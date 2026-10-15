@@ -1,10 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { State, User, Role } from './model';
-import { CATALOG_KEYS, emptyCatalogs, filterCatalog, migrateCatalogs, saveCatalogRecord, setCatalogActive } from './catalogs';
+import { CATALOG_KEYS, deleteCatalogRecord, emptyCatalogs, filterCatalog, migrateCatalogs, saveCatalogRecord, setCatalogActive } from './catalogs';
 
 const actor = (id: string, role: Role): User => ({ id, role, active: true, name: id, username: id, ci: '', email: '', passwordHash: 'hash-preservado', salt: 'sal-preservada', failures: 0, lockedUntil: 0, createdAt: '2026-10-01T00:00:00Z' });
 const initial = (): State => ({ version: 1, users: [actor('admin', 'ADMINISTRADOR'), actor('digitador', 'DIGITADOR'), actor('publico', 'PUBLICO')], recovery: [], catalogs: emptyCatalogs() });
+
+test('solo Administrador activo puede eliminar registros sin vínculos en los siete catálogos', () => {
+  for (const catalog of CATALOG_KEYS) {
+    const state = saveCatalogRecord(initial(), 'admin', catalog, { name: `Eliminar prueba ${catalog}`, fields: {} });
+    const target = state.catalogs[catalog][0];
+    for (const actorId of ['digitador', 'publico', 'inexistente']) {
+      assert.throws(() => deleteCatalogRecord(state, actorId, catalog, target.id), /permiso/);
+    }
+    const inactive = { ...state, users: state.users.map(account => ({ ...account, active: false })) };
+    assert.throws(() => deleteCatalogRecord(inactive, 'admin', catalog, target.id), /permiso/);
+    assert.throws(() => deleteCatalogRecord(state, 'admin', catalog, 'inexistente'), /No se encontró/);
+    const updated = deleteCatalogRecord(state, 'admin', catalog, target.id);
+    assert.equal(updated.catalogs[catalog].length, 0);
+    assert.equal(state.catalogs[catalog].length, 1);
+    assert.deepEqual(updated.users, state.users);
+  }
+});
 
 test('crear, editar, inactivar y reactivar conserva ID, fechas y datos en los siete catálogos', () => {
   let state = initial();

@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { seed } from "./model";
-import { saveCatalogRecord, setCatalogActive } from "./catalogs";
+import {
+  deleteCatalogRecord,
+  saveCatalogRecord,
+  setCatalogActive,
+} from "./catalogs";
+import { preparePdf } from "./attachments";
+import { jsPDF } from "jspdf";
 import { userDependencies } from "./relations";
 import { requireResult } from "./userService";
 import {
@@ -48,6 +54,80 @@ async function fixture() {
     reader: state.users[2],
   };
 }
+
+test("El documento requiere enlace o PDF; conserva enlaces anteriores y bloquea la misma huella de archivo", async () => {
+  const { state, input, administrator } = await fixture();
+  const document = new jsPDF();
+  document.text("Prueba de publicación con PDF", 20, 20);
+  const attachment = await preparePdf(
+    new File([document.output("arraybuffer")], "Trabajo.pdf"),
+  );
+  assert.equal(
+    registerPublication(state, administrator.id, { ...input, externalUrl: "" })
+      .exito,
+    false,
+  );
+  assert.equal(
+    registerPublication(state, administrator.id, { ...input, attachment })
+      .exito,
+    false,
+  );
+  const result = requireResult(
+    registerPublication(state, administrator.id, {
+      ...input,
+      externalUrl: "",
+      attachment,
+    }),
+  );
+  assert.equal(result.publication.externalUrl, "");
+  assert.equal(result.publication.attachment?.sha256, attachment.sha256);
+  const duplicate = registerPublication(result.state, administrator.id, {
+    ...input,
+    title: "Título diferente",
+    summary: "Resumen diferente",
+    abstract: "Different text",
+    externalUrl: "",
+    attachment: { ...attachment, id: crypto.randomUUID() },
+  });
+  assert.equal(duplicate.exito, false);
+  assert.match(duplicate.mensaje, /archivo PDF ya/);
+  const persisted = JSON.parse(JSON.stringify(result.state));
+  assert.equal(persisted.publications[0].attachment.name, "Trabajo.pdf");
+  assert.equal(registerPublication(state, administrator.id, input).exito, true);
+  const workbook = new ExcelJS.Workbook();
+  const report = await buildPublicationReport(
+    result.state,
+    administrator.id,
+    emptyReportFilters,
+    "xlsx",
+  );
+  await workbook.xlsx.load(report.bytes as unknown as ExcelJS.Buffer);
+  assert.equal(
+    workbook.getWorksheet("Investigaciones")?.getRow(2).getCell(15).value,
+    "Trabajo.pdf",
+  );
+});
+
+test("No elimina autores, tutores ni clasificaciones referenciadas por una investigación", async () => {
+  const { state, input, administrator } = await fixture();
+  const registered = requireResult(
+    registerPublication(state, administrator.id, input),
+  );
+  const original = JSON.stringify(registered.state);
+  for (const catalog of requiredCatalogs) {
+    assert.throws(
+      () =>
+        deleteCatalogRecord(
+          registered.state,
+          administrator.id,
+          catalog,
+          registered.state.catalogs[catalog][0].id,
+        ),
+      /vinculado/,
+    );
+  }
+  assert.equal(JSON.stringify(registered.state), original);
+});
 
 test("La transacción guarda investigación, participantes y bitácora juntos sin alterar el estado original", async () => {
   const { state, input, editor } = await fixture();

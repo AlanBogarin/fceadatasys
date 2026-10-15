@@ -2,6 +2,8 @@ import { Brand, errorText, initials } from "./ui";
 import { UsersPage, Profile, ChangePassword } from "./UserPages";
 import { Auth } from "./AuthPage";
 import { PublicationsPage, PublicationReportsPage } from "./PublicationPages";
+import { DemoDataPanel } from "./DemoDataPanel";
+import "./demoData.css";
 import { useSession } from "./useSession";
 import { canOpenPage, INACTIVITY_MINUTES } from "./security";
 import {
@@ -481,6 +483,7 @@ export default function App() {
           state={state!}
           user={user!}
           commit={commit}
+          assertActive={sessionControl.assertActive}
           notify={setToast}
           showReport={(publicationId) => {
             setReportPublicationId(publicationId);
@@ -494,6 +497,7 @@ export default function App() {
         <PublicationReportsPage
           state={state!}
           user={user!}
+          commit={commit}
           initialId={reportPublicationId}
           assertActive={sessionControl.assertActive}
         />
@@ -535,7 +539,15 @@ export default function App() {
     if (current && !current.ready) {
       return <Placeholder title={current.label} />;
     }
-    return <Dashboard state={state!} user={user!} navigate={navigate} />;
+    return (
+      <Dashboard
+        state={state!}
+        user={user!}
+        navigate={navigate}
+        commit={commit}
+        notify={setToast}
+      />
+    );
   }
   return (
     <div className="app-shell">
@@ -652,10 +664,14 @@ function Dashboard({
   state,
   user,
   navigate,
+  commit,
+  notify,
 }: {
   state: State;
   user: User;
   navigate: (targetId: string) => void;
+  commit: (state: State) => void;
+  notify: (message: string) => void;
 }) {
   const cards = [
     ...(user.role !== "PUBLICO"
@@ -806,6 +822,12 @@ function Dashboard({
           </div>
         </div>
       </div>
+      <DemoDataPanel
+        state={state}
+        user={user}
+        commit={commit}
+        notify={notify}
+      />
       <div className="section-heading">
         <h2>Accesos rápidos</h2>
         <span>Herramientas de tu cuenta</span>

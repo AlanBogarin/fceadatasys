@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, Download, FileText, Plus, Search } from "lucide-react";
+import { ArrowLeft, Download, FileText, Plus, Search, X } from "lucide-react";
 import type { State, User } from "./model";
-import { catalogConfig, normalizeCatalog, type CatalogKey } from "./catalogs";
+import {
+  catalogConfig,
+  filterCatalog,
+  normalizeCatalog,
+  type CatalogKey,
+} from "./catalogs";
 import { Alert, Field, errorText } from "./ui";
 import { requireResult } from "./userService";
 import {
   emptyReportFilters,
   publicationReport,
+  publicationActor,
   registerPublication,
   registrationDate,
   requiredCatalogs,
@@ -16,6 +22,11 @@ import {
   type ReportFilters,
 } from "./publications";
 import { buildPublicationReport, downloadReport } from "./publicationExports";
+import {
+  commitWithAttachment,
+  preparePdf,
+  readAttachment,
+} from "./attachments";
 import "./publications.css";
 
 type PageProps = {
@@ -24,6 +35,7 @@ type PageProps = {
   commit: (state: State) => void;
   notify: (message: string) => void;
   showReport: (publicationId: string) => void;
+  assertActive: () => void;
 };
 
 function ReferencePicker({
@@ -69,17 +81,58 @@ function PeoplePicker({
   onChange: (selected: string[]) => void;
 }) {
   const records = state.catalogs[catalog].filter((entry) => entry.active);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const matches = filterCatalog(records, query, "active");
+  const pages = Math.max(1, Math.ceil(matches.length / 10));
+  const current = Math.min(page, pages);
+  const visible = matches.slice((current - 1) * 10, current * 10);
+  const searchLabel = `Buscar ${catalog}`;
   return (
     <fieldset className="people-picker">
       <legend>{label} *</legend>
       <p>
         Seleccioná una o más personas. El número indica el orden de selección.
       </p>
+      <Field label={searchLabel}>
+        <input
+          type="search"
+          placeholder="Nombre, CI, correo u otro dato…"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(1);
+          }}
+        />
+      </Field>
+      <div className="people-selected" aria-label={`${label} seleccionados`}>
+        {selected.map((identifier, index) => {
+          const person = records.find((entry) => entry.id === identifier);
+          return (
+            <button
+              key={identifier}
+              type="button"
+              className="person-chip"
+              aria-label={`Quitar ${person?.name ?? "persona"} de ${catalog}`}
+              onClick={() =>
+                onChange(selected.filter((entry) => entry !== identifier))
+              }
+            >
+              <b>{index + 1}</b> {person?.name ?? "Registro no disponible"}{" "}
+              <X size={14} />
+            </button>
+          );
+        })}
+      </div>
+      <p role="status">
+        {matches.length} coincidencia(s) · {selected.length} seleccionados
+      </p>
       <div className="people-options">
-        {records.map((entry) => (
+        {visible.map((entry) => (
           <label key={entry.id}>
             <input
               type="checkbox"
+              aria-label={entry.name}
               checked={selected.includes(entry.id)}
               onChange={(event) => {
                 if (event.target.checked) {
@@ -91,7 +144,10 @@ function PeoplePicker({
                 }
               }}
             />
-            <span>{entry.name}</span>
+            <span>
+              {entry.name}
+              {entry.fields.ci && <small>CI: {entry.fields.ci}</small>}
+            </span>
             {selected.includes(entry.id) && (
               <span className="badge neutral">
                 {selected.indexOf(entry.id) + 1}
@@ -100,11 +156,152 @@ function PeoplePicker({
           </label>
         ))}
       </div>
+      {!matches.length && (
+        <p>No hay coincidencias. Probá otro nombre o dato.</p>
+      )}
+      {pages > 1 && (
+        <div className="people-pagination">
+          <button
+            type="button"
+            className="secondary"
+            disabled={current === 1}
+            onClick={() => setPage(current - 1)}
+          >
+            Anterior
+          </button>
+          <span>
+            Página {current} de {pages}
+          </span>
+          <button
+            type="button"
+            className="secondary"
+            disabled={current === pages}
+            onClick={() => setPage(current + 1)}
+          >
+            Siguiente
+          </button>
+        </div>
+      )}
     </fieldset>
   );
 }
 
-function PublicationDetail({ publication }: { publication: Publication }) {
+function AttachmentDownload({
+  publication,
+  state,
+  user,
+  commit,
+  assertActive,
+}: {
+  publication: Publication;
+  state: State;
+  user: User;
+  commit: (state: State) => void;
+  assertActive: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const latestState = useRef(state);
+  const pageOpen = useRef(true);
+  const running = useRef(false);
+  latestState.current = state;
+  useEffect(() => {
+    pageOpen.current = true;
+    return () => {
+      pageOpen.current = false;
+    };
+  }, []);
+
+  async function download() {
+    if (running.current) return;
+    running.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      // Paso 1: verificar sesión, permisos y el documento realmente registrado.
+      assertActive();
+      const actor = publicationActor(state, user.id);
+      const saved = state.publications?.find(
+        (entry) => entry.id === publication.id,
+      );
+      if (!saved?.attachment)
+        throw Error("No se encontró el adjunto registrado.");
+      const bytes = await readAttachment(saved.attachment);
+
+      // Paso 2: la lectura asíncrona no debe eludir el bloqueo ni cambios concurrentes.
+      if (!pageOpen.current) return;
+      assertActive();
+      publicationActor(latestState.current, user.id);
+      if (latestState.current !== state)
+        throw Error(
+          "Los datos cambiaron. Volvé a abrir el detalle para descargar.",
+        );
+
+      // Paso 3: registrar la descarga local antes de entregar el PDF verificado.
+      commit({
+        ...state,
+        publicationAudit: [
+          ...(state.publicationAudit ?? []),
+          {
+            id: crypto.randomUUID(),
+            publicationId: publication.id,
+            actorId: actor.id,
+            actorRole: actor.role,
+            operation: "DESCARGAR_ADJUNTO",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      });
+      downloadReport({
+        bytes,
+        filename: saved.attachment.name,
+        mime: saved.attachment.mime,
+      });
+    } catch (caught) {
+      if (pageOpen.current) setError(errorText(caught));
+    } finally {
+      running.current = false;
+      if (pageOpen.current) setBusy(false);
+    }
+  }
+
+  if (!publication.attachment || user.role === "PUBLICO") return null;
+  let fileSize = `${Math.ceil(publication.attachment.size / 1024)} KB`;
+  if (publication.attachment.size >= 1024 * 1024) {
+    fileSize = `${(publication.attachment.size / 1024 / 1024).toLocaleString("es-PY", { maximumFractionDigits: 2 })} MB`;
+  }
+  return (
+    <div className="attachment-download">
+      <p>
+        {publication.attachment.name} · {fileSize}
+      </p>
+      <button
+        type="button"
+        className="secondary"
+        disabled={busy}
+        onClick={download}
+      >
+        <Download size={17} />
+        {busy ? "Preparando PDF…" : "Descargar adjunto PDF"}
+      </button>
+      <Alert text={error} />
+    </div>
+  );
+}
+
+function PublicationDetail({
+  publication,
+  state,
+  user,
+  commit,
+  assertActive,
+}: {
+  publication: Publication;
+  state: State;
+  user: User;
+  commit: (state: State) => void;
+  assertActive: () => void;
+}) {
   return (
     <article className="publication-detail">
       <p className="eyebrow">
@@ -152,15 +349,27 @@ function PublicationDetail({ publication }: { publication: Publication }) {
       <p lang="en">{publication.abstract}</p>
       <h3>Palabras clave</h3>
       <p>{publication.keywords}</p>
-      <h3>Enlace al documento</h3>
-      <a
-        className="document-link"
-        href={publication.externalUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        {publication.externalUrl}
-      </a>
+      <h3>
+        {publication.attachment ? "Documento adjunto" : "Enlace al documento"}
+      </h3>
+      {publication.attachment ? (
+        <AttachmentDownload
+          publication={publication}
+          state={state}
+          user={user}
+          commit={commit}
+          assertActive={assertActive}
+        />
+      ) : (
+        <a
+          className="document-link"
+          href={publication.externalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {publication.externalUrl}
+        </a>
+      )}
     </article>
   );
 }
@@ -171,6 +380,7 @@ export function PublicationsPage({
   commit,
   notify,
   showReport,
+  assertActive,
 }: PageProps) {
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Publication>();
@@ -180,6 +390,15 @@ export function PublicationsPage({
   const [query, setQuery] = useState("");
   const [summary, setSummary] = useState("");
   const [busy, setBusy] = useState(false);
+  const [documentMode, setDocumentMode] = useState("link");
+  const saving = useRef(false);
+  const pageOpen = useRef(true);
+  useEffect(() => {
+    pageOpen.current = true;
+    return () => {
+      pageOpen.current = false;
+    };
+  }, []);
   const missing = requiredCatalogs.filter(
     (catalog) => !state.catalogs[catalog].some((entry) => entry.active),
   );
@@ -198,16 +417,30 @@ export function PublicationsPage({
     setSummary("");
     setAuthorIds([]);
     setTutorIds([]);
+    setDocumentMode("link");
     setCreating(true);
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving.current) return;
+    saving.current = true;
     setError("");
     setBusy(true);
     try {
       // Paso 1: leer los campos y participantes elegidos, sin guardar parcialmente.
       const form = new FormData(event.currentTarget);
+      assertActive();
+      publicationActor(state, user.id);
+      let file: File | undefined;
+      let attachment: PublicationInput["attachment"];
+      if (documentMode === "file") {
+        const selectedFile = form.get("attachment");
+        if (!(selectedFile instanceof File) || !selectedFile.size)
+          throw Error("Seleccioná el archivo PDF de la investigación.");
+        file = selectedFile;
+        attachment = await preparePdf(file);
+      }
       const text = (key: string) => String(form.get(key) ?? "");
       const input: PublicationInput = {
         title: text("title"),
@@ -222,12 +455,18 @@ export function PublicationsPage({
         abstract: text("abstract"),
         keywords: text("keywords"),
         externalUrl: text("externalUrl"),
+        attachment,
         approved: form.get("approved") === "on",
       };
       // Paso 2: el servicio valida reglas y prepara todos los registros de la transacción.
       const result = requireResult(registerPublication(state, user.id, input));
       // Paso 3: persistir todo junto; informar éxito solamente si la escritura finaliza.
-      commit(result.state);
+      await commitWithAttachment(attachment, file, () => {
+        if (!pageOpen.current)
+          throw Error("El formulario se cerró. No se guardaron cambios.");
+        assertActive();
+        commit(result.state);
+      });
       setSelected(result.publication);
       setCreating(false);
       notify(
@@ -236,6 +475,7 @@ export function PublicationsPage({
     } catch (caught) {
       setError(errorText(caught));
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
@@ -248,11 +488,15 @@ export function PublicationsPage({
             <p className="eyebrow">Gestión bibliográfica</p>
             <h1>Registrar investigación</h1>
             <p>
-              Trabajo aprobado con documento disponible mediante un enlace
-              externo.
+              Trabajo aprobado con un archivo PDF adjunto o un enlace al
+              documento.
             </p>
           </div>
-          <button className="secondary" onClick={() => setCreating(false)}>
+          <button
+            className="secondary"
+            disabled={busy}
+            onClick={() => setCreating(false)}
+          >
             <ArrowLeft size={17} /> Volver al listado
           </button>
         </div>
@@ -273,123 +517,149 @@ export function PublicationsPage({
           </div>
         )}
         <form className="publication-form" onSubmit={submit}>
-          <section>
-            <h2>1. Identificación del trabajo</h2>
-            <p>Los campos con * son obligatorios.</p>
-            <Field label="Título *">
-              <input
-                name="title"
-                required
-                maxLength={250}
-                placeholder="Título completo de la investigación"
-              />
-            </Field>
-            <div className="publication-grid">
-              <ReferencePicker
-                state={state}
-                catalog="tipos"
-                name="typeId"
-                label="Tipo de publicación *"
-              />
-              <Field label="Año de publicación *">
+          <fieldset disabled={busy} className="publication-fields">
+            <section>
+              <h2>1. Identificación del trabajo</h2>
+              <p>Los campos con * son obligatorios.</p>
+              <Field label="Título *">
                 <input
-                  name="year"
-                  type="number"
-                  min={1900}
-                  max={new Date().getFullYear()}
+                  name="title"
                   required
-                  defaultValue={new Date().getFullYear()}
+                  maxLength={250}
+                  placeholder="Título completo de la investigación"
                 />
               </Field>
-              <ReferencePicker
+              <div className="publication-grid">
+                <ReferencePicker
+                  state={state}
+                  catalog="tipos"
+                  name="typeId"
+                  label="Tipo de publicación *"
+                />
+                <Field label="Año de publicación *">
+                  <input
+                    name="year"
+                    type="number"
+                    min={1900}
+                    max={new Date().getFullYear()}
+                    required
+                    defaultValue={new Date().getFullYear()}
+                  />
+                </Field>
+                <ReferencePicker
+                  state={state}
+                  catalog="carreras"
+                  name="careerId"
+                  label="Carrera *"
+                />
+                <ReferencePicker
+                  state={state}
+                  catalog="niveles"
+                  name="levelId"
+                  label="Nivel académico *"
+                />
+                <ReferencePicker
+                  state={state}
+                  catalog="filiales"
+                  name="branchId"
+                  label="Sede / filial *"
+                />
+              </div>
+            </section>
+            <section>
+              <h2>2. Autoría y orientación</h2>
+              <PeoplePicker
                 state={state}
-                catalog="carreras"
-                name="careerId"
-                label="Carrera *"
+                catalog="autores"
+                label="Autores"
+                selected={authorIds}
+                onChange={setAuthorIds}
               />
-              <ReferencePicker
+              <PeoplePicker
                 state={state}
-                catalog="niveles"
-                name="levelId"
-                label="Nivel académico *"
+                catalog="tutores"
+                label="Tutores / orientadores"
+                selected={tutorIds}
+                onChange={setTutorIds}
               />
-              <ReferencePicker
-                state={state}
-                catalog="filiales"
-                name="branchId"
-                label="Sede / filial *"
-              />
-            </div>
-          </section>
-          <section>
-            <h2>2. Autoría y orientación</h2>
-            <PeoplePicker
-              state={state}
-              catalog="autores"
-              label="Autores"
-              selected={authorIds}
-              onChange={setAuthorIds}
-            />
-            <PeoplePicker
-              state={state}
-              catalog="tutores"
-              label="Tutores / orientadores"
-              selected={tutorIds}
-              onChange={setTutorIds}
-            />
-          </section>
-          <section>
-            <h2>3. Contenido y documento</h2>
-            <Field
-              label="Resumen *"
-              hint={`${summary.trim().split(/\s+/).filter(Boolean).length} / 300 palabras`}
-            >
-              <textarea
-                name="summary"
-                rows={5}
-                required
-                maxLength={5000}
-                value={summary}
-                onChange={(event) => setSummary(event.target.value)}
-              />
-            </Field>
-            <Field label="Abstract (inglés) *">
-              <textarea
-                name="abstract"
-                rows={5}
-                lang="en"
-                required
-                maxLength={5000}
-              />
-            </Field>
-            <Field
-              label="Palabras clave *"
-              hint="Separá los términos con comas."
-            >
-              <input name="keywords" required maxLength={300} />
-            </Field>
-            <Field
-              label="Enlace al documento *"
-              hint="Dirección HTTP o HTTPS del documento alojado externamente."
-            >
-              <input
-                name="externalUrl"
-                type="url"
-                required
-                maxLength={2000}
-                placeholder="https://..."
-              />
-            </Field>
-            <label className="publication-confirm">
-              <input name="approved" type="checkbox" required /> Confirmo que el
-              trabajo ya fue aprobado fuera del repositorio.
-            </label>
-          </section>
+            </section>
+            <section>
+              <h2>3. Contenido y documento</h2>
+              <Field
+                label="Resumen *"
+                hint={`${summary.trim().split(/\s+/).filter(Boolean).length} / 300 palabras`}
+              >
+                <textarea
+                  name="summary"
+                  rows={5}
+                  required
+                  maxLength={5000}
+                  value={summary}
+                  onChange={(event) => setSummary(event.target.value)}
+                />
+              </Field>
+              <Field label="Abstract (inglés) *">
+                <textarea
+                  name="abstract"
+                  rows={5}
+                  lang="en"
+                  required
+                  maxLength={5000}
+                />
+              </Field>
+              <Field
+                label="Palabras clave *"
+                hint="Separá los términos con comas."
+              >
+                <input name="keywords" required maxLength={300} />
+              </Field>
+              <Field label="Documento de la investigación *">
+                <select
+                  value={documentMode}
+                  onChange={(event) => setDocumentMode(event.target.value)}
+                >
+                  <option value="link">Enlace externo</option>
+                  <option value="file">Archivo PDF adjunto</option>
+                </select>
+              </Field>
+              {documentMode === "file" ? (
+                <Field
+                  label="Adjuntar PDF *"
+                  hint="Hasta 10 MB. El archivo quedará guardado en este navegador."
+                >
+                  <input
+                    name="attachment"
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    required
+                  />
+                </Field>
+              ) : (
+                <Field
+                  label="Enlace al documento *"
+                  hint="Dirección HTTP o HTTPS del documento alojado externamente."
+                >
+                  <input
+                    name="externalUrl"
+                    type="url"
+                    required
+                    maxLength={2000}
+                    placeholder="https://..."
+                  />
+                </Field>
+              )}
+              <label className="publication-confirm">
+                <input name="approved" type="checkbox" required /> Confirmo que
+                el trabajo ya fue aprobado fuera del repositorio.
+              </label>
+            </section>
+          </fieldset>
           <Alert text={error} />
           <div className="publication-actions">
             <button
               className="secondary"
               type="button"
+              disabled={busy}
               onClick={() => setCreating(false)}
             >
               Cancelar
@@ -399,7 +669,7 @@ export function PublicationsPage({
               disabled={busy || !!missing.length}
               type="submit"
             >
-              Guardar investigación
+              {busy ? "Guardando investigación…" : "Guardar investigación"}
             </button>
           </div>
         </form>
@@ -432,7 +702,13 @@ export function PublicationsPage({
             )}
           </div>
         </div>
-        <PublicationDetail publication={selected} />
+        <PublicationDetail
+          publication={selected}
+          state={state}
+          user={user}
+          commit={commit}
+          assertActive={assertActive}
+        />
         {user.role === "DIGITADOR" && (
           <p>El registro está disponible en Reportes para el administrador.</p>
         )}
@@ -519,11 +795,13 @@ export function PublicationReportsPage({
   user,
   initialId,
   assertActive,
+  commit,
 }: {
   state: State;
   user: User;
   initialId: string;
   assertActive: () => void;
+  commit: (state: State) => void;
 }) {
   const [filters, setFilters] = useState<ReportFilters>({
     ...emptyReportFilters,
@@ -702,7 +980,14 @@ export function PublicationReportsPage({
         </div>
       </div>
       {records.map((entry) => (
-        <PublicationDetail key={entry.id} publication={entry} />
+        <PublicationDetail
+          key={entry.id}
+          publication={entry}
+          state={state}
+          user={user}
+          commit={commit}
+          assertActive={assertActive}
+        />
       ))}
       {!records.length && (
         <div className="publication-empty">

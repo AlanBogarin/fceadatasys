@@ -11,9 +11,9 @@ Documentación: [fichas y reglas](docs/usuarios-seguridad/Casos-de-uso-y-reglas.
 
 El código se organiza en `UserPages.tsx`, `AuthPage.tsx`, `userService.ts`, `model.ts`, `relations.ts`, `security.ts` y `useSession.ts`. Los servicios devuelven `{ exito, mensaje, datos }`; los errores se muestran sin informar éxito si la persistencia falla.
 
-El control estricto de integridad en PostgreSQL y los permisos de servidor siguen pendientes de la implementación del backend. Esta entrega cubre las reglas en la demostración local. La ampliación del 13/10/2026 agrega el registro de investigaciones con enlace externo y su reporte PDF/Excel. Ver docs/TRANSACCION-Y-REPORTE.md para el recorrido de presentación.
+El control estricto de integridad en PostgreSQL y los permisos de servidor siguen pendientes de la implementación del backend. Esta entrega cubre las reglas en la demostración local. La ampliación del 13/10/2026 agrega el registro de investigaciones con enlace externo o PDF adjunto y su reporte PDF/Excel. Ver docs/TRANSACCION-Y-REPORTE.md para el recorrido de presentación.
 
-Interfaz React y TypeScript inspirada en las referencias de Stitch. Alcance solicitado: login, recuperación, menú completo según rol, mantenimiento de usuarios, perfil personal, cambio de contraseña y cierre de sesión. Incluye mantenimiento local de autores, tutores, carreras, facultades, sedes/filiales, tipos de publicación y niveles académicos. Se agrega el registro de publicaciones externas y su reporte; no se implementa backend ni otros procesos de publicaciones.
+Interfaz React y TypeScript inspirada en las referencias de Stitch. Alcance solicitado: login, recuperación, menú completo según rol, mantenimiento de usuarios, perfil personal, cambio de contraseña y cierre de sesión. Incluye mantenimiento local de autores, tutores, carreras, facultades, sedes/filiales, tipos de publicación y niveles académicos. Se agrega el registro de publicaciones con enlace o adjunto y su reporte; no se implementa backend ni otros procesos de publicaciones.
 
 ## Abrir
 
@@ -75,9 +75,9 @@ La fase funcional backend del plan maestro sigue pendiente. Esta entrega cubre e
 - Sedes/filiales: nombre obligatorio; dirección y descripción opcionales.
 - Tipos de publicación y niveles académicos: nombre obligatorio y descripción opcional.
 
-Cada pantalla permite crear, consultar detalle, editar, buscar, filtrar por estado, paginar, inactivar y reactivar. No se cargan personas ni catálogos inventados. Los registros se conservan en el mismo almacenamiento local que las cuentas. Al abrir una copia actualizada en el mismo navegador y origen, la migración agrega los catálogos vacíos sin borrar usuarios ni contraseñas. Una sesión antigua sin plazo de inactividad requiere reautenticación. Cambiar puerto u host crea un almacenamiento independiente del navegador.
+Cada pantalla permite crear, consultar detalle, editar, buscar, filtrar por estado, paginar, inactivar y reactivar. La versión de demostración incorpora muestras ficticias identificadas, con 14 autores, 12 tutores, los siete catálogos y 8 investigaciones. En instalaciones existentes se agregan desde Inicio como Administrador; no se reemplazan datos propios. Los registros se conservan en el mismo almacenamiento local que las cuentas. Al abrir una copia actualizada en el mismo navegador y origen, la migración agrega los catálogos vacíos sin borrar usuarios ni contraseñas. Una sesión antigua sin plazo de inactividad requiere reautenticación. Cambiar puerto u host crea un almacenamiento independiente del navegador.
 
-Nombres únicos por catálogo, normalizados por mayúsculas, acentos, puntuación y espacios. CI, correo, ORCID, código o sigla también se comparan cuando se informan. La regla de nombre único sigue el contrato de catálogos; antes de integrar personas reales deberá acordarse el tratamiento de homónimos. ORCID se valida por formato, sin consulta al registro oficial. No hay eliminación física. Editar un registro inactivo no lo reactiva.
+Nombres únicos por catálogo, normalizados por mayúsculas, acentos, puntuación y espacios. CI, correo, ORCID, código o sigla también se comparan cuando se informan. La regla de nombre único sigue el contrato de catálogos; antes de integrar personas reales deberá acordarse el tratamiento de homónimos. ORCID se valida por formato, sin consulta al registro oficial. Administrador puede eliminar registros sin vínculos, previa confirmación. Los catálogos relacionados con investigaciones no pueden eliminarse ni inactivarse. Digitador no puede eliminar. Editar un registro inactivo no lo reactiva.
 
 Administrador: mantiene los siete catálogos. Digitador: mantiene autores y tutores. Público: sin acceso a estos mantenimientos. Roles y permisos muestra la matriz fija de los tres roles, sin cambiar sus definiciones. La asignación de roles continúa en Usuarios.
 
@@ -91,9 +91,31 @@ Administrador: mantiene los siete catálogos. Digitador: mantiene autores y tuto
 
 ### Exportaciones acordes a los requisitos
 
-Los requisitos del proyecto ubican PDF y Excel en Reportes (Administrador) y la exportación de registros en Auditoría (Administrador). No se agregan exportaciones a cada mantenimiento. En esta entrega Reportes y Auditoría siguen pendientes; no hay botones de descarga simulados. Si luego se solicita exportar un catálogo, se deberá definir su finalidad, columnas y permisos, aplicar los filtros activos y evitar generar archivos vacíos.
+Los requisitos del proyecto ubican PDF y Excel en Reportes (Administrador) y la exportación de registros en Auditoría (Administrador). No se agregan exportaciones a cada mantenimiento. Reportes de investigaciones permite descargar PDF y Excel de las transacciones guardadas; la consulta y exportación de Auditoría de servidor siguen pendientes. Si luego se solicita exportar un catálogo, se deberá definir su finalidad, columnas y permisos, aplicar los filtros activos y evitar generar archivos vacíos.
 
 ### Integración posterior
 
 Estos registros son exclusivamente locales. El backend deberá establecer el contrato de cada entidad, replicar permisos y unicidad, auditar cambios y controlar referencias antes de inactivar registros vinculados a publicaciones activas. No existen todavía publicaciones ni relaciones N:M en esta demostración. Las pantallas de publicaciones, parámetros generales, reportes y auditoría siguen pendientes. La matriz de roles describe también permisos de módulos futuros y los identifica como pendientes.
 
+
+## Buscadores, adjuntos y eliminación (14/10/2026)
+
+- Autores y tutores: búsqueda por nombre, CI, correo u otros campos; hasta 10 coincidencias por página. Las personas elegidas permanecen visibles y conservan el orden al buscar o paginar. Se retiran con la X de su etiqueta.
+- Documento: elegir **Enlace externo** o **Archivo PDF adjunto**. Se exige una modalidad, no ambas. PDF hasta 10 MB, firma y final de archivo comprobados, nombre saneado y huella SHA-256 para rechazar adjuntos duplicados. Estas verificaciones no equivalen a un análisis antivirus ni a un validador completo de PDF.
+- Los PDF se conservan en IndexedDB (`fcea-datasys.attachments`), mientras los metadatos siguen en localStorage. La descarga de adjuntos exige Administrador o Digitador activo y registra una entrada en la bitácora local. El reporte identifica el nombre del adjunto sin incrustar sus páginas.
+- Si falla el guardado del PDF, no se confirma la investigación. Si se rechaza la confirmación de metadatos, se intenta retirar el binario nuevo. Son dos almacenes locales: ante un cierre abrupto puede quedar un binario huérfano, sin registro visible. No se simula una transacción de servidor.
+- Usar el mismo navegador, host y puerto para recuperar los registros y archivos. El ZIP no contiene los datos ingresados. Para reiniciar por completo la demostración, borrar además la base IndexedDB indicada. El almacenamiento compartido, las garantías transaccionales y el análisis antimalware requieren backend.
+- Eliminar: botón de papelera en los siete catálogos para Administrador. Se solicita confirmación y se rechaza si hay investigaciones vinculadas; las validaciones no dependen solamente de ocultar el botón.
+- La pestaña del navegador utiliza el escudo FCEA como ícono.
+
+El manual de usuario anterior describe la versión previa; para estos cambios consultar esta sección y `docs/TRANSACCION-Y-REPORTE.md`.
+
+## Datos listos para la demostración
+
+En una primera apertura se cargan automáticamente **42 registros de catálogos y 8 investigaciones**, con **8 PDF ficticios** incluidos en `public/demo/`. Las tres cuentas iniciales y sus contraseñas se conservan.
+
+Si ya tenés datos en el navegador, ingresá como Administrador y usá **Inicio → Cargar datos de prueba**. Es una carga adicional, no un reinicio: no reemplaza tus registros y no duplica las muestras al repetirla. Incluye personas sin vínculos y personas vinculadas para mostrar las dos respuestas de Eliminar, además de autores y tutores inactivos.
+
+Guía de exposición: [Datos de demostración](docs/DATOS-DE-DEMOSTRACION.md). Las fechas de muestra abarcan los últimos 40 días respecto de la carga inicial; los reportes usan esos mismos registros. Los PDF se abren desde los enlaces del detalle y pueden usarse para ensayar un nuevo adjunto.
+
+Verificación actual: **37 pruebas**, incluyendo permisos, conservación de datos anteriores, carga inicial e idempotencia de la muestra.

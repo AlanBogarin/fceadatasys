@@ -1,8 +1,9 @@
 import { migrateCatalogs } from "./catalogs";
 import { seed, type State } from "./model";
+import { buildDemoData } from "./demoData";
 const KEY = "fcea-datasys.frontend.v1";
 export const SESSION_KEY = "fcea-datasys.session";
-export async function load(): Promise<State> {
+export async function load(demoBaseUrl = window.location.href): Promise<State> {
   const raw = localStorage.getItem(KEY);
   if (raw) {
     const state = JSON.parse(raw) as State;
@@ -35,7 +36,11 @@ export async function load(): Promise<State> {
     if (JSON.stringify(upgraded) !== raw) save(upgraded);
     return upgraded;
   }
-  const state = await seed();
+  const initial = await seed();
+  const administrator = initial.users.find(
+    (account) => account.role === "ADMINISTRADOR",
+  )!;
+  const { state } = buildDemoData(initial, administrator.id, demoBaseUrl);
   save(state);
   return state;
 }

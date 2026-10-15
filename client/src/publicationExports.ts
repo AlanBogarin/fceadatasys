@@ -30,7 +30,10 @@ function reportFields(publication: Publication): [string, string][] {
     ["Palabras clave", publication.keywords],
     ["Resumen", publication.summary],
     ["Abstract", publication.abstract],
-    ["Enlace al documento", publication.externalUrl],
+    [
+      "Documento (enlace o archivo PDF)",
+      publication.attachment?.name ?? publication.externalUrl,
+    ],
   ];
 }
 
@@ -83,7 +86,7 @@ export async function buildPublicationReport(
       ["Cantidad de registros", publications.length],
       [
         "Alcance",
-        "Publicaciones con enlace externo. Datos guardados en este navegador.",
+        "Publicaciones con enlace externo o PDF adjunto. Datos guardados en este navegador; el reporte identifica el adjunto, sin incluir su contenido.",
       ],
     ]);
     cover.getRow(3).height = 60;

@@ -1,10 +1,15 @@
 import type { State, User } from "./model";
 import { catalogConfig, normalizeCatalog, type CatalogKey } from "./catalogs";
 import type { Resultado } from "./userService";
+import {
+  validateAttachmentMetadata,
+  type PublicationAttachment,
+} from "./attachments";
 
 export type Reference = { id: string; name: string };
 export type Publication = {
   id: string;
+  demoKey?: string;
   code: string;
   title: string;
   authors: Reference[];
@@ -17,6 +22,7 @@ export type Publication = {
   abstract: string;
   keywords: string;
   externalUrl: string;
+  attachment?: PublicationAttachment;
   year: number;
   createdAt: string;
   createdBy: Reference;
@@ -33,6 +39,7 @@ export type PublicationInput = {
   abstract: string;
   keywords: string;
   externalUrl: string;
+  attachment?: PublicationAttachment;
   year: number;
   approved: boolean;
 };
@@ -41,7 +48,7 @@ export type PublicationAudit = {
   publicationId: string;
   actorId: string;
   actorRole: User["role"];
-  operation: "REGISTRAR_INVESTIGACION";
+  operation: "REGISTRAR_INVESTIGACION" | "DESCARGAR_ADJUNTO";
   createdAt: string;
 };
 export type ReportFilters = {
@@ -153,27 +160,49 @@ export function registerPublication(
         "Ingresá un año de publicación válido, entre 1900 y el año actual.",
       );
     }
-    let externalUrl: URL;
-    try {
-      externalUrl = new URL(input.externalUrl.trim());
-    } catch {
-      throw Error(
-        "Ingresá el enlace completo al documento, comenzando con https:// o http://.",
-      );
-    }
-    if (
-      !["https:", "http:"].includes(externalUrl.protocol) ||
-      externalUrl.username ||
-      externalUrl.password ||
-      externalUrl.href.length > 2000
-    ) {
-      throw Error(
-        "El enlace debe usar HTTP o HTTPS, sin credenciales y con hasta 2000 caracteres.",
-      );
+    let externalUrl = "";
+    if (input.attachment) {
+      validateAttachmentMetadata(input.attachment);
+      if (input.externalUrl.trim()) {
+        throw Error("Elegí una modalidad: archivo PDF o enlace externo.");
+      }
+    } else {
+      if (!input.externalUrl.trim())
+        throw Error("Adjuntá un PDF o ingresá un enlace al documento.");
+      let documentUrl: URL;
+      try {
+        documentUrl = new URL(input.externalUrl.trim());
+      } catch {
+        throw Error(
+          "Ingresá el enlace completo al documento, comenzando con https:// o http://.",
+        );
+      }
+      if (
+        !["https:", "http:"].includes(documentUrl.protocol) ||
+        documentUrl.username ||
+        documentUrl.password ||
+        documentUrl.href.length > 2000
+      ) {
+        throw Error(
+          "El enlace debe usar HTTP o HTTPS, sin credenciales y con hasta 2000 caracteres.",
+        );
+      }
+      externalUrl = documentUrl.href;
     }
 
     // Paso 2: comprobar duplicados y todas las relaciones antes de modificar el estado.
     const existing = state.publications ?? [];
+    if (
+      input.attachment &&
+      existing.some(
+        (publication) =>
+          publication.attachment?.sha256 === input.attachment!.sha256,
+      )
+    ) {
+      throw Error(
+        "Este archivo PDF ya está adjuntado a otra investigación. No se guardaron cambios.",
+      );
+    }
     for (const publication of existing) {
       for (const field of ["title", "summary", "abstract"] as const) {
         const candidate = { title, summary, abstract }[field];
@@ -204,7 +233,8 @@ export function registerPublication(
       summary,
       abstract,
       keywords,
-      externalUrl: externalUrl.href,
+      externalUrl,
+      attachment: input.attachment ? { ...input.attachment } : undefined,
       year: input.year,
       createdAt: new Date().toISOString(),
       createdBy: { id: actor.id, name: actor.name },

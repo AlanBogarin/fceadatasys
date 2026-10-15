@@ -1,0 +1,38 @@
+.demo-data-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: #fff;
+  border: 1px solid #dfe8e7;
+  border-left: 4px solid #590d31;
+  border-radius: 12px;
+  padding: 22px 24px;
+  margin: 0 0 26px;
+}
+.demo-data-panel > div:first-child {
+  flex: 1;
+  min-width: min(100%, 250px);
+}
+.demo-data-panel h2 {
+  margin: 5px 0 9px;
+}
+.demo-data-panel p {
+  color: #526970;
+}
+.demo-data-panel small {
+  display: block;
+  color: #6b7e84;
+  line-height: 1.6;
+  margin-top: 8px;
+}
+.demo-data-panel .demo-data-error {
+  flex-basis: 100%;
+}
+.demo-data-error:empty {
+  display: none;
+}
+.demo-data-error .alert {
+  margin-bottom: 0;
+}

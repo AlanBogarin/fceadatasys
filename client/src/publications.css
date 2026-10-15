@@ -7,6 +7,55 @@
   padding: 28px;
   margin-bottom: 24px;
 }
+.publication-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.people-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.person-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid #dac4ce;
+  background: #f8eff3;
+  border-radius: 20px;
+  color: #590d31;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.person-chip b {
+  flex-shrink: 0;
+}
+.people-options small {
+  display: block;
+  color: #61757b;
+  margin-top: 4px;
+}
+.people-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+.attachment-download .secondary {
+  margin-bottom: 10px;
+}
+.catalog-delete {
+  color: #9b243e;
+}
 .publication-form section + section {
   border-top: 1px solid #e3e9e8;
   margin-top: 28px;

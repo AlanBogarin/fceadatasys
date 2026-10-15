@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Check, ChevronLeft, ChevronRight, Eye, FolderOpen, ListFilter, Pencil, Plus, Search, Settings2, ShieldCheck, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Eye, FolderOpen, ListFilter, Pencil, Plus, Search, Settings2, ShieldCheck, Trash2, X } from 'lucide-react';
 import type { State, User } from './model';
-import { catalogConfig, filterCatalog, saveCatalogRecord, setCatalogActive, type CatalogKey, type CatalogRecord } from './catalogs';
+import { catalogConfig, deleteCatalogRecord, filterCatalog, saveCatalogRecord, setCatalogActive, type CatalogKey, type CatalogRecord } from './catalogs';
 
 function CatalogDialog({ title, close, children }: { title: string; close: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -28,6 +28,7 @@ export default function CatalogPage({ catalog, state, user, commit, notify }: { 
   const [editing, setEditing] = useState<CatalogRecord | 'new' | null>(null);
   const [detail, setDetail] = useState<CatalogRecord | null>(null);
   const [toggle, setToggle] = useState<CatalogRecord | null>(null);
+  const [deleting, setDeleting] = useState<CatalogRecord | null>(null);
   const [error, setError] = useState('');
   const filtered = filterCatalog(records, query, status);
   const pages = Math.max(1, Math.ceil(filtered.length / 8));
@@ -45,12 +46,34 @@ export default function CatalogPage({ catalog, state, user, commit, notify }: { 
       <div className="panel-heading"><div><h2>Directorio de {config.title.toLocaleLowerCase('es')}</h2><p>Consultá, agregá y actualizá los registros.</p></div><span className="badge blue">{records.length} registros</span></div>
       <div className="filter-bar"><label className="search-field"><Search size={18}/><input aria-label={`Buscar en ${config.title}`} placeholder={person ? 'Buscar por nombre, CI o correo…' : 'Buscar por nombre o datos del registro…'} value={query} onChange={e => { setQuery(e.target.value); setPage(1); }}/></label><select aria-label="Filtrar por estado" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="">Todos los estados</option><option value="active">Activos</option><option value="inactive">Inactivos</option></select><button className="icon-btn filter-clear" aria-label="Limpiar filtros" onClick={resetFilters}><ListFilter size={19}/></button></div>
       <div className="table-scroll"><table className="catalog-table"><thead><tr><th>{person ? 'Nombre completo' : 'Nombre'}</th>{config.fields.map(f => <th key={f.key}>{f.label}</th>)}<th>Estado</th><th className="actions-th">Acciones</th></tr></thead><tbody>
-        {visible.map(record => <tr key={record.id}><td><strong className="catalog-name">{record.name}</strong></td>{config.fields.map(f => <td key={f.key}><span className="catalog-value">{record.fields[f.key] || '—'}</span></td>)}<td><span className={`status ${record.active ? 'active' : ''}`}><i/>{record.active ? 'Activo' : 'Inactivo'}</span></td><td><div className="row-actions"><button className="icon-btn" title="Ver detalle" aria-label={`Ver ${record.name}`} onClick={() => setDetail(record)}><Eye size={17}/></button><button className="icon-btn" title="Editar" aria-label={`Editar ${record.name}`} onClick={() => setEditing(record)}><Pencil size={16}/></button><button className="icon-btn" title={record.active ? 'Inactivar' : 'Activar'} aria-label={`${record.active ? 'Inactivar' : 'Activar'} ${record.name}`} onClick={() => { setError(''); setToggle(record); }}><Settings2 size={17}/></button></div></td></tr>)}
+        {visible.map(record => <tr key={record.id}><td><strong className="catalog-name">{record.name}</strong></td>{config.fields.map(f => <td key={f.key}><span className="catalog-value">{record.fields[f.key] || '—'}</span></td>)}<td><span className={`status ${record.active ? 'active' : ''}`}><i/>{record.active ? 'Activo' : 'Inactivo'}</span></td><td><div className="row-actions"><button className="icon-btn" title="Ver detalle" aria-label={`Ver ${record.name}`} onClick={() => setDetail(record)}><Eye size={17}/></button><button className="icon-btn" title="Editar" aria-label={`Editar ${record.name}`} onClick={() => setEditing(record)}><Pencil size={16}/></button><button className="icon-btn" title={record.active ? 'Inactivar' : 'Activar'} aria-label={`${record.active ? 'Inactivar' : 'Activar'} ${record.name}`} onClick={() => { setError(''); setToggle(record); }}><Settings2 size={17}/></button>{user.role === 'ADMINISTRADOR' && <button type="button" className="icon-btn catalog-delete" title="Eliminar" aria-label={`Eliminar ${record.name}`} onClick={() => { setError(''); setDeleting(record); }}><Trash2 size={17}/></button>}</div></td></tr>)}
       </tbody></table></div>
       {!visible.length && <div className="no-results catalog-empty"><FolderOpen size={34}/><h3>{records.length ? 'No se encontraron coincidencias' : `Todavía no hay registros en ${config.title.toLocaleLowerCase('es')}`}</h3><p>{records.length ? 'Probá otra búsqueda o limpiá los filtros.' : 'Agregá el primer registro para comenzar a organizar este catálogo.'}</p><button className="secondary" onClick={records.length ? resetFilters : () => setEditing('new')}>{records.length ? 'Limpiar filtros' : config.createLabel}</button></div>}
       <div className="table-footer"><span>{filtered.length ? `Mostrando ${(current - 1) * 8 + 1}–${Math.min(current * 8, filtered.length)} de ${filtered.length} registros` : '0 registros'}</span><div className="pagination"><button className="icon-btn" aria-label="Página anterior" disabled={current === 1} onClick={() => setPage(current - 1)}><ChevronLeft size={18}/></button><span>{current} / {pages}</span><button className="icon-btn" aria-label="Página siguiente" disabled={current === pages} onClick={() => setPage(current + 1)}><ChevronRight size={18}/></button></div></div>
     </section>
     <div className="inline-note"><ShieldCheck size={18}/><p>La inactivación conserva la información y puede revertirse. Los nombres y los identificadores no deben repetirse dentro del catálogo.</p></div>
+    {deleting && <CatalogDialog title="Eliminar registro" close={() => setDeleting(null)}>
+      <div className="modal-body">
+        {error && <div className="alert" role="alert">{error}</div>}
+        <p>¿Querés eliminar definitivamente <strong>{deleting.name}</strong>?</p>
+        <p className="muted catalog-confirm-note">Esta acción no se puede deshacer. Solo se permite si el registro no está vinculado a investigaciones.</p>
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="secondary" onClick={() => setDeleting(null)}>Cancelar</button>
+        <button type="button" className="primary" onClick={() => {
+          try {
+            // Paso 1 y 2: el servicio exige Administrador y ausencia de referencias.
+            const updatedState = deleteCatalogRecord(state, user.id, catalog, deleting.id);
+            // Paso 3: confirmar el guardado antes de comunicar la eliminación.
+            commit(updatedState);
+            notify('Registro eliminado.');
+            setDeleting(null);
+          } catch (caught) {
+            setError(message(caught));
+          }
+        }}>Eliminar definitivamente</button>
+      </div>
+    </CatalogDialog>}
     {editing && <CatalogForm catalog={catalog} state={state} user={user} editing={editing} commit={commit} notify={notify} close={() => setEditing(null)}/>}
     {detail && <CatalogDialog title={`Detalle de ${config.singular}`} close={() => setDetail(null)}><div className="catalog-detail-heading"><h3>{detail.name}</h3><span className={`badge ${detail.active ? 'blue' : 'neutral'}`}>{detail.active ? 'Activo' : 'Inactivo'}</span></div><dl className="details">{[...config.fields.map(f => [f.label, detail.fields[f.key] || 'Sin registrar']), ['Fecha de registro', new Date(detail.createdAt).toLocaleString('es-PY')], ['Última modificación', new Date(detail.updatedAt).toLocaleString('es-PY')]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><div className="modal-footer"><button className="secondary" onClick={() => setDetail(null)}>Cerrar</button></div></CatalogDialog>}
     {toggle && <CatalogDialog title={toggle.active ? 'Inactivar registro' : 'Activar registro'} close={() => setToggle(null)}><div className="modal-body">{error && <div className="alert" role="alert">{error}</div>}<p>¿Querés {toggle.active ? 'inactivar' : 'activar'} <strong>{toggle.name}</strong>?</p><p className="muted catalog-confirm-note">{toggle.active ? 'Sus datos seguirán disponibles para consulta y podrás volver a activarlo.' : 'El registro volverá a estar activo en este catálogo.'}</p></div><div className="modal-footer"><button className="secondary" onClick={() => setToggle(null)}>Cancelar</button><button className="primary" onClick={() => { try { commit(setCatalogActive(state, user.id, catalog, toggle.id, !toggle.active)); notify(toggle.active ? 'Registro inactivado.' : 'Registro activado.'); setToggle(null); } catch (e) { setError(message(e)); } }}>Confirmar</button></div></CatalogDialog>}

@@ -4,7 +4,8 @@ FCEA-DATASYS - ENTREGA: TRANSACCION Y REPORTE
 2. Ejecutar Iniciar-Frontend.cmd. Tener Node.js instalado.
 3. Esperar la instalación inicial y abrir la dirección junto a Local.
 4. Ingresar con admin / Fcea2026! (contraseña inicial de demostración).
-5. Cargar autores, tutores, carreras, niveles, tipos y sedes si están vacíos.
+5. La primera apertura ya incluye datos de muestra. Si hay datos anteriores,
+   ir a Inicio > Cargar datos de prueba con la cuenta Administrador.
 6. Ir a Publicaciones > Registrar investigación y guardar el trabajo.
 7. En el detalle guardado, pulsar Reporte de esta investigación.
 8. Descargar PDF o Excel. Los reportes se habilitan para Administrador.
@@ -15,7 +16,7 @@ carrera y nivel. Sin resultados, las descargas están deshabilitadas.
 Guía para presentar y defender: docs/TRANSACCION-Y-REPORTE.md
 
 Este avance conserva usuarios, catálogos y seguridad. Agrega UNA transacción:
-registro de una investigación aprobada con enlace externo al documento,
+registro de una investigación aprobada con enlace externo o archivo PDF adjunto (hasta 10 MB),
 y el reporte generado a partir de los datos guardados de esa transacción.
 
 Alcance: frontend local, SIN backend. Los datos quedan en el navegador de
@@ -25,3 +26,16 @@ para volver a encontrar los datos. No borrar el almacenamiento.
 No hace falta instalar Visual Studio Code para abrirlo. Node.js y las
 dependencias del proyecto sí son necesarios; el iniciador las instala.
 Mantener abierta la ventana del iniciador mientras se utiliza el sistema.
+
+ACTUALIZACIÓN 14/10/2026
+Buscadores de autores/tutores con selección persistente y paginación.
+PDF o enlace: elegir una modalidad al registrar; no se requieren ambos.
+Los PDF se conservan en este navegador y se descargan desde el detalle.
+Administrador puede eliminar catálogos sin investigaciones vinculadas.
+El escudo FCEA aparece en la pestaña del navegador.
+
+DATOS DE PRUEBA
+14 autores, 12 tutores, siete catálogos y ocho investigaciones ficticias.
+Incluye ocho PDF de muestra y fechas variadas para demostrar reportes.
+La carga no reemplaza tus datos ni duplica las muestras ya agregadas.
+Recorrido sugerido: docs/DATOS-DE-DEMOSTRACION.md
