@@ -1,6 +1,6 @@
 # Contrato API de registro de publicaciones
 
-Este contrato describe el alta bibliográfica en `server/`; `client/` conserva su simulación independiente. Complementa [API.md](API.md). El listado, búsqueda y detalle incorporados después se documentan en [PUBLICATION-QUERIES.md](PUBLICATION-QUERIES.md). Edición/inactivación, reportes y transporte/antivirus de archivos continúan pendientes.
+Este contrato describe el alta bibliográfica en `server/`; `client/` conserva su simulación independiente. Complementa [API.md](API.md). El listado, búsqueda y detalle se documentan en [PUBLICATION-QUERIES.md](PUBLICATION-QUERIES.md), y la carga/descarga/ClamAV en [ATTACHMENTS.md](ATTACHMENTS.md). Edición/inactivación y reportes continúan pendientes.
 
 ## Registrar un trabajo aprobado
 
@@ -41,7 +41,7 @@ LOCAL exige URL ausente/vacía. `requiresLibraryCopy` vale true por defecto: si 
 
 El registro acepta únicamente un UUID de adjunto existente en la base, con estado CLEAN, verificación de contenido y fecha de análisis, PDF válido en sus metadatos, nombre seguro, hash SHA-256 y tamaño de 1 byte a 10 MiB. Digitador solo puede vincular sus adjuntos; Admin puede vincular cualquier adjunto verificado. Se bloquea el registro del archivo y se rechazan PENDING/REJECTED, archivos ajenos y reutilización. La FK compuesta `(attachmentId,attachmentHash)` asegura que el hash de publicación corresponda al registro del archivo.
 
-**Dependencia de archivos:** el módulo de carga/almacenamiento/validación binaria/antimalware sigue pendiente. No existe un endpoint que cree adjuntos ni que declare CLEAN. Esta entrega define el registro persistido que el futuro procesador confiable debe provisionar y consume solo sus resultados. No aceptar `attachment:{name,size,mime,sha256,...}`, hashes, rutas o estados construidos por el navegador. Las pruebas preparan fixtures de archivo verificado; no prueban antivirus ni existencia/descarga de un binario. Hasta implementar ese módulo, el uso HTTP autónomo cubre publicaciones externas y locales sin obligación de copia.
+**Carga previa del archivo:** `POST /api/v1/adjuntos` recibe el PDF, verifica su contenido básico y lo analiza con ClamAV antes de confirmar CLEAN y auditoría. El consumidor utiliza el ID devuelto como attachmentId; la descarga auditada es `GET /api/v1/publicaciones/:id/adjunto`. El registro sigue sin aceptar `attachment:{name,size,mime,sha256,...}`, hashes, rutas o estados construidos por el navegador. Las pruebas históricas de registro usan fixtures; la nueva suite de adjuntos valida almacenamiento/descarga y el motor real por separado. Contrato y operación en ATTACHMENTS.md.
 
 ## DTO y concurrencia
 
@@ -104,6 +104,6 @@ Eventos `REGISTRAR_INVESTIGACION` (recurso publicaciones, UUID de recurso/public
 
 ## Instalación y límites
 
-Aplicar `20261016010000_publication_registration` con propietario y repetir `scripts/runtime-grants.sql`. Runtime tiene SELECT/INSERT en publicaciones/N:M, USAGE de la secuencia, SELECT/UPDATE de parámetros y lectura/lock de adjuntos; no INSERT de archivos, DELETE de publicaciones, TRUNCATE ni modificación de auditoría. Los modelos y grants preparan el registro; no constituyen un módulo operativo de archivos.
+Aplicar `20261016010000_publication_registration` con propietario y repetir `scripts/runtime-grants.sql`. Runtime tiene SELECT/INSERT en publicaciones/N:M, USAGE de la secuencia y SELECT/UPDATE de parámetros. El módulo posterior de adjuntos añade INSERT en archivos, UPDATE de estado/analizado_en y UPDATE activo en publicaciones para locks de descarga; no DELETE de publicaciones/adjuntos, TRUNCATE ni modificación de auditoría. No hay cambio de esquema para incorporar transporte; los grants vigentes y su reversión se documentan en ATTACHMENTS.md.
 
 `prisma/rollback-publications.sql` revierte esta ampliación únicamente si no hay publicaciones/adjuntos ni parámetros modificados; preserva usuarios, catálogos y auditoría. Mantenimiento y backup verificado requeridos. No modifica el historial Prisma; restaurar un backup coherente o aplicar reparación hacia adelante tras un down manual. Relaciones N:M y códigos quedan validados en pruebas aisladas; no se modificó una base institucional ni se conectó el frontend.

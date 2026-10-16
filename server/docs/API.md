@@ -68,6 +68,7 @@ SMTP se comprueba al arrancar. Sin SMTP o ante fallo continúa la API en modo de
 | GET `/usuarios/:id` | Admin | 200 User y ETag fuerte, o 404 |
 | POST `/usuarios` | Admin | Todos los campos editables + `password`; 201 User, Location y ETag |
 | PATCH `/usuarios/:id` | Admin | Uno o más campos editables e If-Match obligatorio; 200 User y ETag actual |
+| DELETE `/usuarios/:id` | Admin | If-Match obligatorio, sin campos de cuerpo/query; 204 si la cuenta no tiene vínculos |
 | GET `/me` | Autenticado | 200 User de sesión |
 | PATCH `/me` | Autenticado | Uno o más de `name,email,username`; 200 User |
 
@@ -96,7 +97,19 @@ Perfil usa exclusivamente la identidad autenticada: `GET /me` no acepta otro usu
 
 Cambiar el correo efectivo normalizado, mediante perfil o edición administrativa, consume las recuperaciones pendientes en la misma transacción que los datos y su auditoría. Cambios equivalentes de mayúsculas/Unicode/espacios no invalidan enlaces innecesariamente. La edición de correo o username conserva contraseña, sesiones y plazos; no requiere contraseña actual ni verifica entrega al correo nuevo. Un mensaje ya encolado al correo anterior puede llegar, pero su enlace consumido no permite restablecer la contraseña. Si falla la auditoría, también se revierten el correo y el consumo de recuperaciones.
 
-No existe DELETE de usuarios. La inactivación es `PATCH {active:false}`, conserva cuenta y auditoría. Tras incorporar publicaciones, RN02 impide inactivar a sus creadores con `409 USER_IN_USE`, conservando el historial bibliográfico; no habilita eliminación física de usuarios.
+La inactivación es `PATCH {active:false}`, conserva cuenta y auditoría. RN02 impide inactivar a sus creadores con `409 USER_IN_USE`, conservando el historial bibliográfico.
+
+### Eliminación física de cuentas sin vínculos
+
+`DELETE /usuarios/:id` implementa CU03 del frontend: solo Admin, cuenta distinta de la propia y conservación de al menos un Admin activo. Consultar primero `GET /usuarios/:id` y enviar literalmente su ETag como `If-Match`. Admite cuerpo ausente, null o `{}`; rechaza campos y query adicional, incluido cualquier indicador para forzar la baja. Éxito: 204 sin cuerpo. UUID inválido: 400; inexistente o segunda baja: 404. Falta de versión: 428; formato inválido: 400; precarga cambiada: 412. No reintentar automáticamente tras un conflicto de versión.
+
+Inspecciona todas las FKs entrantes reales de usuarios bajo bloqueo, incluyendo futuros dominios. Publicaciones (también inactivas), adjuntos (cualquier estado), sesiones (también vencidas/revocadas) y eventos de auditoría atribuidos a la cuenta impiden eliminarla con `409 USER_IN_USE`. No hay CASCADE ni borrado de historia. Los tokens de recuperación son la única excepción: se eliminan dentro de la misma transacción. Si no puede comprobar una dependencia, falla cerrado.
+
+Los eventos administrativos cuyo recurso es la cuenta destino, como su creación por otro Admin, se conservan íntegros por `resourceId` y DTO histórico; no bloquean por sí solos. `userId` de auditoría identifica al actor y sus referencias sí bloquean. Esto añade a la simulación las referencias de seguridad propias del servidor; no se suprimen ni reescriben logs para permitir la baja.
+
+ETag, protecciones, referencias, eliminación y evento `USUARIO_ELIMINADO` confirman en una transacción ReadCommitted con el mismo lock administrativo que PATCH, más FOR UPDATE sobre la cuenta destino. El lock administrativo serializa altas/cambios/bajas; el de fila impide nuevas FKs mientras se comprueban las referencias. ReadCommitted relee datos confirmados tras cada espera: dos bajas simultáneas producen 204 y 404. Revalida el actor tras esperar el destino y antes de mutar. Las FK RESTRICT conservan la defensa final; un conflicto FK se devuelve como `USER_IN_USE`. La auditoría registra actor/rol/sesión y DTO anterior seguro, sin credenciales ni tokens. Si falla, cuenta y recuperaciones se restauran por rollback con 503 `AUDIT_UNAVAILABLE`; el rechazo se audita por separado.
+
+Reutiliza `SELF_PRIVILEGE_CHANGE` para eliminar la cuenta propia y `LAST_ADMIN_REQUIRED` para el último Admin. CI/email/username quedan disponibles para una cuenta nueva con otro UUID; la historia mantiene el ID anterior. Antes de usar la ruta, repetir los grants documentados en DATABASE.md. No cambia datos del navegador ni activa conexión: el futuro adaptador debe consultar la versión y llamar DELETE.
 
 El cierre previo de mantenimiento de usuarios conserva su evidencia histórica de 156 aprobadas. La ampliación de perfil/contraseñas fue validada con build/tipos correctos y **198 pruebas aprobadas: 150 sin servicios y 48 PostgreSQL (31 seguridad, 10 usuarios y 7 perfil)**, cero fallos y cero omitidas. Evidencia y límites de cada fase en [TESTING.md](TESTING.md).
 
@@ -114,7 +127,7 @@ El cierre previo de mantenimiento de usuarios conserva su evidencia histórica d
 | --- | --- | --- |
 | 400 | VALIDATION_ERROR | Cuerpo/query/params o solicitud inválidos |
 | 400 | PUBLIC_NAME_READONLY | RN-01 |
-| 400 | SELF_PRIVILEGE_CHANGE | Cambio propio de rol/estado |
+| 400 | SELF_PRIVILEGE_CHANGE | Cambio propio de rol/estado o eliminación propia |
 | 400 | SELF_ADMIN_PASSWORD_CHANGE | Cambio administrativo contra sí mismo |
 | 400 | INVALID_CURRENT_PASSWORD | Contraseña personal actual incorrecta |
 | 400 | PASSWORD_UNCHANGED | La contraseña nueva coincide con la actual |
@@ -128,9 +141,10 @@ El cierre previo de mantenimiento de usuarios conserva su evidencia histórica d
 | 404 | NOT_FOUND | Recurso/ruta inexistente |
 | 409 | DUPLICATE_USER | CI/email/username duplicados |
 | 409 | LAST_ADMIN_REQUIRED | Se requiere un Administrador activo |
+| 409 | USER_IN_USE | Cuenta con referencias que impiden la baja solicitada |
 | 412 | USER_VERSION_CONFLICT | El usuario cambió desde la precarga identificada por If-Match |
 | 413 | VALIDATION_ERROR | Cuerpo demasiado grande |
-| 428 | PRECONDITION_REQUIRED | Falta If-Match al editar/activar/inactivar un usuario |
+| 428 | PRECONDITION_REQUIRED | Falta If-Match al editar/activar/inactivar/eliminar un usuario |
 | 429 | RATE_LIMITED | Límite general excedido |
 | 500 | INTERNAL_ERROR | Fallo interno sin exponer detalles sensibles |
 | 503 | AUDIT_UNAVAILABLE | Auditoría falló; mutación cancelada |
@@ -147,4 +161,6 @@ Operaciones de auditoría de este hito: `USER_BOOTSTRAP`, `LOGIN`, `LOGOUT`, `RE
 
 Los siete catálogos tienen rutas de listado/detalle/alta/edición/estado/eliminación en `/api/v1/catalogos/:catalog`, con campos, permisos, auditoría y errores `DUPLICATE_CATALOG`/`CATALOG_IN_USE` documentados en el [contrato de catálogos](CATALOGS.md), parte de este contrato API.
 
-El [contrato de registro de publicaciones](PUBLICATIONS.md), también parte de esta API, documenta `POST /api/v1/publicaciones`, relaciones N:M, DTO, límite configurable de resumen (`GET/PATCH /api/v1/parametros/publicaciones`), modalidades y errores adicionales. El [contrato de listado/consulta](PUBLICATION-QUERIES.md) incorpora `GET /api/v1/publicaciones` y `GET /api/v1/publicaciones/:id`, con paginación, filtros, búsqueda FTS y DTO seguro según rol. POST emite Location del detalle. El registro puede vincular archivos ya verificados; carga/almacenamiento/antivirus, edición/inactivación, reportes, parámetros de formatos y consulta/exportación de auditoría siguen pendientes.
+El [contrato de registro de publicaciones](PUBLICATIONS.md), también parte de esta API, documenta `POST /api/v1/publicaciones`, relaciones N:M, DTO, límite configurable de resumen (`GET/PATCH /api/v1/parametros/publicaciones`), modalidades y errores adicionales. El [contrato de listado/consulta](PUBLICATION-QUERIES.md) incorpora `GET /api/v1/publicaciones` y `GET /api/v1/publicaciones/:id`, con paginación, filtros, búsqueda FTS y DTO seguro según rol. POST emite Location del detalle.
+
+El [contrato de adjuntos](ATTACHMENTS.md), parte de esta API, incorpora `POST /api/v1/adjuntos` multipart, `GET /api/v1/adjuntos/:id` de metadatos y `GET /api/v1/publicaciones/:id/adjunto` para descarga auditada. Admin/Digitador exclusivamente; PDF hasta 10 MiB analizado por ClamAV instalado, almacenamiento privado, hash/estado confiables y fallos cerrados. Documenta códigos y eventos nuevos, configuración, concurrencia, compensación de archivos y limitaciones. CORS expone Content-Disposition para la integración futura. El frontend sigue independiente. Edición/inactivación de publicaciones, reportes, parámetros de formatos y consulta/exportación de auditoría permanecen pendientes.

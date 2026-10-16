@@ -11,13 +11,16 @@ GRANT USAGE ON TYPE public.rol_usuario, public.estado_auditoria, public.tipo_cat
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM :"app_role";
 GRANT SELECT, INSERT, UPDATE ON public.usuarios, public.sesiones,
   public.tokens_refresh, public.tokens_recuperacion, public.limites_recuperacion TO :"app_role";
+GRANT DELETE ON public.usuarios, public.tokens_recuperacion TO :"app_role";
 GRANT SELECT, INSERT ON public.auditoria TO :"app_role";
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.autores, public.tutores, public.catalogos TO :"app_role";
 GRANT SELECT, INSERT ON public.publicaciones, public.publicacion_autores, public.publicacion_tutores TO :"app_role";
 GRANT USAGE ON SEQUENCE public.publicaciones_numero_seq TO :"app_role";
 GRANT SELECT, UPDATE ON public.parametros_publicaciones TO :"app_role";
--- UPDATE on one column is needed for SELECT FOR UPDATE; there is no HTTP upload
--- or scan-state mutation. Only the future trusted scanner may provision files.
+-- Only server-side ClamAV verdicts may provision files or quarantine records.
+-- Narrow UPDATE grants also permit row locks during registration/download.
 GRANT SELECT ON public.adjuntos TO :"app_role";
-GRANT UPDATE (estado) ON public.adjuntos TO :"app_role";
+GRANT INSERT ON public.adjuntos TO :"app_role";
+GRANT UPDATE (estado, analizado_en) ON public.adjuntos TO :"app_role";
+GRANT UPDATE (activo) ON public.publicaciones TO :"app_role";
 COMMIT;

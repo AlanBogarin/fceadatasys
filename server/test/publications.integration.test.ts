@@ -225,7 +225,7 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
       const file = await attachment();
       await fails('UPDATE publicaciones SET adjunto_id = $1, adjunto_hash = $2 WHERE id = $3', [file.id, 'a'.repeat(64), local.json().id], '23503');
       const privileges = await prisma.$queryRaw<{ publicationDelete: boolean; attachmentInsert: boolean; auditUpdate: boolean }[]>`SELECT has_table_privilege(current_user, 'publicaciones', 'DELETE') AS "publicationDelete", has_table_privilege(current_user, 'adjuntos', 'INSERT') AS "attachmentInsert", has_table_privilege(current_user, 'auditoria', 'UPDATE') AS "auditUpdate"`;
-      assert.deepEqual(privileges[0], { publicationDelete: false, attachmentInsert: false, auditUpdate: false });
+      assert.deepEqual(privileges[0], { publicationDelete: false, attachmentInsert: true, auditUpdate: false });
     });
     await t.test('códigos únicos superan cinco dígitos y no dependen del conteo', async () => {
       await owner.query("SELECT setval('publicaciones_numero_seq', (SELECT COALESCE(max(numero), 0) + 100000 FROM publicaciones), false)");

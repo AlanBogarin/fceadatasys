@@ -40,7 +40,7 @@ async function main(): Promise<void> {
       has_table_privilege(current_user, 'auditoria', 'INSERT') AS audit_insert
       FROM pg_roles r WHERE r.rolname = current_user`)).rows[0];
     assert.deepEqual(permissions, { rolsuper: false, rolcreatedb: false, rolcreaterole: false,
-      audit_update: false, audit_delete: false, audit_truncate: false, user_delete: false, audit_insert: true });
+      audit_update: false, audit_delete: false, audit_truncate: false, user_delete: true, audit_insert: true });
     success('Permisos runtime mínimos y auditoría solo SELECT/INSERT');
 
     const suffix = randomUUID().replaceAll('-', '').slice(0, 16);

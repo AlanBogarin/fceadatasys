@@ -7,6 +7,7 @@ import { AppError } from '../errors.js';
 import { audit, authenticate, hashPassword, requireAdmin, revokeUserSessions } from '../security/index.js';
 import { userDto } from './dto.js';
 import { requireUserIfMatch, userEtag } from './concurrency.js';
+import { assertUserUnreferenced, enforceUserDeletionRules } from './deletion.js';
 import { createUserSchema, idParamsSchema, normalizeIdentity, profileSchema, updateUserSchema, userDtoSchema, userQuerySchema, type UserInput } from './schemas.js';
 
 /** Locks the same account/session used by auth, then rechecks after entering mutation transaction. */
@@ -85,6 +86,30 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
       return user;
     });
     return reply.header('ETag', userEtag(updated)).send(userDto(updated));
+  });
+  api.delete('/api/v1/usuarios/:id', { preHandler: requireAdmin, schema: { params: idParamsSchema, querystring: z.object({}).strict(), body: z.object({}).strict().nullish() } }, async (request, reply) => {
+    const expectedEtag = requireUserIfMatch(request.headers['if-match']);
+    try {
+      await prisma.$transaction(async tx => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(741901)`;
+        await actorInTransaction(tx, request, true);
+        await tx.$queryRaw`SELECT id FROM usuarios WHERE id = ${request.params.id}::uuid FOR UPDATE`;
+        const before = await tx.user.findUnique({ where: { id: request.params.id } });
+        if (!before) throw new AppError(404, 'NOT_FOUND', 'El usuario no existe.');
+        const actor = await actorInTransaction(tx, request, true);
+        if (expectedEtag !== userEtag(before)) throw new AppError(412, 'USER_VERSION_CONFLICT', 'La cuenta cambió desde que consultaste sus datos. Vuelve a consultarla antes de eliminar.');
+        enforceUserDeletionRules(before, actor.id, await tx.user.count({ where: { role: 'ADMINISTRADOR', active: true } }));
+        await assertUserUnreferenced(tx, before.id);
+        await actorInTransaction(tx, request, true);
+        await tx.recoveryToken.deleteMany({ where: { userId: before.id } });
+        await tx.user.delete({ where: { id: before.id } });
+        await audit(tx, request, { operation: 'USUARIO_ELIMINADO', resource: 'usuarios', resourceId: before.id, role: actor.role, status: 'EXITO', before: userDto(before) });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') throw new AppError(409, 'USER_IN_USE', 'No se puede eliminar el usuario: tiene registros o transacciones asociados.');
+      throw error;
+    }
+    return reply.code(204).send();
   });
   api.get('/api/v1/me', { preHandler: authenticate, schema: { response: { 200: userDtoSchema } } }, async request => userDto(request.auth!.user));
   api.patch('/api/v1/me', { preHandler: authenticate, schema: { body: profileSchema, response: { 200: userDtoSchema } } }, async request => {

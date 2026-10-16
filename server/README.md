@@ -16,6 +16,8 @@ Configurar `.env` con credenciales propias y un `JWT_SECRET` aleatorio de al men
 
 Crear base vacía y roles separados para migración y aplicación siguiendo [docs/DATABASE.md](docs/DATABASE.md). Inyectar `DATABASE_URL` del propietario para `npm run db:migrate`, aplicar `scripts/runtime-grants.sql` y volver al rol runtime. Las variables ya inyectadas prevalecen sobre `.env`; no ejecutar API con el usuario propietario. No se inicializa ninguna base existente automáticamente.
 
+En este entorno local de desarrollo se preparó `fceadatasys_dev` en 127.0.0.1:5432, con las cuatro migraciones y los grants vigentes aplicados a `fceadatasys_dev_app`, un rol limitado. `server/.env` contiene su contraseña generada y JWT_SECRET propio; está ignorado por Git. La contraseña administrativa no se guarda allí. Las otras bases locales se conservan. La API se inicia desde server/ y permanece independiente del frontend. Para otra instalación o producción, crear/configurar su propia base, identidades, secretos y parámetros; no reutilizar ni copiar estas credenciales de desarrollo. La preparación de base/permisos no crea cuentas de usuario de la aplicación.
+
 Inyectar `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_CI`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`; ejecutar `npm run db:bootstrap` con el rol runtime. Solo crea la primera cuenta en una base vacía y registra auditoría; no hay credenciales de demostración. Retirar las variables de bootstrap después.
 
 ```powershell
@@ -59,7 +61,9 @@ Rutas `/api/v1/catalogos/{autores|tutores|carreras|facultades|filiales|tipos|niv
 
 `POST /api/v1/publicaciones` registra trabajos ya aprobados para Admin/Digitador, con autores/tutores N:M ordenados, referencias activas y tipadas, duplicados normalizados, código secuencial y auditoría atómica. `GET/PATCH /api/v1/parametros/publicaciones` consulta el límite de resumen y permite a Admin cambiarlo (300 palabras por defecto). Aplicar `20261016010000_publication_registration` y repetir grants antes de usarlo. Ver [contrato de registro](docs/PUBLICATIONS.md).
 
-Admite enlaces externos y trabajos locales sin obligación de copia; los locales que requieren copia deben vincular un adjunto previamente verificado mediante `attachmentId`. El módulo de carga/almacenamiento/antivirus sigue pendiente: el registro no acepta archivos, hashes ni estados de seguridad enviados por el navegador. Las pruebas de esa vinculación usan fixtures de archivo, no un antivirus real.
+Admite enlaces externos y trabajos locales sin obligación de copia; los locales que requieren copia vinculan un adjunto previamente verificado mediante `attachmentId`. Cargar primero con `POST /api/v1/adjuntos` (multipart, campo file): el servidor valida el PDF, calcula hash y ejecuta ClamAV instalado antes de confirmar archivo y auditoría. El registro bibliográfico no acepta bytes, hashes ni estados del navegador. Descargar mediante `GET /api/v1/publicaciones/:id/adjunto`, solo Admin/Digitador y con auditoría previa. Contrato completo en [ATTACHMENTS.md](docs/ATTACHMENTS.md).
+
+Desde server/, preparar firmas oficiales con `./scripts/update-clamav.ps1` en Windows (FreshClam instalado). Las variables de .env.example apuntan a `.local/clamav/database` y almacenamiento privado `.local/attachments`; esos datos están ignorados por Git. Configurar CLAMAV_COMMAND según plataforma y arquitectura. Mantener las firmas actualizadas periódicamente: sin firmas vigentes o scanner operativo, la carga falla cerrada. No requiere clamd. Reaplicar `scripts/runtime-grants.sql` con el propietario para habilitar los permisos del nuevo módulo; no cambia el esquema ni conecta client/.
 
 `GET /api/v1/publicaciones` y `GET /api/v1/publicaciones/:id` permiten consultar metadatos con sesión vigente. Incluyen paginación, filtros de clasificación/personas/año/modalidad/fechas, búsqueda FTS español/inglés y DTO seguro. Admin puede consultar inactivas; Digitador/Público solo activas. Público no recibe metadatos del adjunto ni URLs de descarga. Aplicar `20261016020000_publication_queries` para funciones/índices FTS; ver [contrato de listado y consulta](docs/PUBLICATION-QUERIES.md).
 
@@ -78,6 +82,7 @@ npm test
 
 ```powershell
 $env:USERS_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_users_test'
+$env:USERS_TEST_OWNER_URL='postgresql://ROL_PROPIETARIO@127.0.0.1:PUERTO/fceadatasys_users_test'
 $env:TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_security_test'
 $env:PROFILE_TEST_DATABASE_URL=$env:TEST_DATABASE_URL
 $env:CATALOGS_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_catalogs_test'
@@ -86,10 +91,14 @@ $env:PUBLICATIONS_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/f
 $env:PUBLICATIONS_TEST_OWNER_URL='postgresql://ROL_PROPIETARIO@127.0.0.1:PUERTO/fceadatasys_publications_test'
 $env:PUBLICATION_QUERIES_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_publication_queries_test'
 $env:PUBLICATION_QUERIES_TEST_OWNER_URL='postgresql://ROL_PROPIETARIO@127.0.0.1:PUERTO/fceadatasys_publication_queries_test'
+$env:ATTACHMENTS_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_attachments_test'
+$env:CLAMAV_TEST_ENABLED='1'
+$env:CLAMAV_TEST_COMMAND='C:\Program Files\ClamAV\clamscan.exe'
+$env:CLAMAV_TEST_DATABASE_DIR='.local/clamav/database'
 npm run test:integration
 ```
 
-La suite usuarios reserva las identidades `fixture.admin.a` y `fixture.admin.b` dentro de su base exclusiva, las reactiva al preparar cada ejecución y verifica que no existan otros administradores. Los fixtures se conservan junto a sus audit logs; no se borra auditoría para repetir pruebas. Usa llamadas HTTP `app.inject` contra transacciones PostgreSQL reales para verificar permisos, DTO, unicidad, RN-01, revocación, cambios concurrentes y rollback ante fallo de auditoría.
+La suite usuarios reserva las identidades `fixture.admin.a` y `fixture.admin.b` dentro de su base exclusiva, las reactiva al preparar cada ejecución y verifica que no existan otros administradores. Requiere también `USERS_TEST_OWNER_URL` hacia esa misma base para preparar referencias bibliográficas y observar bloqueos de la baja física; la API sigue usando exclusivamente el runtime limitado. Conserva fixtures y auditoría. Valida permisos, DTO, unicidad, RN-01, revocación, concurrencia y rollback. DELETE permite cuentas sin vínculos, exige If-Match y conserva las referenciadas, incluso por sesiones o auditoría histórica.
 
 Catálogos requiere ambas URLs, runtime y propietario, hacia la misma base local de pruebas distinta de usuarios. El propietario se usa únicamente para fixtures FK y observación de locks; la API siempre recibe el runtime limitado. La suite retira sus tablas auxiliares y conserva las cuentas y audit logs. No ejecutar contra una base institucional.
 
@@ -109,4 +118,4 @@ Pruebas de DB/roles, migración y recuperación del esquema se describen en DATA
 
 Prisma 7.10, Fastify 5, Zod 4/type provider 6, pg/adapter-pg, Argon2id y JWT. Lockfile versionado para `npm ci`. Se fijan overrides de `deepmerge-ts=8.0.2` y `mysql2=3.24.5` por vulnerabilidades transitivas de Prisma; `nodemailer=10.0.16` es una versión corregida elegible bajo la política temporal npm. Validar generación/migración/build/pruebas al actualizar Prisma u overrides.
 
-`GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes: integración frontend, edición/inactivación de publicaciones, archivos/antimalware, parámetros de formatos, reportes, consulta/exportación de auditoría; retención de tokens/logs, backups operacionales y alertas/reintentos SMTP. Los siete catálogos, registro N:M/FKs, listado/consulta y búsqueda FTS están implementados.
+`GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes: integración frontend, edición/inactivación de publicaciones, parámetros de formatos, reportes, consulta/exportación de auditoría; retención de tokens/logs, backups operacionales y alertas/reintentos SMTP. Los siete catálogos, registro N:M/FKs, listado/consulta, búsqueda FTS y carga/descarga PDF con ClamAV están implementados. Adjuntos requiere su base exclusiva de pruebas y CLAMAV_TEST_ENABLED=1 para validar el motor real; la prueba positiva usa una firma propia inocua en una copia temporal de las firmas oficiales, sin modificar Defender ni generar EICAR.

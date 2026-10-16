@@ -7,6 +7,7 @@ import type { AppConfig } from '../../src/config.js';
 import { enforceUserRules } from '../../src/users/routes.js';
 import { userDto } from '../../src/users/dto.js';
 import { requireUserIfMatch, userEtag } from '../../src/users/concurrency.js';
+import { enforceUserDeletionRules } from '../../src/users/deletion.js';
 import { normalizeIdentity as normalizeLogin } from '../../src/security/crypto.js';
 import { createUserSchema, normalizeIdentity, profileSchema, roles, updateUserSchema, userDtoSchema, userInputSchema, userQuerySchema, type UserInput } from '../../src/users/schemas.js';
 
@@ -100,6 +101,15 @@ test('DTO es una allowlist nueva sin secretos, estado interno ni mutaciones del 
   assert.equal(stored.name, input.name);
 });
 
+test('Eliminación protege cuenta propia y último administrador, incluso con cuentas inactivas', () => {
+  const target = { id: 'target', role: 'ADMINISTRADOR' as const, active: true };
+  assert.throws(() => enforceUserDeletionRules(target, 'target', 2), { status: 400, code: 'SELF_PRIVILEGE_CHANGE' });
+  assert.throws(() => enforceUserDeletionRules(target, 'actor', 1), { status: 409, code: 'LAST_ADMIN_REQUIRED' });
+  assert.doesNotThrow(() => enforceUserDeletionRules(target, 'actor', 2));
+  assert.doesNotThrow(() => enforceUserDeletionRules({ ...target, active: false }, 'actor', 1));
+  assert.doesNotThrow(() => enforceUserDeletionRules({ ...target, role: 'PUBLICO' }, 'actor', 1));
+});
+
 test('If-Match requiere un único ETag fuerte de la API y conserva el valor opaco', () => {
   const etag = `"sha256-${'a'.repeat(64)}"`;
   assert.equal(requireUserIfMatch(etag), etag);
@@ -138,20 +148,21 @@ test('Contrato HTTP de usuarios expone ETag y permite If-Match únicamente a or�
     assert.equal(response.headers['cache-control'], 'no-store');
     assert.equal(response.body.includes('PRIVATE_HASH'), false);
   });
-  await t.test('PATCH sin precarga produce 428; comodín o ETag débil producen 400', async () => {
-    const missing = await app.inject({ method: 'PATCH', url, headers: { authorization }, payload: { email: 'new@example.org' } });
+  for (const method of ['PATCH', 'DELETE'] as const) await t.test(`${method} sin precarga produce 428; comodín o ETag débil producen 400`, async () => {
+    const payload = method === 'PATCH' ? { email: 'new@example.org' } : undefined;
+    const missing = await app.inject({ method, url, headers: { authorization }, payload });
     assert.equal(missing.statusCode, 428);
     assert.equal(missing.json().code, 'PRECONDITION_REQUIRED');
     assert.equal(missing.json().title, 'Precondición requerida');
     for (const value of ['*', `W/${userEtag(target)}`]) {
-      const invalid = await app.inject({ method: 'PATCH', url, headers: { authorization, 'if-match': value }, payload: { email: 'new@example.org' } });
+      const invalid = await app.inject({ method, url, headers: { authorization, 'if-match': value }, payload });
       assert.equal(invalid.statusCode, 400);
       assert.equal(invalid.json().code, 'VALIDATION_ERROR');
     }
   });
 });
 
-test('PATCH revalida el plazo del actor después de esperar el bloqueo del usuario destino', async t => {
+for (const method of ['PATCH', 'DELETE'] as const) test(`${method} revalida el plazo del actor después de esperar el bloqueo del usuario destino`, async t => {
   const start = new Date('2026-10-15T12:00:00Z');
   let time = start;
   const actor: User = { id: '11111111-1111-4111-8111-111111111111', ...input, role: 'ADMINISTRADOR', passwordHash: 'PRIVATE_HASH', emailKey: input.email, usernameKey: input.username, failures: 0, lockedUntil: null, createdAt: start, updatedAt: start };
@@ -173,7 +184,7 @@ test('PATCH revalida el plazo del actor después de esperar el bloqueo del usuar
   const app = await createApp(config, prisma, { logger: false, security: { now: () => time, mailer: { available: false, verify: async () => false, sendRecovery: async () => { throw new Error('SMTP must not run'); } } } });
   t.after(() => app.close());
   const authorization = `Bearer ${app.jwt.sign({ sub: actor.id, sid: session.id }, { expiresIn: 900 })}`;
-  const response = await app.inject({ method: 'PATCH', url: `/api/v1/usuarios/${target.id}`, headers: { authorization, 'if-match': userEtag(target) }, payload: { active: false } });
+  const response = await app.inject({ method, url: `/api/v1/usuarios/${target.id}`, headers: { authorization, 'if-match': userEtag(target) }, payload: method === 'PATCH' ? { active: false } : undefined });
   assert.equal(response.statusCode, 401, response.body);
   assert.equal(response.json().code, 'UNAUTHENTICATED');
   assert.equal(calls.updates, 0);

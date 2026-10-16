@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomInt, randomUUID } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
+import { setTimeout as delay } from 'node:timers/promises';
+import { Client } from 'pg';
+import type { PrismaClient, User } from '@prisma/client';
 import type { InjectOptions } from 'fastify';
 import { createApp } from '../src/app.js';
 import { createPrisma } from '../src/db.js';
@@ -21,7 +23,7 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
   // Fixed fixtures allow repeats without deleting immutable historical audit logs.
   const unexpectedAdmin = await prisma.user.count({ where: { role: 'ADMINISTRADOR', usernameKey: { notIn: ['fixture.admin.a', 'fixture.admin.b'] } } });
   assert.equal(unexpectedAdmin, 0, 'Use una base de pruebas exclusiva para usuarios.');
-  const admins = [];
+  const admins: User[] = [];
   for (let index = 0; index < 2; index++) {
     const username = `fixture.admin.${index === 0 ? 'a' : 'b'}`;
     admins.push(await prisma.user.upsert({ where: { usernameKey: username }, create: { name: `Administrador ${index}`, ci: `10000000${index}`, email: `${username}@example.org`, emailKey: `${username}@example.org`, username, usernameKey: username, role: 'ADMINISTRADOR', active: true, passwordHash }, update: { active: true, role: 'ADMINISTRADOR', passwordHash, failures: 0, lockedUntil: null } }));
@@ -63,7 +65,7 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
       return response.json<ReturnType<typeof userDto>>();
     };
     const detail = (userId: string) => send({ url: `/api/v1/usuarios/${userId}`, headers });
-    const list = (query: Record<string, string>) => send({ url: `/api/v1/usuarios?${new URLSearchParams(query)}`, headers });
+    const list = (query: Record<string, string | undefined>) => send({ url: `/api/v1/usuarios?${new URLSearchParams(Object.entries(query).filter((entry): entry is [string, string] => entry[1] !== undefined))}`, headers });
     const problem = (response: { statusCode: number; body: string; json(): { code: string } }, status: number, code: string) => { assert.equal(response.statusCode, status, response.body); assert.equal(response.json().code, code); };
     const scenario = async (name: string, run: () => Promise<void>) => { caseIndex++; await t.test(name, run); };
     const created = await app.inject({ method: 'POST', url: '/api/v1/usuarios', headers, payload: input });
@@ -112,6 +114,7 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
           { method: 'POST' as const, url: '/api/v1/usuarios', payload: nextInput() },
           { method: 'PATCH' as const, url: `/api/v1/usuarios/${target.id}`, payload: { email: 'spoof@example.org' } },
           { method: 'PATCH' as const, url: `/api/v1/usuarios/${target.id}`, payload: { active: false } },
+          { method: 'DELETE' as const, url: `/api/v1/usuarios/${target.id}` },
         ]) assert.equal((await send({ ...request, headers: { ...actorHeaders, 'if-match': await version(target.id) } })).statusCode, role ? 403 : 401);
       }
       for (const invalid of [{ ci: '12.345' }, { name: '' }, { active: 'true' }, { role: 'ADMIN' }, { password: 'weak' }, { actorId: admins[0].id }]) problem(await send({ method: 'POST', url: '/api/v1/usuarios', headers, payload: { ...nextInput(), ...invalid } }), 400, 'VALIDATION_ERROR');
@@ -119,7 +122,7 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
       problem(await detail(absent), 404, 'NOT_FOUND');
       problem(await detail('invalid-id'), 400, 'VALIDATION_ERROR');
       problem(await patch(absent, { active: false }, `"sha256-${'0'.repeat(64)}"`), 404, 'NOT_FOUND');
-      problem(await send({ method: 'DELETE', url: `/api/v1/usuarios/${target.id}`, headers }), 404, 'NOT_FOUND');
+      problem(await send({ method: 'DELETE', url: `/api/v1/usuarios/${target.id}`, headers }), 428, 'PRECONDITION_REQUIRED');
       assert.equal((await detail(target.id)).json().active, true);
     });
 
@@ -134,7 +137,7 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
       assert.deepEqual(first.json().pagination, { page: 1, pageSize: 2, total: 3, totalPages: 2 });
       assert.deepEqual([...first.json().data, ...second.json().data].map(user => user.id), accounts.map(user => user.id).sort());
       assert.deepEqual((await list({ search: group, page: '9', pageSize: '2' })).json().data, []);
-      assert.deepEqual((await list({ search: group, role: 'DIGITADOR', active: 'false' })).json().data.map(user => user.id), [accounts[2].id]);
+      assert.deepEqual((await list({ search: group, role: 'DIGITADOR', active: 'false' })).json<{ data: User[] }>().data.map(user => user.id), [accounts[2].id]);
       assert.deepEqual((await list({ search: `no-match-${suffix}` })).json(), { data: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } });
       for (const query of [{ page: '0' }, { pageSize: '101' }, { active: '0' }, { role: 'ADMIN' }, { sort: 'passwordHash' }]) problem(await list(query), 400, 'VALIDATION_ERROR');
     });
@@ -142,14 +145,14 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
     await scenario('NFKC y búsqueda literal de guion bajo, porcentaje y barra inversa', async () => {
       const literal = await create({ username: `match_${suffix}` });
       await create({ username: `matchX${suffix}` });
-      assert.deepEqual((await list({ search: `ｍａｔｃｈ＿${suffix}` })).json().data.map(user => user.id), [literal.id]);
+      assert.deepEqual((await list({ search: `ｍａｔｃｈ＿${suffix}` })).json<{ data: User[] }>().data.map(user => user.id), [literal.id]);
       const percent = await create({ name: `Descuento % ${suffix}` });
       const percentResults = await list({ search: '%', pageSize: '100' });
-      assert.ok(percentResults.json().data.some(user => user.id === percent.id));
-      assert.ok(percentResults.json().data.every(user => ['name', 'ci', 'email', 'username'].some(field => user[field].includes('%'))));
+      assert.ok(percentResults.json<{ data: User[] }>().data.some(user => user.id === percent.id));
+      assert.ok(percentResults.json<{ data: User[] }>().data.every(user => (['name', 'ci', 'email', 'username'] as const).some(field => user[field].includes('%'))));
       const slash = await create({ name: `Ruta\\Local${suffix}` });
       await create({ name: `RutaXLocal${suffix}` });
-      assert.deepEqual((await list({ search: `Ruta\\Local${suffix}` })).json().data.map(user => user.id), [slash.id]);
+      assert.deepEqual((await list({ search: `Ruta\\Local${suffix}` })).json<{ data: User[] }>().data.map(user => user.id), [slash.id]);
     });
 
     await scenario('edición permitida, RN01 y protección de cuenta propia', async () => {
@@ -264,6 +267,115 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
           assert.equal(await prisma.auditLog.count({ where: { resourceId: target.id, status: 'EXITO' } }), beforeAudit);
         }
       } finally { await failing.close(); }
+    });
+
+    await scenario('DELETE sin vínculos conserva auditoría y elimina recuperaciones en una transacción', async () => {
+      const target = await create();
+      const recovery = await prisma.recoveryToken.create({ data: { userId: target.id, hash: tokenHash(randomToken(32)), createdAt: clock, expiresAt: new Date(clock.getTime() + 900000) } });
+      const creationLog = await prisma.auditLog.findFirstOrThrow({ where: { resourceId: target.id, operation: 'USUARIO_CREADO' } });
+      const response = await send({ method: 'DELETE', url: `/api/v1/usuarios/${target.id}`, headers: { ...headers, 'if-match': await version(target.id) } });
+      assert.equal(response.statusCode, 204, response.body);
+      assert.equal(response.body, '');
+      assert.equal(await prisma.user.findUnique({ where: { id: target.id } }), null);
+      assert.equal(await prisma.recoveryToken.findUnique({ where: { id: recovery.id } }), null);
+      assert.deepEqual(await prisma.auditLog.findUnique({ where: { id: creationLog.id } }), creationLog);
+      const event = await prisma.auditLog.findFirstOrThrow({ where: { operation: 'USUARIO_ELIMINADO', resourceId: target.id } });
+      assert.equal(event.userId, admins[0].id);
+      assert.deepEqual(event.before, target);
+      assert.equal(JSON.stringify(event).includes(passwordHash), false);
+      problem(await detail(target.id), 404, 'NOT_FOUND');
+    });
+
+    await scenario('DELETE exige precarga vigente, cuerpo vacío y no permite eliminar cuenta propia', async () => {
+      const target = await create();
+      const url = `/api/v1/usuarios/${target.id}`;
+      const tag = await version(target.id);
+      problem(await send({ method: 'DELETE', url, headers }), 428, 'PRECONDITION_REQUIRED');
+      problem(await send({ method: 'DELETE', url, headers: { ...headers, 'if-match': '*' } }), 400, 'VALIDATION_ERROR');
+      problem(await send({ method: 'DELETE', url, headers: { ...headers, 'if-match': tag }, payload: { actorId: admins[0].id } }), 400, 'VALIDATION_ERROR');
+      problem(await send({ method: 'DELETE', url: `${url}?force=true`, headers: { ...headers, 'if-match': tag } }), 400, 'VALIDATION_ERROR');
+      assert.equal((await patch(target.id, { email: `delete.changed.${suffix}@example.org` }, tag)).statusCode, 200);
+      problem(await send({ method: 'DELETE', url, headers: { ...headers, 'if-match': tag } }), 412, 'USER_VERSION_CONFLICT');
+      problem(await send({ method: 'DELETE', url: '/api/v1/usuarios/not-a-uuid', headers: { ...headers, 'if-match': tag } }), 400, 'VALIDATION_ERROR');
+      problem(await send({ method: 'DELETE', url: `/api/v1/usuarios/${randomUUID()}`, headers: { ...headers, 'if-match': tag } }), 404, 'NOT_FOUND');
+      problem(await send({ method: 'DELETE', url: `/api/v1/usuarios/${admins[0].id}`, headers: { ...headers, 'if-match': await version(admins[0].id) } }), 400, 'SELF_PRIVILEGE_CHANGE');
+      assert.ok(await prisma.user.findUnique({ where: { id: target.id } }));
+    });
+
+    await scenario('DELETE conserva cuentas con sesiones históricas, auditoría propia, publicaciones o adjuntos', async () => {
+      for (const relation of ['session', 'audit', 'attachment', 'publication'] as const) {
+        const target = await create();
+        if (relation === 'session') await prisma.session.create({ data: { userId: target.id, createdAt: clock, lastActivityAt: clock, expiresAt: new Date(clock.getTime() + 3600000), revokedAt: clock } });
+        if (relation === 'audit') await prisma.auditLog.create({ data: { userId: target.id, role: target.role, operation: 'FIXTURE_HISTORY', resource: 'usuarios', resourceId: target.id, ip: '127.0.0.1', userAgent: 'users-test', status: 'EXITO' } });
+        if (relation === 'attachment' || relation === 'publication') {
+          // Runtime intentionally cannot provision files. Use a session-free creator
+          // through the owner connection when explicitly supplied by the test runner.
+          const ownerUrl = process.env.USERS_TEST_OWNER_URL;
+          assert.ok(ownerUrl, 'USERS_TEST_OWNER_URL es necesaria para validar las FKs reales bibliográficas.');
+          const ownerTarget = new URL(ownerUrl);
+          assert.equal(ownerTarget.host + ownerTarget.pathname, testUrl.host + testUrl.pathname);
+          const owner = createPrisma(ownerUrl);
+          try {
+            if (relation === 'attachment') await owner.storedAttachment.create({ data: { createdById: target.id, name: 'fixture.pdf', size: 100, mime: 'application/pdf', sha256: tokenHash(randomToken(32)), storageKey: `users-test/${randomUUID()}` } });
+            else await owner.$transaction(async tx => {
+              const name = `Dependencia ${target.id}`;
+              const author = await tx.author.create({ data: { name, nameKey: name, searchKey: name } });
+              const tutor = await tx.tutor.create({ data: { name, nameKey: name, searchKey: name } });
+              const catalogs = [];
+              for (const kind of ['carreras', 'niveles', 'tipos', 'filiales'] as const) catalogs.push(await tx.catalogRecord.create({ data: { kind, name, nameKey: name, searchKey: name } }));
+              await tx.publication.create({ data: { title: name, titleHash: tokenHash(name), summary: name, summaryHash: tokenHash(name), abstract: name, abstractHash: tokenHash(name), keywords: 'prueba', year: 2026, source: 'EXTERNA', requiresLibraryCopy: false, externalUrl: 'https://example.org/fixture', active: false, createdById: target.id, careerId: catalogs[0].id, levelId: catalogs[1].id, typeId: catalogs[2].id, branchId: catalogs[3].id, authors: { create: { authorId: author.id, position: 1 } }, tutors: { create: { tutorId: tutor.id, position: 1 } } } });
+            });
+          }
+          finally { await owner.$disconnect(); }
+        }
+        problem(await send({ method: 'DELETE', url: `/api/v1/usuarios/${target.id}`, headers: { ...headers, 'if-match': await version(target.id) } }), 409, 'USER_IN_USE');
+        assert.ok(await prisma.user.findUnique({ where: { id: target.id } }));
+      }
+    });
+
+    await scenario('DELETE no elimina una referencia de sesión confirmada mientras espera el bloqueo', async () => {
+      const target = await create();
+      const tag = await version(target.id);
+      const ownerUrl = new URL(process.env.USERS_TEST_OWNER_URL ?? 'http://missing');
+      assert.equal(ownerUrl.host + ownerUrl.pathname, testUrl.host + testUrl.pathname);
+      const owner = new Client({ connectionString: ownerUrl.href });
+      await owner.connect();
+      let pending: ReturnType<typeof send> | undefined;
+      try {
+        await owner.query('BEGIN');
+        await owner.query('INSERT INTO sesiones (id,usuario_id,creado_en,ultima_actividad_en,vence_en) VALUES ($1,$2,$3,$3,$4)', [randomUUID(), target.id, clock, new Date(clock.getTime() + 3600000)]);
+        pending = send({ method: 'DELETE', url: `/api/v1/usuarios/${target.id}`, headers: { ...headers, 'if-match': tag } });
+        // Start inject's thenable before inspecting the actual PostgreSQL wait.
+        const responsePromise = Promise.resolve(pending);
+        let waiting = false;
+        for (let attempt = 0; attempt < 150 && !waiting; attempt++) {
+          await owner.query('SELECT pg_stat_clear_snapshot()');
+          waiting = !!(await owner.query("SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%SELECT id FROM usuarios%FOR UPDATE%'")).rowCount;
+          if (!waiting) await delay(10);
+        }
+        assert.ok(waiting, 'La baja debe esperar la FK aún sin confirmar.');
+        await owner.query('COMMIT');
+        problem(await responsePromise, 409, 'USER_IN_USE');
+        assert.ok(await prisma.user.findUnique({ where: { id: target.id } }));
+        assert.equal(await prisma.session.count({ where: { userId: target.id } }), 1);
+      } finally { await owner.query('ROLLBACK'); if (pending) await pending; await owner.end(); }
+    });
+
+    await scenario('DELETE revierte cuenta y recuperaciones si falla auditoría; dos bajas no duplican éxito', async () => {
+      const target = await create({ active: false });
+      const recovery = await prisma.recoveryToken.create({ data: { userId: target.id, hash: tokenHash(randomToken(32)), createdAt: clock, expiresAt: new Date(clock.getTime() + 900000) } });
+      const tag = await version(target.id);
+      const faulty = prisma.$extends({ query: { auditLog: { create: async ({ args, query }) => { if (args.data.operation === 'USUARIO_ELIMINADO') throw new Error('Simulated audit outage'); return query(args); } } } }) as unknown as PrismaClient;
+      const failing = await createApp(config, faulty, { logger: false, security: { now: () => new Date(clock) } });
+      try {
+        problem(await failing.inject({ method: 'DELETE', url: `/api/v1/usuarios/${target.id}`, headers: { ...headers, 'if-match': tag } }), 503, 'AUDIT_UNAVAILABLE');
+        assert.ok(await prisma.user.findUnique({ where: { id: target.id } }));
+        assert.deepEqual(await prisma.recoveryToken.findUnique({ where: { id: recovery.id } }), recovery);
+        assert.equal(await prisma.auditLog.count({ where: { operation: 'USUARIO_ELIMINADO', resourceId: target.id } }), 0);
+      } finally { await failing.close(); }
+      const responses = await Promise.all([1, 2].map(() => send({ method: 'DELETE', url: `/api/v1/usuarios/${target.id}`, headers: { ...headers, 'if-match': tag } })));
+      assert.deepEqual(responses.map(response => response.statusCode).sort(), [204, 404], responses.map(response => response.body).join('\n'));
+      assert.equal(await prisma.auditLog.count({ where: { operation: 'USUARIO_ELIMINADO', resourceId: target.id } }), 1);
     });
 
     const secondHeaders = await login(admins[1].username);

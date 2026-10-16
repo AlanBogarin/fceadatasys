@@ -48,7 +48,7 @@ Conserva los campos públicos del DTO de alta: id, code, title, authors/tutors o
 
 Añade `hasAttachment:boolean`. PUBLICO recibe solo esa indicación del archivo, sin `attachment`, ID/hash/nombre del adjunto, URL de descarga ni almacenamiento. Admin/Digitador pueden recibir `attachment:{id,name,size,mime,sha256}` como metadatos si el registro está CLEAN, con verificación y análisis satisfactorios. Si está PENDING/REJECTED o no está verificado, se conserva la consulta bibliográfica, pero se omiten sus metadatos de archivo para todos. `hasAttachment` indica una referencia persistida, sin afirmar que el transporte de archivos esté disponible.
 
-Los enlaces externos se conservan como metadatos institucionales; el servidor no los visita ni entrega bytes. Estas rutas nunca descargan un adjunto. El módulo de transporte/antivirus continúa pendiente; las pruebas usan fixtures de archivo, no un scanner ni almacenamiento real. Tras esta ampliación, POST de publicaciones añade Location apuntando al detalle implementado, sin cambiar el cuerpo de alta.
+Los enlaces externos se conservan como metadatos institucionales; el servidor no los visita ni entrega bytes. Estas rutas de consulta nunca descargan un adjunto. La carga/ClamAV y descarga auditada se incorporaron después en rutas separadas, documentadas en [ATTACHMENTS.md](ATTACHMENTS.md). Las pruebas de consulta siguen usando fixtures; la nueva suite de adjuntos prueba el transporte. POST de publicaciones emite Location del detalle, sin cambiar su cuerpo de alta.
 
 ## Búsqueda FTS
 

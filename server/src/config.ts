@@ -12,6 +12,7 @@ export interface AppConfig {
   secureCookies: boolean;
   recoveryUrl: string;
   smtp?: { host: string; port: number; user?: string; pass?: string; from: string; secure: boolean };
+  attachments?: { directory: string; command: string; database?: string; timeoutMs: number; maxSignatureAgeDays: number; concurrency: number };
 }
 
 const booleanEnv = z.enum(['true', 'false']).transform(value => value === 'true');
@@ -32,6 +33,12 @@ const environmentSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.email().optional(),
   SMTP_SECURE: booleanEnv.default(false),
+  ATTACHMENT_DIRECTORY: z.string().min(1).default('.local/attachments'),
+  CLAMAV_COMMAND: z.string().min(1).default(process.platform === 'win32' ? 'C:\\Program Files\\ClamAV\\clamscan.exe' : 'clamscan'),
+  CLAMAV_DATABASE_DIR: z.string().min(1).default('.local/clamav/database'),
+  CLAMAV_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(120000),
+  CLAMAV_MAX_SIGNATURE_AGE_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+  ATTACHMENT_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
 });
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -52,5 +59,6 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     jwtSecret: env.JWT_SECRET, jwtIssuer: env.JWT_ISSUER, jwtAudience: env.JWT_AUDIENCE,
     allowedOrigins, secureCookies: env.SECURE_COOKIES, recoveryUrl: env.RECOVERY_URL,
     smtp: env.SMTP_HOST ? { host: env.SMTP_HOST, port: env.SMTP_PORT, user: env.SMTP_USER, pass: env.SMTP_PASS, from: env.SMTP_FROM!, secure: env.SMTP_SECURE } : undefined,
+    attachments: { directory: env.ATTACHMENT_DIRECTORY, command: env.CLAMAV_COMMAND, database: env.CLAMAV_DATABASE_DIR, timeoutMs: env.CLAMAV_TIMEOUT_MS, maxSignatureAgeDays: env.CLAMAV_MAX_SIGNATURE_AGE_DAYS, concurrency: env.ATTACHMENT_CONCURRENCY },
   };
 }

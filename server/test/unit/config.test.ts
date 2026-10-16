@@ -34,6 +34,14 @@ test('Campos requeridos, puertos, booleanos y protocolo PostgreSQL se validan', 
   assert.equal(loadConfig({ ...environment, PORT: '65535' }).port, 65535);
 });
 
+test('Configuración de archivos acota concurrencia, timeout y antigüedad de firmas', () => {
+  const settings = loadConfig(environment).attachments!;
+  assert.equal(settings.directory, '.local/attachments');
+  assert.equal(settings.maxSignatureAgeDays, 7);
+  assert.equal(settings.concurrency, 2);
+  for (const change of [{ ATTACHMENT_DIRECTORY: '' }, { CLAMAV_COMMAND: '' }, { CLAMAV_DATABASE_DIR: '' }, { ATTACHMENT_CONCURRENCY: '0' }, { ATTACHMENT_CONCURRENCY: '9' }, { CLAMAV_TIMEOUT_MS: '999' }, { CLAMAV_MAX_SIGNATURE_AGE_DAYS: '0' }]) assert.throws(() => loadConfig({ ...environment, ...change }));
+});
+
 test('SMTP admite relay sin credenciales o par completo, rechaza configuración incompleta', () => {
   const smtp = { SMTP_HOST: 'mail.example.org', SMTP_FROM: 'repository@example.org' };
   assert.deepEqual(loadConfig({ ...environment, ...smtp }).smtp, { host: smtp.SMTP_HOST, from: smtp.SMTP_FROM, port: 587, secure: false, user: undefined, pass: undefined });
