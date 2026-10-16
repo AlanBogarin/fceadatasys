@@ -6,7 +6,7 @@ import type { PublicationQuery } from './schemas.js';
 // Explicit allowlists: no CI/email/ORCID, password data, hashes of normalized text
 // or storage keys are fetched. Public readers do not fetch attachment metadata.
 const person = { id: true, name: true } as const;
-const readSelect = (role: Role) => ({
+export const readSelect = (role: Role) => ({
   id: true, number: true, title: true, summary: true, abstract: true, keywords: true, year: true,
   source: true, requiresLibraryCopy: true, externalUrl: true, attachmentId: true,
   active: true, createdAt: true, createdBy: { select: person },

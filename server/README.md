@@ -1,6 +1,6 @@
 # Servidor FCEA Datasys
 
-Servidor Fastify/TypeScript, PostgreSQL/Prisma, autenticación, usuarios/perfil, siete catálogos y registro/listado/consulta de publicaciones con búsqueda FTS. El frontend existente permanece intacto y todavía no consume estos endpoints. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
+Servidor Fastify/TypeScript, PostgreSQL/Prisma, autenticación, usuarios/perfil, siete catálogos, registro/listado/consulta de publicaciones con búsqueda FTS, adjuntos PDF con ClamAV y reportes bibliográficos PDF/Excel generados en servidor. El frontend existente permanece intacto y todavía no consume estos endpoints. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
 
 ## Preparación
 
@@ -119,3 +119,9 @@ Pruebas de DB/roles, migración y recuperación del esquema se describen en DATA
 Prisma 7.10, Fastify 5, Zod 4/type provider 6, pg/adapter-pg, Argon2id y JWT. Lockfile versionado para `npm ci`. Se fijan overrides de `deepmerge-ts=8.0.2` y `mysql2=3.24.5` por vulnerabilidades transitivas de Prisma; `nodemailer=10.0.16` es una versión corregida elegible bajo la política temporal npm. Validar generación/migración/build/pruebas al actualizar Prisma u overrides.
 
 `GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes: integración frontend, edición/inactivación de publicaciones, parámetros de formatos, reportes, consulta/exportación de auditoría; retención de tokens/logs, backups operacionales y alertas/reintentos SMTP. Los siete catálogos, registro N:M/FKs, listado/consulta, búsqueda FTS y carga/descarga PDF con ClamAV están implementados. Adjuntos requiere su base exclusiva de pruebas y CLAMAV_TEST_ENABLED=1 para validar el motor real; la prueba positiva usa una firma propia inocua en una copia temporal de las firmas oficiales, sin modificar Defender ni generar EICAR.
+
+## Reportes PDF/Excel
+
+ADMINISTRADOR consulta `/api/v1/reportes/publicaciones` y exporta `/api/v1/reportes/publicaciones/exportar` con los mismos filtros, `format=pdf|xlsx` y el snapshot recibido. Generación en server, control de versión de resultados, auditoría previa a entrega y 200 JSON sin archivo si está vacío. Hasta 500 registros por exportación. Contrato y errores en [docs/REPORTS.md](docs/REPORTS.md).
+
+`npm run reports:examples` genera PDF y Excel de muestra con datos ficticios en `.local/report-examples/`, sin tocar PostgreSQL ni conectar el frontend. El despliegue debe conservar `assets/fonts/` junto a dist y dependencias. No se requieren migraciones/grants adicionales para esta ampliación.

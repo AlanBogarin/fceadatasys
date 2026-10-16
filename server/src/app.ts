@@ -10,8 +10,9 @@ import { registerUserRoutes } from './users/routes.js';
 import { registerCatalogRoutes } from './catalogs/routes.js';
 import { registerPublicationRoutes } from './publications/routes.js';
 import { registerAttachmentRoutes, type AttachmentOptions } from './attachments/routes.js';
+import { registerReportRoutes, type ReportOptions } from './reports/routes.js';
 
-export interface AppOptions { logger?: boolean; security?: SecurityOptions; attachments?: AttachmentOptions }
+export interface AppOptions { logger?: boolean; security?: SecurityOptions; attachments?: AttachmentOptions; reports?: ReportOptions }
 export async function createApp(config: AppConfig, prisma: PrismaClient, options: AppOptions = {}) {
   const app = Fastify({ logger: options.logger === false ? false : { level: 'info', redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers.set-cookie'], serializers: { req: request => ({ method: request.method, id: request.id }) } }, logController: new LogController({ disableRequestLogging: true }), trustProxy: false, bodyLimit: 64 * 1024 });
   app.setValidatorCompiler(validatorCompiler);
@@ -30,5 +31,6 @@ export async function createApp(config: AppConfig, prisma: PrismaClient, options
   await registerCatalogRoutes(app, prisma);
   await registerPublicationRoutes(app, prisma);
   await registerAttachmentRoutes(app, prisma, config, options.attachments);
+  await registerReportRoutes(app, prisma, options.reports);
   return app;
 }

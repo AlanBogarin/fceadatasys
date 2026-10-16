@@ -1,0 +1,20 @@
+import { randomUUID } from 'node:crypto';
+import type { ReportDocument } from '../src/reports/documents.js';
+const reference = (name: string) => ({ id: randomUUID(), name });
+export function reportExample(): ReportDocument {
+  const career = reference('Administración de Empresas');
+  const level = reference('Grado');
+  const branch = reference('Sede Concepción');
+  const topics = [
+    { title: 'Digitalización de los comercios de Concepción', authors: ['María Belén González', 'José Luis Núñez'], type: 'Tesis de grado', keywords: 'digitalización, comercio, gestión empresarial', summary: 'El estudio describe la adopción de herramientas digitales en pequeños comercios de Concepción. Mediante entrevistas y cuestionarios se identifican prácticas de venta, registro de inventario y atención al cliente. Los resultados señalan oportunidades de capacitación y mejoras en la organización de procesos. Se propone una guía de implementación gradual adecuada a los recursos disponibles.', abstract: 'This study describes the adoption of digital tools in small businesses in Concepción. Interviews and questionnaires identify sales, inventory and customer service practices. The findings highlight training opportunities and improvements in business processes. A gradual implementation guide is proposed according to available resources.' },
+    { title: 'Educación financiera y planificación del ahorro en estudiantes universitarios', authors: ['Ana Sofía Benítez'], type: 'Artículo científico', keywords: 'educación financiera, ahorro, estudiantes', summary: 'La investigación examina hábitos de ahorro y planificación de gastos en estudiantes universitarios. Se utilizan encuestas anónimas y un análisis descriptivo de los resultados. El trabajo relaciona conocimientos financieros con prácticas cotidianas de presupuesto y propone actividades formativas para fortalecer decisiones informadas.', abstract: 'The research examines saving habits and expense planning among university students. Anonymous surveys and descriptive analysis are used. Financial knowledge is related to everyday budgeting practices, and educational activities are proposed to support informed decisions.' },
+    { title: 'Costos y sostenibilidad en emprendimientos familiares del norte del Paraguay', authors: ['Carlos Andrés López', 'Lucía Fernández'], type: 'Trabajo de investigación', keywords: 'costos, sostenibilidad, emprendimientos familiares', summary: 'Este trabajo analiza la organización de costos en emprendimientos familiares. A partir de casos de estudio se describen formas de registrar ingresos, distribuir gastos y planificar inversiones. Las conclusiones presentan recomendaciones para mejorar el seguimiento económico y la continuidad de los negocios.', abstract: 'This work analyzes cost management in family businesses. Case studies describe ways to record income, allocate expenses and plan investments. The conclusions provide recommendations to improve financial monitoring and business continuity.' },
+  ];
+  return { generatedAt: new Date('2026-10-16T15:00:00Z'), generatedBy: 'Administrador de ejemplo', example: true, filters: { from: '2026-01-01', to: '2026-10-16', careerId: career.id, levelId: level.id }, rows: topics.map((topic, i) => ({
+    id: randomUUID(), code: `INV-${String(3 - i).padStart(5, '0')}`, title: topic.title, authors: topic.authors.map(reference), tutors: [reference('Dra. Patricia Méndez')],
+    career, level, branch, type: reference(topic.type), year: 2026, keywords: topic.keywords, summary: topic.summary, abstract: topic.abstract,
+    source: i === 1 ? 'EXTERNA' : 'LOCAL', externalUrl: i === 1 ? 'https://example.org/investigaciones/educacion-financiera' : '', requiresLibraryCopy: i !== 1,
+    ...(i !== 1 ? { attachment: { id: randomUUID(), name: i === 0 ? 'digitalizacion-comercios.pdf' : 'costos-emprendimientos.pdf', size: 245760, mime: 'application/pdf' as const, sha256: 'a'.repeat(64) } } : {}),
+    hasAttachment: i !== 1, active: i !== 2, createdAt: `2026-10-${String(15 - i).padStart(2, '0')}T15:00:00Z`, createdBy: reference('Biblioteca FCEA'),
+  })) };
+}
