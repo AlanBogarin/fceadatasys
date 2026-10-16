@@ -22,6 +22,8 @@ export type Publication = {
   abstract: string;
   keywords: string;
   externalUrl: string;
+  source?: "LOCAL" | "EXTERNA";
+  requiresLibraryCopy?: boolean;
   attachment?: PublicationAttachment;
   year: number;
   createdAt: string;
@@ -40,6 +42,9 @@ export type PublicationInput = {
   keywords: string;
   externalUrl: string;
   attachment?: PublicationAttachment;
+  attachmentId?: string;
+  source?: "LOCAL" | "EXTERNA";
+  requiresLibraryCopy?: boolean;
   year: number;
   approved: boolean;
 };
@@ -160,13 +165,50 @@ export function registerPublication(
         "Ingresá un año de publicación válido, entre 1900 y el año actual.",
       );
     }
+    let attachment = input.attachment;
+    if (input.attachmentId) {
+      if (attachment) throw Error("Seleccioná un único adjunto.");
+      const upload = state.uploadedAttachments?.find(
+        (entry) => entry.attachment.id === input.attachmentId,
+      );
+      if (
+        !upload ||
+        (actor.role !== "ADMINISTRADOR" && upload.createdBy.id !== actor.id)
+      ) {
+        throw Error(
+          "El adjunto no está disponible o no tenés permiso para vincularlo.",
+        );
+      }
+      attachment = upload.attachment;
+    } else if (
+      attachment &&
+      state.uploadedAttachments?.some(
+        (entry) => entry.attachment.sha256 === attachment!.sha256,
+      )
+    ) {
+      throw Error(
+        "Archivo duplicado: elegí el PDF desde los archivos ya cargados.",
+      );
+    }
+    const source =
+      input.source ?? (input.externalUrl.trim() ? "EXTERNA" : "LOCAL");
+    const requiresLibraryCopy =
+      source === "LOCAL" ? (input.requiresLibraryCopy ?? true) : false;
     let externalUrl = "";
-    if (input.attachment) {
-      validateAttachmentMetadata(input.attachment);
+    if (source === "LOCAL") {
+      if (attachment) validateAttachmentMetadata(attachment);
       if (input.externalUrl.trim()) {
         throw Error("Elegí una modalidad: archivo PDF o enlace externo.");
       }
+      if (requiresLibraryCopy && !attachment) {
+        throw Error(
+          "Adjuntá un PDF: la copia digital es obligatoria para este trabajo de Biblioteca.",
+        );
+      }
     } else {
+      if (attachment || input.requiresLibraryCopy) {
+        throw Error("Elegí una modalidad: archivo PDF o enlace externo.");
+      }
       if (!input.externalUrl.trim())
         throw Error("Adjuntá un PDF o ingresá un enlace al documento.");
       let documentUrl: URL;
@@ -193,10 +235,11 @@ export function registerPublication(
     // Paso 2: comprobar duplicados y todas las relaciones antes de modificar el estado.
     const existing = state.publications ?? [];
     if (
-      input.attachment &&
+      attachment &&
       existing.some(
         (publication) =>
-          publication.attachment?.sha256 === input.attachment!.sha256,
+          publication.attachment?.sha256 === attachment!.sha256 ||
+          publication.attachment?.id === attachment!.id,
       )
     ) {
       throw Error(
@@ -234,7 +277,9 @@ export function registerPublication(
       abstract,
       keywords,
       externalUrl,
-      attachment: input.attachment ? { ...input.attachment } : undefined,
+      source,
+      requiresLibraryCopy,
+      attachment: attachment ? { ...attachment } : undefined,
       year: input.year,
       createdAt: new Date().toISOString(),
       createdBy: { id: actor.id, name: actor.name },

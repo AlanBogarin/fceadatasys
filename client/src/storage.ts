@@ -27,7 +27,11 @@ export async function load(demoBaseUrl = window.location.href): Promise<State> {
       (state.publications !== undefined &&
         !Array.isArray(state.publications)) ||
       (state.publicationAudit !== undefined &&
-        !Array.isArray(state.publicationAudit))
+        !Array.isArray(state.publicationAudit)) ||
+      (state.uploadedAttachments !== undefined &&
+        !Array.isArray(state.uploadedAttachments)) ||
+      (state.attachmentAudit !== undefined &&
+        !Array.isArray(state.attachmentAudit))
     ) {
       throw Error(
         "Los datos de investigaciones no son compatibles. Se conservaron sin cambios.",

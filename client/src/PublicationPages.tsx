@@ -28,6 +28,7 @@ import {
   readAttachment,
 } from "./attachments";
 import "./publications.css";
+import { availableAttachments, attachmentSize } from "./attachmentService";
 
 type PageProps = {
   state: State;
@@ -36,6 +37,8 @@ type PageProps = {
   notify: (message: string) => void;
   showReport: (publicationId: string) => void;
   assertActive: () => void;
+  initialAttachmentId?: string;
+  consumeInitialAttachment?: () => void;
 };
 
 function ReferencePicker({
@@ -186,7 +189,7 @@ function PeoplePicker({
   );
 }
 
-function AttachmentDownload({
+export function AttachmentDownload({
   publication,
   state,
   user,
@@ -350,7 +353,11 @@ function PublicationDetail({
       <h3>Palabras clave</h3>
       <p>{publication.keywords}</p>
       <h3>
-        {publication.attachment ? "Documento adjunto" : "Enlace al documento"}
+        {publication.attachment
+          ? "Documento adjunto"
+          : publication.externalUrl
+            ? "Enlace al documento"
+            : "Documento"}
       </h3>
       {publication.attachment ? (
         <AttachmentDownload
@@ -360,7 +367,7 @@ function PublicationDetail({
           commit={commit}
           assertActive={assertActive}
         />
-      ) : (
+      ) : publication.externalUrl ? (
         <a
           className="document-link"
           href={publication.externalUrl}
@@ -369,6 +376,8 @@ function PublicationDetail({
         >
           {publication.externalUrl}
         </a>
+      ) : (
+        <p>Publicación local sin copia digital obligatoria en Biblioteca.</p>
       )}
     </article>
   );
@@ -381,8 +390,10 @@ export function PublicationsPage({
   notify,
   showReport,
   assertActive,
+  initialAttachmentId = "",
+  consumeInitialAttachment,
 }: PageProps) {
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(!!initialAttachmentId);
   const [selected, setSelected] = useState<Publication>();
   const [authorIds, setAuthorIds] = useState<string[]>([]);
   const [tutorIds, setTutorIds] = useState<string[]>([]);
@@ -390,11 +401,19 @@ export function PublicationsPage({
   const [query, setQuery] = useState("");
   const [summary, setSummary] = useState("");
   const [busy, setBusy] = useState(false);
-  const [documentMode, setDocumentMode] = useState("link");
+  const [documentMode, setDocumentMode] = useState(
+    initialAttachmentId ? "uploaded" : "link",
+  );
+  const [attachmentId, setAttachmentId] = useState(initialAttachmentId);
+  const [requiresLibraryCopy, setRequiresLibraryCopy] = useState(true);
+  const uploads = availableAttachments(state, user.id);
+  const latestState = useRef(state);
+  latestState.current = state;
   const saving = useRef(false);
   const pageOpen = useRef(true);
   useEffect(() => {
     pageOpen.current = true;
+    consumeInitialAttachment?.();
     return () => {
       pageOpen.current = false;
     };
@@ -418,6 +437,8 @@ export function PublicationsPage({
     setAuthorIds([]);
     setTutorIds([]);
     setDocumentMode("link");
+    setAttachmentId("");
+    setRequiresLibraryCopy(true);
     setCreating(true);
   }
 
@@ -456,15 +477,37 @@ export function PublicationsPage({
         keywords: text("keywords"),
         externalUrl: text("externalUrl"),
         attachment,
+        attachmentId: documentMode === "uploaded" ? attachmentId : undefined,
+        source: documentMode === "link" ? "EXTERNA" : "LOCAL",
+        requiresLibraryCopy:
+          documentMode === "link" || documentMode === "none"
+            ? false
+            : requiresLibraryCopy,
         approved: form.get("approved") === "on",
       };
       // Paso 2: el servicio valida reglas y prepara todos los registros de la transacción.
+      if (!pageOpen.current || latestState.current !== state) {
+        throw Error(
+          "Los datos cambiaron o el formulario se cerró. Volvé a intentar.",
+        );
+      }
+      assertActive();
+      if (input.attachmentId) {
+        const upload = uploads.find(
+          (entry) => entry.attachment.id === input.attachmentId,
+        );
+        if (!upload)
+          throw Error("El archivo ya no está disponible para vincular.");
+        await readAttachment(upload.attachment);
+      }
       const result = requireResult(registerPublication(state, user.id, input));
       // Paso 3: persistir todo junto; informar éxito solamente si la escritura finaliza.
       await commitWithAttachment(attachment, file, () => {
         if (!pageOpen.current)
           throw Error("El formulario se cerró. No se guardaron cambios.");
         assertActive();
+        if (latestState.current !== state)
+          throw Error("Los datos cambiaron. Volvé a intentar.");
         commit(result.state);
       });
       setSelected(result.publication);
@@ -473,10 +516,10 @@ export function PublicationsPage({
         `${result.publication.code}: investigación registrada correctamente.`,
       );
     } catch (caught) {
-      setError(errorText(caught));
+      if (pageOpen.current) setError(errorText(caught));
     } finally {
       saving.current = false;
-      setBusy(false);
+      if (pageOpen.current) setBusy(false);
     }
   }
 
@@ -488,8 +531,8 @@ export function PublicationsPage({
             <p className="eyebrow">Gestión bibliográfica</p>
             <h1>Registrar investigación</h1>
             <p>
-              Trabajo aprobado con un archivo PDF adjunto o un enlace al
-              documento.
+              Registrá los datos del trabajo aprobado y su documento, según
+              corresponda.
             </p>
           </div>
           <button
@@ -620,6 +663,10 @@ export function PublicationsPage({
                 >
                   <option value="link">Enlace externo</option>
                   <option value="file">Archivo PDF adjunto</option>
+                  <option value="uploaded">Archivo ya cargado</option>
+                  <option value="none">
+                    Local sin copia digital obligatoria
+                  </option>
                 </select>
               </Field>
               {documentMode === "file" ? (
@@ -634,7 +681,35 @@ export function PublicationsPage({
                     required
                   />
                 </Field>
-              ) : (
+              ) : documentMode === "uploaded" ? (
+                <Field
+                  label="Archivo disponible *"
+                  hint="Se vinculará al guardar la investigación. Cada PDF se usa una sola vez."
+                >
+                  <select
+                    required
+                    value={attachmentId}
+                    onChange={(event) => setAttachmentId(event.target.value)}
+                  >
+                    <option value="">Seleccioná un PDF cargado</option>
+                    {uploads.map((entry) => (
+                      <option
+                        key={entry.attachment.id}
+                        value={entry.attachment.id}
+                      >
+                        {entry.attachment.name} ·{" "}
+                        {attachmentSize(entry.attachment.size)}
+                      </option>
+                    ))}
+                  </select>
+                  {!uploads.length && (
+                    <small>
+                      No hay archivos disponibles. Podés adjuntar un PDF nuevo
+                      en este formulario.
+                    </small>
+                  )}
+                </Field>
+              ) : documentMode === "link" ? (
                 <Field
                   label="Enlace al documento *"
                   hint="Dirección HTTP o HTTPS del documento alojado externamente."
@@ -647,6 +722,27 @@ export function PublicationsPage({
                     placeholder="https://..."
                   />
                 </Field>
+              ) : (
+                <p>
+                  Esta modalidad corresponde a trabajos locales que no requieren
+                  conservar una copia digital en Biblioteca.
+                </p>
+              )}
+              {documentMode !== "link" && (
+                <label className="publication-confirm">
+                  <input
+                    type="checkbox"
+                    checked={
+                      documentMode === "none" ? false : requiresLibraryCopy
+                    }
+                    disabled={documentMode === "none"}
+                    onChange={(event) =>
+                      setRequiresLibraryCopy(event.target.checked)
+                    }
+                  />
+                  Corresponde conservar este trabajo en Biblioteca (PDF
+                  obligatorio).
+                </label>
               )}
               <label className="publication-confirm">
                 <input name="approved" type="checkbox" required /> Confirmo que

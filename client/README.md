@@ -1,5 +1,11 @@
 # FCEA-Datasys · Usuarios, catálogos, registro y reporte de investigaciones
 
+## Carga de archivos (16/10/2026)
+
+La pantalla **Carga de archivos** ya permite seleccionar o arrastrar un PDF, guardarlo previamente y usarlo al registrar una publicación. Incluye búsqueda, filtros, paginación, estados disponible/vinculado y descarga de adjuntos vinculados según permisos. Conserva el backend simulado y los datos existentes del navegador; no conecta ni modifica `server/`.
+
+Abrir en el cliente habitual: `http://127.0.0.1:5173/#archivos`. Contrato, comparación con el servidor y recorrido: [Carga de archivos](docs/CARGA-DE-ARCHIVOS.md). Las secciones históricas siguientes describen entregas anteriores. Verificación actual: **43 pruebas**.
+
 ## Actualización para la segunda evaluación
 
 - **RN-01:** el nombre de Público se precarga como solo lectura en edición y Mi perfil; la lógica de negocio también rechaza cambios. Cambiar el rol en el mismo guardado no permite modificar ese nombre.

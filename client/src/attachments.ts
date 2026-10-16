@@ -18,8 +18,8 @@ export function validateAttachmentMetadata(attachment: PublicationAttachment) {
     attachment.size <= 0 ||
     attachment.size > MAX_PDF_BYTES ||
     !attachment.name ||
-    attachment.name.length > 150 ||
-    /[\\/\u0000-\u001f\u007f]/u.test(attachment.name) ||
+    attachment.name.length > 144 ||
+    /[\\/:*?"<>|\p{Cc}\p{Cf}]/u.test(attachment.name) ||
     !attachment.name.toLowerCase().endsWith(".pdf")
   ) {
     throw Error(
@@ -33,14 +33,20 @@ export async function preparePdf(file: File): Promise<PublicationAttachment> {
   if (!file.size || file.size > MAX_PDF_BYTES || !/\.pdf$/i.test(file.name)) {
     throw Error("Seleccioná un archivo PDF de hasta 10 MB.");
   }
+  if (
+    file.type &&
+    !["application/pdf", "application/octet-stream"].includes(file.type)
+  ) {
+    throw Error("El tipo de archivo debe ser PDF.");
+  }
 
   // Paso 2: verificar la firma y el fin de PDF; el MIME declarado no es suficiente.
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const header = new TextDecoder().decode(bytes.subarray(0, 8));
+  const header = new TextDecoder().decode(bytes.subarray(0, 9));
   const tail = new TextDecoder().decode(
     bytes.subarray(Math.max(0, bytes.length - 1024)),
   );
-  if (!/^%PDF-(1\.[0-7]|2\.0)/.test(header) || !/%%EOF\s*$/.test(tail)) {
+  if (!/^%PDF-(1\.[0-7]|2\.0)\s/.test(header) || !/%%EOF\s*$/.test(tail)) {
     throw Error("El contenido del archivo no corresponde a un PDF reconocido.");
   }
 
@@ -51,8 +57,9 @@ export async function preparePdf(file: File): Promise<PublicationAttachment> {
   ).join("");
   let baseName = file.name.replace(/\.pdf$/i, "").normalize("NFKC");
   baseName = baseName
-    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/gu, "_")
+    .replace(/[\\/:*?"<>|\p{Cc}\p{Cf}]/gu, "_")
     .trim()
+    .replace(/^\.+/, "")
     .slice(0, 140);
   if (!baseName || /^\.+$/.test(baseName)) baseName = "documento";
   const attachment: PublicationAttachment = {

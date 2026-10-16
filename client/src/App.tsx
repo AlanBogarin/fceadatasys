@@ -2,6 +2,7 @@ import { Brand, errorText, initials } from "./ui";
 import { UsersPage, Profile, ChangePassword } from "./UserPages";
 import { Auth } from "./AuthPage";
 import { PublicationsPage, PublicationReportsPage } from "./PublicationPages";
+import { AttachmentPage } from "./AttachmentPage";
 import { DemoDataPanel } from "./DemoDataPanel";
 import "./demoData.css";
 import { useSession } from "./useSession";
@@ -119,6 +120,7 @@ const groups: {
       },
       {
         id: "archivos",
+        ready: true,
         label: "Carga de archivos",
         icon: UploadCloud,
         roles: editors,
@@ -318,6 +320,7 @@ export default function App() {
   const [page, setPage] = useState(route);
   const [toast, setToast] = useState("");
   const [reportPublicationId, setReportPublicationId] = useState("");
+  const [registrationAttachmentId, setRegistrationAttachmentId] = useState("");
   const [mobile, setMobile] = useState(false);
   useEffect(() => {
     load()
@@ -480,6 +483,8 @@ export default function App() {
     if (page === "gestion-publicaciones") {
       return (
         <PublicationsPage
+          initialAttachmentId={registrationAttachmentId}
+          consumeInitialAttachment={() => setRegistrationAttachmentId("")}
           state={state!}
           user={user!}
           commit={commit}
@@ -488,6 +493,20 @@ export default function App() {
           showReport={(publicationId) => {
             setReportPublicationId(publicationId);
             navigate("reportes");
+          }}
+        />
+      );
+    }
+    if (page === "archivos") {
+      return (
+        <AttachmentPage
+          state={state!}
+          user={user!}
+          commit={commit}
+          assertActive={sessionControl.assertActive}
+          register={(attachmentId) => {
+            setRegistrationAttachmentId(attachmentId);
+            navigate("gestion-publicaciones");
           }}
         />
       );

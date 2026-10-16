@@ -1,0 +1,257 @@
+.upload-steps {
+  display: flex;
+  gap: 42px;
+  list-style: none;
+  padding: 20px 24px;
+  margin: 0 0 24px;
+  background: #f5f1f3;
+  border-radius: 12px;
+}
+.upload-steps li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.upload-steps li > span {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #590d31;
+  color: white;
+  font-weight: 600;
+}
+.upload-steps small,
+.upload-selection small {
+  display: block;
+  color: #61757b;
+  margin-top: 4px;
+}
+.upload-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(250px, 1fr);
+  gap: 24px;
+}
+.upload-card,
+.upload-guide {
+  border: 1px solid #dfe8e7;
+  border-radius: 16px;
+  padding: 24px;
+  background: white;
+  min-width: 0;
+}
+.upload-card h2,
+.upload-guide h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+.upload-card > p {
+  color: #61757b;
+  font-size: 13px;
+  margin: 0 0 20px;
+}
+.upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 28px 16px;
+  border: 2px dashed #cfb7c2;
+  border-radius: 12px;
+  background: #fcfafb;
+  color: #590d31;
+}
+.upload-dropzone.dragging {
+  background: #f4e8ed;
+  border-color: #590d31;
+}
+.upload-dropzone > span {
+  color: #61757b;
+  font-size: 13px;
+}
+.upload-file-label {
+  position: relative;
+  margin-top: 6px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.upload-file-label input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.upload-file-label:focus-within {
+  outline: 3px solid #a9728b;
+  outline-offset: 3px;
+}
+.upload-file-label.disabled {
+  opacity: 0.6;
+}
+.upload-selection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f5f9f8;
+  padding: 14px;
+  margin-top: 16px;
+  border-radius: 8px;
+}
+.upload-selection > div {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.upload-selection svg {
+  flex-shrink: 0;
+  color: #590d31;
+}
+.upload-submit {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-top: 20px;
+}
+.upload-submit > span {
+  font-size: 12px;
+  color: #61757b;
+  line-height: 1.5;
+}
+.upload-submit button {
+  flex-shrink: 0;
+}
+.upload-guide ul {
+  padding-left: 20px;
+  color: #52676e;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.upload-guide li {
+  margin: 12px 0;
+}
+.upload-demo-note {
+  border-top: 1px solid #e3e9e8;
+  padding-top: 16px;
+  margin-top: 20px;
+  font-size: 13px;
+}
+.upload-demo-note p {
+  line-height: 1.6;
+  color: #61757b;
+  margin-bottom: 0;
+}
+.upload-success {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #eef8f2;
+  border: 1px solid #b8d8c6;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 24px;
+  color: #26533b;
+}
+.upload-success > div {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.upload-success > svg {
+  flex-shrink: 0;
+}
+.upload-success p {
+  font-size: 13px;
+  margin: 5px 0 0;
+}
+.upload-library {
+  margin-top: 30px;
+}
+.attachment-table td:first-child {
+  min-width: 200px;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+.attachment-table td {
+  vertical-align: top;
+}
+.attachment-table td p {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0;
+}
+.attachment-table details {
+  margin-top: 12px;
+  font-size: 12px;
+}
+.attachment-table summary {
+  cursor: pointer;
+  color: #590d31;
+}
+.attachment-table code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.attachment-table .attachment-download > p {
+  display: none;
+}
+.attachment-table .secondary {
+  white-space: normal;
+}
+@media (max-width: 1050px) {
+  .upload-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 800px) {
+  .attachment-table thead {
+    display: none;
+  }
+  .attachment-table tbody,
+  .attachment-table tr,
+  .attachment-table td {
+    display: block;
+  }
+  .attachment-table tr {
+    padding: 10px 0;
+    border-bottom: 1px solid #edf1f0;
+  }
+  .attachment-table td,
+  .attachment-table td:first-child,
+  .attachment-table td:nth-child(2) {
+    min-width: 0;
+    max-width: none;
+    padding: 10px 16px;
+    border: 0;
+  }
+  .upload-library > .people-pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .upload-library .people-pagination .publication-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .upload-steps {
+    flex-direction: column;
+    gap: 20px;
+    padding: 18px;
+  }
+  .upload-card,
+  .upload-guide {
+    padding: 18px;
+  }
+  .upload-submit,
+  .upload-success {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

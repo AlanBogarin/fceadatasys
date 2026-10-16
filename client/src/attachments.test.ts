@@ -15,7 +15,7 @@ test("PDF: verifica contenido, sanea nombres y calcula la misma huella para copi
   const file = pdfFile("../Investigación: prueba.pdf");
   const first = await preparePdf(file);
   const renamed = new File([await file.arrayBuffer()], "Otra copia.pdf", {
-    type: "text/plain",
+    type: "application/octet-stream",
   });
   const second = await preparePdf(renamed);
   assert.equal(first.sha256, second.sha256);
@@ -31,6 +31,8 @@ test("PDF: rechaza archivos vacíos, extensión falsa, contenido falso, truncami
     new File([], "vacio.pdf"),
     new File([await real.arrayBuffer()], "archivo.exe"),
     new File(["Este no es un PDF"], "archivo.pdf", { type: "application/pdf" }),
+    new File([await real.arrayBuffer()], "archivo.pdf", { type: "text/plain" }),
+    new File(["%PDF-1.70\n%%EOF"], "cabecera.pdf"),
     new File(["%PDF-1.7\nDocumento sin final"], "incompleto.pdf"),
     new File([new Uint8Array(MAX_PDF_BYTES + 1)], "grande.pdf"),
   ]) {
