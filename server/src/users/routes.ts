@@ -72,6 +72,7 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
       const input: UserInput = { name: before.name, ci: before.ci, email: before.email, username: before.username, role: before.role, active: before.active, ...request.body };
       const adminCount = await tx.user.count({ where: { role: 'ADMINISTRADOR', active: true } });
       enforceUserRules(before, input, request.auth!.userId, adminCount);
+      if (before.active && !input.active && await tx.publication.count({ where: { createdById: before.id } }) > 0) throw new AppError(409, 'USER_IN_USE', 'No se puede inactivar el usuario: tiene publicaciones registradas.');
       const user = await tx.user.update({ where: { id: before.id }, data: normalizedFields(input) });
       const roleOrStateChanged = before.role !== user.role || before.active !== user.active;
       if (roleOrStateChanged || before.emailKey !== user.emailKey) {

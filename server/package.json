@@ -16,7 +16,7 @@
     "test:unit": "node --import tsx --test test/unit/*.test.ts",
     "test:typecheck": "tsc -p tsconfig.test.json",
     "test:unit:coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=src/**/*.ts --test-coverage-exclude=src/main.ts test/unit/*.test.ts",
-    "test:integration": "node --env-file-if-exists=.env.test --import tsx --test test/security.test.ts test/users.integration.test.ts test/profile.integration.test.ts",
+    "test:integration": "node --env-file-if-exists=.env.test --import tsx --test test/security.test.ts test/users.integration.test.ts test/profile.integration.test.ts test/catalogs.integration.test.ts test/publications.integration.test.ts test/publication-queries.integration.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "node --env-file-if-exists=.env node_modules/prisma/build/index.js migrate deploy",
     "db:dev": "node --env-file-if-exists=.env node_modules/prisma/build/index.js migrate dev",

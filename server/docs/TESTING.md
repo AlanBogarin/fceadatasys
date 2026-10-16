@@ -119,3 +119,64 @@ Resultados finales de esta ampliación:
 - Las 48 pruebas PostgreSQL se reparten en **31 de seguridad (30 subcasos y su contenedor), 10 de usuarios y 7 de perfil (seis subcasos y su contenedor)**. Se comprobaron concurrencia, refresh/reset, rollback de contraseña/perfil/cambio de correo y las regresiones anteriores de usuarios.
 
 La fase reúne **198 pruebas aprobadas**. El runner coordinado confirmó `tests_exit=0`, `stop_exit=0` y salida final cero; PostgreSQL quedó detenido en el mismo contexto autorizado (`server stopped`, `no server running`), con los datos aislados conservados bajo `server/.tmp/`. Estos resultados añaden evidencia a la fase anterior de 156, sin sustituir su historial de corrección de fixtures. SMTP real e integración del navegador continúan fuera de esta evidencia.
+
+## Ampliación de catálogos
+
+`test/unit/catalogs.test.ts` añade 11 pruebas sin servicios: permisos, normalización Unicode/acentos/puntuación, nombres, campos específicos de los siete catálogos, CI/email/ORCID opcionales, límites, cuerpos estrictos, PATCH parcial y filtros.
+
+`test/catalogs.integration.test.ts` requiere `CATALOGS_TEST_DATABASE_URL` runtime y `CATALOGS_TEST_OWNER_URL` propietario sobre la misma base local `fceadatasys_*test`, distinta de usuarios. Sin la primera URL se omite la suite; con ella pero sin propietario válido falla. La API siempre usa runtime limitado; el propietario prepara/retira tablas FK auxiliares y consulta locks, nunca se pasa a createApp. Se conservan cuentas y audit logs; IDs únicos permiten repetir sin borrar historia.
+
+Sus 12 pruebas (11 subcasos y contenedor) comprueban:
+
+- CRUD/estados de los siete catálogos, DTO y auditoría antes/después.
+- Permisos por rol y endpoint, anónimo, clasificaciones activas de Público y protección de directorios personales.
+- Búsqueda por nombre/campos, normalización, paginación, filtros y resultados vacíos.
+- Unicidad concurrente de nombres/identificadores, incluso inactivos; comprobación adicional directa de UNIQUE.
+- Payload estricto, claves ajenas, UUID/catálogos inválidos y rechazo de IDs de otro catálogo.
+- Referencias FK reales que impiden inactivar/eliminar y se preservan al editar metadatos.
+- Una inserción FK concurrente bloquea la mutación; tras confirmar, el estado no se cambia porque el guard relee referencias.
+- Revalidación de rol y vencimiento mientras se esperan locks, sin aplicar cambios.
+- PATCH concurrentes conservan campos distintos; limpiar opcionales persiste NULL y libera su clave única.
+- Fallo de auditoría revierte alta, edición, activación, inactivación y DELETE.
+- Privilegios runtime mínimos y preflight CORS de DELETE.
+
+Build y tipos correctos. Conjunto vigente: **221 aprobadas (161 sin servicios + 60 PostgreSQL)**. La última ejecución completa aprobó unitarias, seguridad (31), usuarios (10) y perfil (7), pero el nuevo fixture de observación de locks falló por reutilizar estadísticas dentro de su transacción. Se añadió `pg_stat_clear_snapshot()` a esa observación y se repitió solo catálogos: **12 aprobadas, cero fallos y cero omitidas**, sin cambios en fuentes del server. La cifra conjunta combina esas ejecuciones, no afirma que la ejecución completa fallida pasara.
+
+Antes, la suite detectó que Fastify representa como null el cuerpo ausente de DELETE; se corrigió la validación del endpoint y se comprobó el recorrido completo. No quedan fallos conocidos de este alcance. Migraciones Prisma y grants se aplicaron únicamente a bases aisladas. Un smoke SQL adicional en una base desechable comprobó alta/down/reaplicación, conservación de usuarios/auditoría y rechazo del down con registros o dependencias. La reversión versionada es `prisma/rollback-catalogs.sql`; su validación no borra historial Prisma ni habilita usar down sobre producción sin mantenimiento/backup.
+
+El cluster temporal quedó detenido (`server stopped`, `no server running`); `git diff --check` correcto y `client/` sin diferencias contra HEAD. Publicaciones/N:M/FTS, adjuntos, parámetros, reportes, consulta/exportación de auditoría y conexión de navegador siguen fuera de estas pruebas. Las futuras publicaciones deben implementar las FKs y validación bloqueada de referencias activas documentadas en CATALOGS.md.
+
+## Registro de publicaciones
+
+`test/unit/publications.test.ts` añade ocho pruebas sin servicios de limpieza de textos, hashes normalizados, conteo de palabras (incluidas ligaduras Unicode), año institucional, IDs/arrays, modalidades/URL, confirmación externa, payload estricto y parámetro del resumen.
+
+`test/publications.integration.test.ts` requiere `PUBLICATIONS_TEST_DATABASE_URL` y `PUBLICATIONS_TEST_OWNER_URL` hacia la misma base local `fceadatasys_*test`, exclusiva y distinta de usuarios/catálogos. Sin URL runtime se omite; con ella pero sin propietario válido falla. API siempre con runtime limitado; propietario solo para fixtures, restricciones DB y observación de locks. No se borran audit logs, usuarios o publicaciones entre ejecuciones; IDs únicos y secuencia creciente permiten repetir. Se restablece el límite a 300 al terminar.
+
+14 pruebas (13 subcasos y contenedor) comprueban alta Admin/Digitador, DTO seguro, aprobación externa declarada, orden N:M, rol/actor, texto/año/referencias, límite exacto y configurable con permisos, unicidad normalizada incluso histórica, un conflicto concurrente que fuerza a ambas precomprobaciones a terminar antes del INSERT para ejercitar realmente UNIQUE, modalidades locales/externas y adjuntos CLEAN/PENDING/REJECTED/ajenos/reutilizados. Los archivos son fixtures de metadatos: no se ejecuta un scanner ni se crea/descarga un PDF real.
+
+También comprueban los guards FK de catálogos con relaciones compuestas/N:M reales, RN02 de usuarios creadores, CHECK/FK/cardinalidad diferida/orden, permisos mínimos, códigos después de cinco dígitos, rol/plazo/estado releídos después de esperar, registro frente a inactivación concurrente y rollback de publicación/N:M/uso de adjunto/parámetros si falla auditoría. Estos casos complementan las regresiones anteriores.
+
+Build y tipos correctos. Corrida integrada: **169 sin servicios + 74 PostgreSQL = 243 aprobadas**, cero fallos y cero omitidas. Tras ajustar la limpieza del texto para conservar el conteo del client frente a ligaduras Unicode, se repitieron las 169 sin servicios y las 14 de publicaciones: correctas; las otras fuentes permanecieron iguales. Reparto PostgreSQL: 31 seguridad, 10 usuarios, 7 perfil, 12 catálogos, 14 publicaciones.
+
+Prisma desplegó tres migraciones y grants en bases de pruebas. Smoke SQL en base desechable validó aplicación/down/reaplicación de la nueva migración con conservación de usuarios/catálogos/auditoría; down rechazó adjuntos o límite alterado. `prisma/rollback-publications.sql` queda versionado y no modifica `_prisma_migrations`. Cluster local detenido al terminar, con datos conservados; conexión de navegador y base institucional intactas. Consulta/FTS/edición/inactivación de publicaciones, carga/descarga/antimalware, formatos administrables, reportes y consulta/exportación de auditoría siguen fuera de esta evidencia.
+
+## Listado y consulta de publicaciones
+
+`test/unit/publication-queries.test.ts` añade seis pruebas sin servicios: filtros/paginación tipados, Unicode/UUID, código bigint, fechas reales, permisos de estado y parametrización SQL. `test/publication-queries.integration.test.ts` requiere PUBLICATION_QUERIES_TEST_DATABASE_URL y PUBLICATION_QUERIES_TEST_OWNER_URL hacia una base local exclusiva distinta de las otras suites. Se ejercita siempre la API con runtime limitado; el propietario prepara fixtures y escrituras concurrentes, sin usar datos institucionales ni borrar auditoría.
+
+Diez pruebas (nueve subcasos y contenedor) verifican:
+
+- Los tres roles leen metadatos activos; solo Admin obtiene inactivas; anónimo y flags de ampliación fallan.
+- DTO basado en selects seguros, nombres sin CI/email/ORCID, orden N:M y metadatos de archivo condicionados a rol/estado.
+- Filtros combinados, orden determinista, páginas/vacíos, código exacto sin pérdida bigint y referencias históricas.
+- Rango inclusivo en fechas institucionales, probado en los milisegundos anteriores/posteriores a medianoche.
+- FTS española/inglesa, combinación literal bilingüe, acentos/Unicode, nombres renombrados y código; strings adversarios siguen siendo datos.
+- Consultas no modifican sesión ni anuncian descarga; rechazos auditados y 503 si el log falla.
+- Conteo, IDs y nombres mantienen snapshot frente a una modificación confirmada entre esas lecturas.
+- EXPLAIN ANALYZE del predicado completo con ramas UNION usa GIN, sin forzar enable_seqscan; cinco búsquedas HTTP <=1500 ms tras agregar 2000 publicaciones.
+
+Los registros de rendimiento conservan N:M/FKs/cardinalidad; sus hashes sintéticos solo preparan fixtures de volumen, no pasan por la API como datos confiables. Las repeticiones conservan fixtures, por lo que cada ejecución agrega 2000 y no afirma comenzar en una base vacía. El caso de strings adversarios se limita a clasificaciones de la ejecución: "1=1" puede legítimamente buscar el lexema 1 presente en datos anteriores. Las cinco muestras específicas con el predicado optimizado fueron 32,8 / 15,0 / 14,9 / 14,2 / 13,2 ms. La corrida integrada volvió a cumplir el umbral. Son tiempos de Fastify inject + PostgreSQL local, no de navegador/red/producción.
+
+Build y tipos correctos; **259 aprobadas en la corrida integrada: 175 sin servicios + 84 PostgreSQL**, cero fallos/omitidas. PostgreSQL: 31 seguridad, 10 usuarios, 7 perfil, 12 catálogos, 14 registro y 10 consulta. Un smoke adicional comprobó aplicación/down/reaplicación de la cuarta migración, funciones/índices y conservación de usuarios/catálogos/auditoría. La reversión SQL versionada no modifica historia Prisma.
+
+La primera redirección global del runner bloqueó el arranque en Windows; se interrumpió y se completó sin redirección. El cluster quedó detenido en el contexto autorizado y se conservaron los datos. El driver pg emitió una advertencia de deprecación de consultas encoladas; no se cambiaron dependencias y las pruebas pasaron con el runtime instalado. `client/` sin cambios; archivos/antivirus, edición/inactivación, reportes y consulta/exportación de auditoría permanecen fuera de estas pruebas.

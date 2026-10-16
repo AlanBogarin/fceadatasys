@@ -96,7 +96,7 @@ Perfil usa exclusivamente la identidad autenticada: `GET /me` no acepta otro usu
 
 Cambiar el correo efectivo normalizado, mediante perfil o edición administrativa, consume las recuperaciones pendientes en la misma transacción que los datos y su auditoría. Cambios equivalentes de mayúsculas/Unicode/espacios no invalidan enlaces innecesariamente. La edición de correo o username conserva contraseña, sesiones y plazos; no requiere contraseña actual ni verifica entrega al correo nuevo. Un mensaje ya encolado al correo anterior puede llegar, pero su enlace consumido no permite restablecer la contraseña. Si falla la auditoría, también se revierten el correo y el consumo de recuperaciones.
 
-No existe DELETE de usuarios. La inactivación es `PATCH {active:false}`, conserva cuenta y auditoría. RN-02 sobre referencias bibliográficas queda pendiente de sus modelos futuros; este hito no implementa ni promete eliminación física condicionada a publicaciones.
+No existe DELETE de usuarios. La inactivación es `PATCH {active:false}`, conserva cuenta y auditoría. Tras incorporar publicaciones, RN02 impide inactivar a sus creadores con `409 USER_IN_USE`, conservando el historial bibliográfico; no habilita eliminación física de usuarios.
 
 El cierre previo de mantenimiento de usuarios conserva su evidencia histórica de 156 aprobadas. La ampliación de perfil/contraseñas fue validada con build/tipos correctos y **198 pruebas aprobadas: 150 sin servicios y 48 PostgreSQL (31 seguridad, 10 usuarios y 7 perfil)**, cero fallos y cero omitidas. Evidencia y límites de cada fase en [TESTING.md](TESTING.md).
 
@@ -145,4 +145,6 @@ Operaciones de auditoría de este hito: `USER_BOOTSTRAP`, `LOGIN`, `LOGOUT`, `RE
 
 `GET /api/v1/status`, solo ADMINISTRADOR: 200 `{status:"ready",smtp:"ready"}` si el transportador está disponible, o `{status:"degraded",smtp:"unavailable"}` en modo degradado. No revela host, credenciales ni errores SMTP. Para usar cookies desde navegador al integrar frontend, enviar `credentials:"include"` en login/refresh/logout y cambio personal de contraseña; el access token se envía por Bearer.
 
-Catálogos, publicaciones, parámetros, reportes, consulta/exportación de auditoría y archivos no tienen rutas implementadas en este hito.
+Los siete catálogos tienen rutas de listado/detalle/alta/edición/estado/eliminación en `/api/v1/catalogos/:catalog`, con campos, permisos, auditoría y errores `DUPLICATE_CATALOG`/`CATALOG_IN_USE` documentados en el [contrato de catálogos](CATALOGS.md), parte de este contrato API.
+
+El [contrato de registro de publicaciones](PUBLICATIONS.md), también parte de esta API, documenta `POST /api/v1/publicaciones`, relaciones N:M, DTO, límite configurable de resumen (`GET/PATCH /api/v1/parametros/publicaciones`), modalidades y errores adicionales. El [contrato de listado/consulta](PUBLICATION-QUERIES.md) incorpora `GET /api/v1/publicaciones` y `GET /api/v1/publicaciones/:id`, con paginación, filtros, búsqueda FTS y DTO seguro según rol. POST emite Location del detalle. El registro puede vincular archivos ya verificados; carga/almacenamiento/antivirus, edición/inactivación, reportes, parámetros de formatos y consulta/exportación de auditoría siguen pendientes.

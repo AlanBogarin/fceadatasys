@@ -41,6 +41,9 @@ model User {
   recoveryTokens RecoveryToken[]
   auditLogs      AuditLog[]
 
+  publications Publication[]
+  attachments  StoredAttachment[]
+
   @@index([role, active], map: "usuarios_rol_activo_idx")
   @@map("usuarios")
 }
@@ -124,4 +127,202 @@ model AuditLog {
   @@index([sessionId], map: "auditoria_sesion_idx")
   @@index([publicationId], map: "auditoria_publicacion_idx")
   @@map("auditoria")
+}
+
+// Independent entities referenced by ordered publication joins with RESTRICT.
+model Author {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @map("nombre_completo") @db.VarChar(150)
+  nameKey   String   @unique(map: "autores_nombre_clave_key") @map("nombre_clave") @db.VarChar(300)
+  ci        String?  @db.VarChar(12)
+  email     String?  @map("correo") @db.VarChar(150)
+  orcid     String?  @map("orc_id") @db.VarChar(19)
+  ciKey     String?  @unique(map: "autores_ci_clave_key") @map("ci_clave") @db.VarChar(300)
+  emailKey  String?  @unique(map: "autores_correo_clave_key") @map("correo_clave") @db.VarChar(300)
+  orcidKey  String?  @unique(map: "autores_orcid_clave_key") @map("orcid_clave") @db.VarChar(300)
+  searchKey String   @map("busqueda_clave") @db.Text
+  active    Boolean  @default(true) @map("activo")
+  createdAt DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  publications PublicationAuthor[]
+
+  @@index([active, nameKey, id], map: "autores_activo_nombre_idx")
+  @@map("autores")
+}
+
+model Tutor {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @map("nombre_completo") @db.VarChar(150)
+  nameKey        String   @unique(map: "tutores_nombre_clave_key") @map("nombre_clave") @db.VarChar(300)
+  ci             String?  @db.VarChar(12)
+  email          String?  @map("correo") @db.VarChar(150)
+  specialization String?  @map("especialidad") @db.VarChar(150)
+  ciKey          String?  @unique(map: "tutores_ci_clave_key") @map("ci_clave") @db.VarChar(300)
+  emailKey       String?  @unique(map: "tutores_correo_clave_key") @map("correo_clave") @db.VarChar(300)
+  searchKey      String   @map("busqueda_clave") @db.Text
+  active         Boolean  @default(true) @map("activo")
+  createdAt      DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  publications PublicationTutor[]
+
+  @@index([active, nameKey, id], map: "tutores_activo_nombre_idx")
+  @@map("tutores")
+}
+
+enum CatalogKind {
+  carreras
+  facultades
+  filiales
+  tipos
+  niveles
+
+  @@map("tipo_catalogo")
+}
+
+model CatalogRecord {
+  id          String      @id @default(uuid()) @db.Uuid
+  kind        CatalogKind @map("tipo")
+  name        String      @map("nombre") @db.VarChar(150)
+  nameKey     String      @map("nombre_clave") @db.VarChar(300)
+  code        String?     @map("codigo") @db.VarChar(30)
+  acronym     String?     @map("sigla") @db.VarChar(30)
+  address     String?     @map("direccion") @db.VarChar(200)
+  description String?     @map("descripcion") @db.VarChar(300)
+  codeKey     String?     @map("codigo_clave") @db.VarChar(300)
+  acronymKey  String?     @map("sigla_clave") @db.VarChar(300)
+  searchKey   String      @map("busqueda_clave") @db.Text
+  active      Boolean     @default(true) @map("activo")
+  createdAt   DateTime    @default(now()) @map("creado_en") @db.Timestamptz(3)
+  updatedAt   DateTime    @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  careerPublications Publication[] @relation("PublicationCareer")
+  levelPublications  Publication[] @relation("PublicationLevel")
+  typePublications   Publication[] @relation("PublicationType")
+  branchPublications Publication[] @relation("PublicationBranch")
+
+  @@unique([id, kind], map: "catalogos_id_tipo_key")
+  @@unique([kind, nameKey], map: "catalogos_tipo_nombre_clave_key")
+  @@unique([kind, codeKey], map: "catalogos_tipo_codigo_clave_key")
+  @@unique([kind, acronymKey], map: "catalogos_tipo_sigla_clave_key")
+  @@index([kind, active, nameKey, id], map: "catalogos_tipo_activo_nombre_idx")
+  @@map("catalogos")
+}
+
+enum PublicationSource {
+  LOCAL
+  EXTERNA
+
+  @@map("origen_publicacion")
+}
+
+enum AttachmentState {
+  PENDING
+  CLEAN
+  REJECTED
+
+  @@map("estado_adjunto")
+}
+
+// Registry consumed by registration. Upload/scanning endpoints are a separate module.
+// Neither CLEAN nor hashes/storage paths can be supplied through the publication API.
+model StoredAttachment {
+  id              String          @id @default(uuid()) @db.Uuid
+  name            String          @map("nombre") @db.VarChar(150)
+  size            Int             @map("tamano")
+  mime            String          @db.VarChar(100)
+  sha256          String          @unique(map: "adjuntos_sha256_key") @db.Char(64)
+  storageKey      String          @unique(map: "adjuntos_almacenamiento_key") @map("almacenamiento_clave") @db.VarChar(255)
+  state           AttachmentState @default(PENDING) @map("estado")
+  contentVerified Boolean         @default(false) @map("contenido_verificado")
+  scannedAt       DateTime?       @map("analizado_en") @db.Timestamptz(3)
+  createdAt       DateTime        @default(now()) @map("creado_en") @db.Timestamptz(3)
+  createdById     String          @map("creado_por_id") @db.Uuid
+  createdBy       User            @relation(fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publication     Publication?
+
+  @@index([createdById], map: "adjuntos_creador_idx")
+  @@unique([id, sha256], map: "adjuntos_id_sha256_key")
+  @@map("adjuntos")
+}
+
+model Publication {
+  id                  String            @id @default(uuid()) @db.Uuid
+  number              BigInt            @unique(map: "publicaciones_numero_key") @default(autoincrement()) @map("numero")
+  title               String            @map("titulo") @db.VarChar(250)
+  titleHash           String            @unique(map: "publicaciones_titulo_hash_key") @map("titulo_hash") @db.Char(64)
+  summary             String            @map("resumen") @db.VarChar(5000)
+  summaryHash         String            @unique(map: "publicaciones_resumen_hash_key") @map("resumen_hash") @db.Char(64)
+  abstract            String            @db.VarChar(5000)
+  abstractHash        String            @unique(map: "publicaciones_abstract_hash_key") @map("abstract_hash") @db.Char(64)
+  keywords            String            @map("palabras_clave") @db.VarChar(300)
+  year                Int               @map("anio")
+  source              PublicationSource @map("origen")
+  requiresLibraryCopy Boolean           @map("requiere_copia_biblioteca")
+  externalUrl         String?           @map("url_externa") @db.VarChar(2000)
+  attachmentId        String?           @unique(map: "publicaciones_adjunto_id_key") @map("adjunto_id") @db.Uuid
+  attachmentHash      String?           @unique(map: "publicaciones_adjunto_hash_key") @map("adjunto_hash") @db.Char(64)
+  attachment          StoredAttachment? @relation(fields: [attachmentId, attachmentHash], references: [id, sha256], onDelete: Restrict, onUpdate: Restrict)
+  careerId            String            @map("carrera_id") @db.Uuid
+  careerKind          CatalogKind       @default(carreras) @map("carrera_tipo")
+  levelId             String            @map("nivel_id") @db.Uuid
+  levelKind           CatalogKind       @default(niveles) @map("nivel_tipo")
+  typeId              String            @map("tipo_id") @db.Uuid
+  typeKind            CatalogKind       @default(tipos) @map("tipo_catalogo")
+  branchId            String            @map("filial_id") @db.Uuid
+  branchKind          CatalogKind       @default(filiales) @map("filial_tipo")
+  career              CatalogRecord     @relation("PublicationCareer", fields: [careerId, careerKind], references: [id, kind], onDelete: Restrict, onUpdate: Restrict)
+  level               CatalogRecord     @relation("PublicationLevel", fields: [levelId, levelKind], references: [id, kind], onDelete: Restrict, onUpdate: Restrict)
+  type                CatalogRecord     @relation("PublicationType", fields: [typeId, typeKind], references: [id, kind], onDelete: Restrict, onUpdate: Restrict)
+  branch              CatalogRecord     @relation("PublicationBranch", fields: [branchId, branchKind], references: [id, kind], onDelete: Restrict, onUpdate: Restrict)
+  authors             PublicationAuthor[]
+  tutors              PublicationTutor[]
+  active              Boolean           @default(true) @map("activo")
+  createdAt           DateTime          @default(now()) @map("creado_en") @db.Timestamptz(3)
+  createdById         String            @map("creado_por_id") @db.Uuid
+  createdBy           User              @relation(fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([attachmentId, attachmentHash], map: "publicaciones_adjunto_id_hash_key")
+  @@index([careerId, careerKind], map: "publicaciones_carrera_idx")
+  @@index([levelId, levelKind], map: "publicaciones_nivel_idx")
+  @@index([typeId, typeKind], map: "publicaciones_tipo_idx")
+  @@index([branchId, branchKind], map: "publicaciones_filial_idx")
+  @@index([createdById], map: "publicaciones_creador_idx")
+  @@index([createdAt, id], map: "publicaciones_fecha_id_idx")
+  @@index([active, createdAt(sort: Desc), number(sort: Desc)], map: "publicaciones_activo_fecha_numero_idx")
+  @@map("publicaciones")
+}
+
+model PublicationAuthor {
+  publicationId String      @map("publicacion_id") @db.Uuid
+  authorId      String      @map("autor_id") @db.Uuid
+  position      Int         @map("orden")
+  publication   Publication @relation(fields: [publicationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  author        Author      @relation(fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([publicationId, authorId])
+  @@unique([publicationId, position], map: "publicacion_autores_orden_key")
+  @@index([authorId], map: "publicacion_autores_autor_idx")
+  @@map("publicacion_autores")
+}
+
+model PublicationTutor {
+  publicationId String      @map("publicacion_id") @db.Uuid
+  tutorId       String      @map("tutor_id") @db.Uuid
+  position      Int         @map("orden")
+  publication   Publication @relation(fields: [publicationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tutor         Tutor       @relation(fields: [tutorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([publicationId, tutorId])
+  @@unique([publicationId, position], map: "publicacion_tutores_orden_key")
+  @@index([tutorId], map: "publicacion_tutores_tutor_idx")
+  @@map("publicacion_tutores")
+}
+
+model PublicationSettings {
+  id               Int @id @default(1)
+  summaryWordLimit Int @default(300) @map("limite_palabras_resumen")
+
+  @@map("parametros_publicaciones")
 }

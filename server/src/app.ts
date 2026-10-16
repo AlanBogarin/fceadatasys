@@ -7,6 +7,8 @@ import type { AppConfig } from './config.js';
 import { AppError, installErrorHandler } from './errors.js';
 import { registerSecurity, requireAdmin, type SecurityOptions } from './security/index.js';
 import { registerUserRoutes } from './users/routes.js';
+import { registerCatalogRoutes } from './catalogs/routes.js';
+import { registerPublicationRoutes } from './publications/routes.js';
 
 export interface AppOptions { logger?: boolean; security?: SecurityOptions }
 export async function createApp(config: AppConfig, prisma: PrismaClient, options: AppOptions = {}) {
@@ -14,7 +16,7 @@ export async function createApp(config: AppConfig, prisma: PrismaClient, options
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   installErrorHandler(app, prisma);
-  await app.register(cors, { origin: (origin, callback) => callback(null, !origin || config.allowedOrigins.includes(origin)), credentials: true, methods: ['GET', 'POST', 'PATCH', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'If-Match'], exposedHeaders: ['ETag', 'Location'] });
+  await app.register(cors, { origin: (origin, callback) => callback(null, !origin || config.allowedOrigins.includes(origin)), credentials: true, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'If-Match'], exposedHeaders: ['ETag', 'Location'] });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute', errorResponseBuilder: () => new AppError(429, 'RATE_LIMITED', 'Se excedió el límite de solicitudes.') });
   app.get('/health', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {
@@ -24,5 +26,7 @@ export async function createApp(config: AppConfig, prisma: PrismaClient, options
   await registerSecurity(app, { prisma, config, ...options.security });
   app.get('/api/v1/status', { preHandler: requireAdmin }, async () => ({ status: app.security.mailer.available ? 'ready' : 'degraded', smtp: app.security.mailer.available ? 'ready' : 'unavailable' }));
   await registerUserRoutes(app, prisma);
+  await registerCatalogRoutes(app, prisma);
+  await registerPublicationRoutes(app, prisma);
   return app;
 }
