@@ -1,5 +1,30 @@
 # FCEA-Datasys · Usuarios, catálogos, registro y reporte de investigaciones
 
+## Auditoría y Parámetros generales · 16/10/2026
+
+Se habilitan los **dos módulos que quedaban En construcción** en el menú. Auditoría incluye eventos de operaciones reales, filtros, paginación, detalle y exportación PDF/Excel para Administrador. Parámetros permite cambiar los límites de resumen y PDF; las validaciones y los textos de carga utilizan los valores guardados. Los registros anteriores se conservan.
+
+**Confirmaciones actualizadas por decisión del usuario:** las altas piden un mensaje de confirmación; modificar o eliminar exige la contraseña actual. La escritura de datos y su auditoría es conjunta. No se registran contraseñas ni tokens y no se inventa una IP de cliente. Ver [Auditoría y parámetros](docs/AUDITORIA-Y-PARAMETROS.md) para alcance, pruebas y recorrido. **61 pruebas y compilación**. Continúa siendo un frontend local, sin conectar `server/`.
+
+Las secciones siguientes conservan el historial de entregas; ante una diferencia sobre confirmaciones o módulos disponibles, rige esta actualización.
+
+## Datos institucionales UNC verificados · 16/10/2026
+
+Las muestras incluyen las **seis facultades reales de la UNC**, **cuatro carreras de grado de la FCEA** y **Sede Concepción / Filial Horqueta**, siempre con **(demo)**. Se elimina de la muestra nueva la facultad inexistente «Estudios Sociales». Las personas, investigaciones y códigos siguen siendo ficticios. Fuentes oficiales, nombres y reglas de corrección: [Datos de demostración](docs/DATOS-DE-DEMOSTRACION.md).
+
+Si ya hay datos locales, ingresar como Administrador en **Inicio → Cargar / actualizar datos de prueba** y confirmar con la contraseña actual. Solo se corrigen las denominaciones originales de muestras reconocidas; se conservan registros propios y credenciales. Verificación actual: **52 pruebas** y compilación.
+
+## Revisión del 16/10/2026: catálogo, búsqueda y confirmación
+
+**Catálogo bibliográfico** y **Búsqueda avanzada** ya están disponibles para los tres roles. Incluyen fichas, filtros y paginación; Público consulta metadatos sin descargar adjuntos. Se conserva el avance de Alan de Carga de archivos y creación de publicaciones.
+
+Al **modificar, activar/inactivar o eliminar** registros existentes se exige la contraseña actual antes de guardar. Las altas no piden una segunda contraseña. Cancelar o fallar la verificación conserva los datos; los formularios esperan la confirmación antes de informar éxito. Cerrar sesión se propaga a las otras pestañas de la misma cuenta y origen.
+
+Autores/tutores: nombre, cédula y correo obligatorios; ORCID opcional. Carreras: código obligatorio. Los PDF llevan membrete institucional con ambos escudos. Las reglas anteriores que describen CI/correo opcionales corresponden al historial de la entrega.
+
+Guía y límites: [Revisión posterior al parcial](docs/REVISION-16-OCTUBRE.md). El cliente sigue en modo local; esta revisión no conecta ni modifica `server/`. La reautenticación y los nuevos campos obligatorios deberán exigirse en el servidor al integrar ambos.
+
+
 ## Carga de archivos (16/10/2026)
 
 La pantalla **Carga de archivos** ya permite seleccionar o arrastrar un PDF, guardarlo previamente y usarlo al registrar una publicación. Incluye búsqueda, filtros, paginación, estados disponible/vinculado y descarga de adjuntos vinculados según permisos. Conserva el backend simulado y los datos existentes del navegador; no conecta ni modifica `server/`.
@@ -118,9 +143,9 @@ El manual de usuario anterior describe la versión previa; para estos cambios co
 
 ## Datos listos para la demostración
 
-En una primera apertura se cargan automáticamente **42 registros de catálogos y 8 investigaciones**, con **8 PDF ficticios** incluidos en `public/demo/`. Las tres cuentas iniciales y sus contraseñas se conservan.
+En una primera apertura se cargan automáticamente **45 registros de catálogos y 8 investigaciones**, con **8 PDF ficticios** incluidos en `public/demo/`. Las tres cuentas iniciales y sus contraseñas se conservan.
 
-Si ya tenés datos en el navegador, ingresá como Administrador y usá **Inicio → Cargar datos de prueba**. Es una carga adicional, no un reinicio: no reemplaza tus registros y no duplica las muestras al repetirla. Incluye personas sin vínculos y personas vinculadas para mostrar las dos respuestas de Eliminar, además de autores y tutores inactivos.
+Si ya tenés datos en el navegador, ingresá como Administrador y usá **Inicio → Cargar / actualizar datos de prueba**. No es un reinicio: conserva registros propios, corrige las denominaciones institucionales originales de la muestra antigua y no duplica las muestras al repetirla. Incluye personas sin vínculos y personas vinculadas para mostrar las dos respuestas de Eliminar, además de autores y tutores inactivos.
 
 Guía de exposición: [Datos de demostración](docs/DATOS-DE-DEMOSTRACION.md). Las fechas de muestra abarcan los últimos 40 días respecto de la carga inicial; los reportes usan esos mismos registros. Los PDF se abren desde los enlaces del detalle y pueden usarse para ensayar un nuevo adjunto.
 

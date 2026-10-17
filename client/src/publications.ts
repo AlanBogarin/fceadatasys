@@ -1,4 +1,5 @@
 import type { State, User } from "./model";
+import { settingsOf } from "./settings";
 import { catalogConfig, normalizeCatalog, type CatalogKey } from "./catalogs";
 import type { Resultado } from "./userService";
 import {
@@ -9,6 +10,7 @@ import {
 export type Reference = { id: string; name: string };
 export type Publication = {
   id: string;
+  active?: boolean;
   demoKey?: string;
   code: string;
   title: string;
@@ -153,8 +155,9 @@ export function registerPublication(
     const summary = requiredText(input.summary, "Resumen", 5000);
     const abstract = requiredText(input.abstract, "Abstract", 5000);
     const keywords = requiredText(input.keywords, "Palabras clave", 300);
-    if (summary.split(/\s+/u).length > 300) {
-      throw Error("El resumen no puede superar las 300 palabras.");
+    const maximumWords = settingsOf(state).summaryWordLimit;
+    if (summary.split(/\s+/u).length > maximumWords) {
+      throw Error(`El resumen no puede superar las ${maximumWords} palabras.`);
     }
     if (
       !Number.isInteger(input.year) ||

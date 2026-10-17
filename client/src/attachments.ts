@@ -1,4 +1,5 @@
 export const MAX_PDF_BYTES = 10 * 1024 * 1024;
+export const MAX_SUPPORTED_PDF_BYTES = 25 * 1024 * 1024;
 
 export type PublicationAttachment = {
   id: string;
@@ -16,22 +17,34 @@ export function validateAttachmentMetadata(attachment: PublicationAttachment) {
     attachment.mime !== "application/pdf" ||
     !Number.isInteger(attachment.size) ||
     attachment.size <= 0 ||
-    attachment.size > MAX_PDF_BYTES ||
+    attachment.size > MAX_SUPPORTED_PDF_BYTES ||
     !attachment.name ||
     attachment.name.length > 144 ||
     /[\\/:*?"<>|\p{Cc}\p{Cf}]/u.test(attachment.name) ||
     !attachment.name.toLowerCase().endsWith(".pdf")
   ) {
     throw Error(
-      "El adjunto no es un PDF válido de hasta 10 MB. Volvé a seleccionarlo.",
+      "El adjunto no es un PDF válido de hasta 25 MB. Volvé a seleccionarlo.",
     );
   }
 }
 
-export async function preparePdf(file: File): Promise<PublicationAttachment> {
+export async function preparePdf(
+  file: File,
+  maximumBytes = MAX_PDF_BYTES,
+): Promise<PublicationAttachment> {
   // Paso 1: comprobar tamaño y extensión antes de leer el archivo.
-  if (!file.size || file.size > MAX_PDF_BYTES || !/\.pdf$/i.test(file.name)) {
-    throw Error("Seleccioná un archivo PDF de hasta 10 MB.");
+  if (
+    !Number.isInteger(maximumBytes) ||
+    maximumBytes < 1024 * 1024 ||
+    maximumBytes > MAX_SUPPORTED_PDF_BYTES
+  ) {
+    throw Error("El límite de archivos configurado no es válido.");
+  }
+  if (!file.size || file.size > maximumBytes || !/\.pdf$/i.test(file.name)) {
+    throw Error(
+      `Seleccioná un archivo PDF de hasta ${maximumBytes / 1024 / 1024} MB.`,
+    );
   }
   if (
     file.type &&
@@ -119,7 +132,7 @@ async function writeAttachment(id: string, file?: Blob): Promise<void> {
 export async function commitWithAttachment(
   attachment: PublicationAttachment | undefined,
   file: File | undefined,
-  commit: () => void,
+  commit: () => void | Promise<void>,
   write = writeAttachment,
 ): Promise<void> {
   // Paso 1: el registro ya fue validado; persistir primero el binario completo.
@@ -127,7 +140,7 @@ export async function commitWithAttachment(
   if (attachment && file) await write(attachment.id, file);
   try {
     // Paso 2: confirmar metadatos, relaciones y bitácora mediante el guardado habitual.
-    commit();
+    await commit();
   } catch (error) {
     // Paso 3: ante rechazo por sesión, concurrencia o cuota, retirar el binario nuevo.
     if (attachment) {

@@ -28,6 +28,7 @@ type CatalogField = {
   type?: "email";
   maxLength: number;
   placeholder?: string;
+  required?: boolean;
 };
 export const catalogConfig: Record<
   CatalogKey,
@@ -47,12 +48,14 @@ export const catalogConfig: Record<
     fields: [
       {
         key: "ci",
+        required: true,
         label: "Cédula de identidad",
         maxLength: 12,
         placeholder: "Solo números",
       },
       {
         key: "email",
+        required: true,
         label: "Correo electrónico",
         type: "email",
         maxLength: 150,
@@ -73,12 +76,14 @@ export const catalogConfig: Record<
     fields: [
       {
         key: "ci",
+        required: true,
         label: "Cédula de identidad",
         maxLength: 12,
         placeholder: "Solo números",
       },
       {
         key: "email",
+        required: true,
         label: "Correo electrónico",
         type: "email",
         maxLength: 150,
@@ -93,7 +98,7 @@ export const catalogConfig: Record<
     description:
       "Organizá las carreras utilizadas para clasificar las publicaciones.",
     fields: [
-      { key: "codigo", label: "Código", maxLength: 30 },
+      { key: "codigo", label: "Código", maxLength: 30, required: true },
       { key: "descripcion", label: "Descripción", maxLength: 300 },
     ],
   },
@@ -225,6 +230,14 @@ export function saveCatalogRecord(
       return value;
     })();
   }
+  if (key === "autores" || key === "tutores") {
+    if (!fields.ci || !fields.email)
+      throw Error(
+        "Completá nombre completo, cédula y correo electrónico. ORCID es opcional.",
+      );
+  }
+  if (key === "carreras" && !fields.codigo)
+    throw Error("El código de la carrera es obligatorio.");
   if (fields.ci && !/^\d{5,12}$/.test(fields.ci)) {
     throw Error("La CI debe contener entre 5 y 12 dígitos.");
   }
@@ -351,8 +364,14 @@ export function deleteCatalogRecord(
   if (!state.catalogs[catalog].some((record) => record.id === targetId)) {
     throw Error("No se encontró el registro.");
   }
-  if ((state.publications ?? []).some((publication) => publicationUsesCatalog(publication, catalog, targetId))) {
-    throw Error("No se puede eliminar: el registro está vinculado a una investigación registrada. Sus datos deben conservarse.");
+  if (
+    (state.publications ?? []).some((publication) =>
+      publicationUsesCatalog(publication, catalog, targetId),
+    )
+  ) {
+    throw Error(
+      "No se puede eliminar: el registro está vinculado a una investigación registrada. Sus datos deben conservarse.",
+    );
   }
 
   // Paso 3: preparar el nuevo estado sin modificar el original ni sus investigaciones.
@@ -360,7 +379,9 @@ export function deleteCatalogRecord(
     ...state,
     catalogs: {
       ...state.catalogs,
-      [catalog]: state.catalogs[catalog].filter((record) => record.id !== targetId),
+      [catalog]: state.catalogs[catalog].filter(
+        (record) => record.id !== targetId,
+      ),
     },
   };
 }

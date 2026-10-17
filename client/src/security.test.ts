@@ -1,3 +1,4 @@
+import { saveCatalogSample } from "./testFixtures";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { seed, DEMO_PASSWORD, authenticate, type State } from "./model";
@@ -10,11 +11,7 @@ import {
   loginUser,
   requireResult,
 } from "./userService";
-import {
-  saveCatalogRecord,
-  setCatalogActive,
-  migrateCatalogs,
-} from "./catalogs";
+import { setCatalogActive, migrateCatalogs } from "./catalogs";
 import {
   canOpenPage,
   INACTIVITY_MS,
@@ -162,12 +159,12 @@ test("RN-02: investigaciones, revisiones, documentos y transacciones impiden eli
 test("RN-02: operaciones reales de catálogo conservan participantes y bloquean baja incluso inactivo", async () => {
   let state = await seed();
   const [administrator, editor] = state.users;
-  state = saveCatalogRecord(state, editor.id, "autores", {
+  state = saveCatalogSample(state, editor.id, "autores", {
     name: "Autora de prueba",
     fields: {},
   });
   const recordId = state.catalogs.autores[0].id;
-  state = saveCatalogRecord(
+  state = saveCatalogSample(
     state,
     administrator.id,
     "autores",
@@ -191,7 +188,7 @@ test("RN-02: operaciones reales de catálogo conservan participantes y bloquean 
 test("Migración: registros anteriores sin trazabilidad conservan datos y bloquean eliminación cautelar", async () => {
   let state = await seed();
   const [administrator, editor] = state.users;
-  state = saveCatalogRecord(state, administrator.id, "autores", {
+  state = saveCatalogSample(state, administrator.id, "autores", {
     name: "Registro anterior",
     fields: {},
   });

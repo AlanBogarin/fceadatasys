@@ -1,3 +1,6 @@
+import { settingsOf } from "./settings";
+import type { AuditIntent } from "./audit";
+import { auditFailure } from "./auditSignals";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, Download, FileText, Plus, Search, X } from "lucide-react";
 import type { State, User } from "./model";
@@ -33,7 +36,7 @@ import { availableAttachments, attachmentSize } from "./attachmentService";
 type PageProps = {
   state: State;
   user: User;
-  commit: (state: State) => void;
+  commit: (state: State) => Promise<void>;
   notify: (message: string) => void;
   showReport: (publicationId: string) => void;
   assertActive: () => void;
@@ -199,7 +202,7 @@ export function AttachmentDownload({
   publication: Publication;
   state: State;
   user: User;
-  commit: (state: State) => void;
+  commit: (state: State) => Promise<void>;
   assertActive: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -241,7 +244,7 @@ export function AttachmentDownload({
         );
 
       // Paso 3: registrar la descarga local antes de entregar el PDF verificado.
-      commit({
+      await commit({
         ...state,
         publicationAudit: [
           ...(state.publicationAudit ?? []),
@@ -261,6 +264,7 @@ export function AttachmentDownload({
         mime: saved.attachment.mime,
       });
     } catch (caught) {
+      auditFailure("Publicaciones", "Operación rechazada", caught);
       if (pageOpen.current) setError(errorText(caught));
     } finally {
       running.current = false;
@@ -302,7 +306,7 @@ function PublicationDetail({
   publication: Publication;
   state: State;
   user: User;
-  commit: (state: State) => void;
+  commit: (state: State) => Promise<void>;
   assertActive: () => void;
 }) {
   return (
@@ -460,7 +464,10 @@ export function PublicationsPage({
         if (!(selectedFile instanceof File) || !selectedFile.size)
           throw Error("Seleccioná el archivo PDF de la investigación.");
         file = selectedFile;
-        attachment = await preparePdf(file);
+        attachment = await preparePdf(
+          file,
+          settingsOf(state).maxPdfSizeMb * 1024 * 1024,
+        );
       }
       const text = (key: string) => String(form.get(key) ?? "");
       const input: PublicationInput = {
@@ -502,13 +509,13 @@ export function PublicationsPage({
       }
       const result = requireResult(registerPublication(state, user.id, input));
       // Paso 3: persistir todo junto; informar éxito solamente si la escritura finaliza.
-      await commitWithAttachment(attachment, file, () => {
+      await commitWithAttachment(attachment, file, async () => {
         if (!pageOpen.current)
           throw Error("El formulario se cerró. No se guardaron cambios.");
         assertActive();
         if (latestState.current !== state)
           throw Error("Los datos cambiaron. Volvé a intentar.");
-        commit(result.state);
+        await commit(result.state);
       });
       setSelected(result.publication);
       setCreating(false);
@@ -516,6 +523,7 @@ export function PublicationsPage({
         `${result.publication.code}: investigación registrada correctamente.`,
       );
     } catch (caught) {
+      auditFailure("Publicaciones", "Operación rechazada", caught);
       if (pageOpen.current) setError(errorText(caught));
     } finally {
       saving.current = false;
@@ -630,7 +638,7 @@ export function PublicationsPage({
               <h2>3. Contenido y documento</h2>
               <Field
                 label="Resumen *"
-                hint={`${summary.trim().split(/\s+/).filter(Boolean).length} / 300 palabras`}
+                hint={`${summary.trim().split(/\s+/).filter(Boolean).length} / ${settingsOf(state).summaryWordLimit} palabras`}
               >
                 <textarea
                   name="summary"
@@ -672,7 +680,7 @@ export function PublicationsPage({
               {documentMode === "file" ? (
                 <Field
                   label="Adjuntar PDF *"
-                  hint="Hasta 10 MB. El archivo quedará guardado en este navegador."
+                  hint={`Hasta ${settingsOf(state).maxPdfSizeMb} MB. El archivo quedará guardado en este navegador.`}
                 >
                   <input
                     name="attachment"
@@ -892,12 +900,14 @@ export function PublicationReportsPage({
   initialId,
   assertActive,
   commit,
+  recordAudit,
 }: {
   state: State;
   user: User;
   initialId: string;
   assertActive: () => void;
-  commit: (state: State) => void;
+  commit: (state: State) => Promise<void>;
+  recordAudit: (intent: AuditIntent) => void;
 }) {
   const [filters, setFilters] = useState<ReportFilters>({
     ...emptyReportFilters,
@@ -956,11 +966,18 @@ export function PublicationReportsPage({
         );
       }
       // Paso 3: descargar exactamente los registros filtrados y confirmar el resultado.
+      recordAudit({
+        module: "Reportes",
+        operation: "Exportar investigaciones",
+        status: "EXITO",
+        detail: `${records.length} investigaciones. Formato ${format.toUpperCase()}.`,
+      });
       downloadReport(report);
       setNotice(
         `Reporte ${format.toUpperCase()} generado con ${records.length} registro(s).`,
       );
     } catch (caught) {
+      auditFailure("Publicaciones", "Operación rechazada", caught);
       setError(errorText(caught));
     } finally {
       setBusy(false);

@@ -1,3 +1,4 @@
+import { settingsOf } from "./settings";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
@@ -29,7 +30,7 @@ export function AttachmentPage({
 }: {
   state: State;
   user: User;
-  commit: (state: State) => void;
+  commit: (state: State) => Promise<void>;
   assertActive: () => void;
   register: (attachmentId: string) => void;
 }) {
@@ -154,7 +155,10 @@ export function AttachmentPage({
       <div className="upload-layout">
         <form className="upload-card" onSubmit={submit} aria-busy={busy}>
           <h2>Nuevo archivo</h2>
-          <p>Un documento por carga · PDF de hasta 10 MB</p>
+          <p>
+            Un documento por carga · PDF de hasta{" "}
+            {settingsOf(state).maxPdfSizeMb} MB
+          </p>
           <div
             className={`upload-dropzone${dragging ? " dragging" : ""}`}
             onDragOver={(event) => {

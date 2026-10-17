@@ -3,6 +3,30 @@ import assert from "node:assert/strict";
 import { jsPDF } from "jspdf";
 import { commitWithAttachment, MAX_PDF_BYTES, preparePdf } from "./attachments";
 
+test("Persistencia: también revierte el binario cuando el guardado asíncrono de metadatos se rechaza", async () => {
+  const document = new jsPDF();
+  document.text("Rollback de confirmación asíncrona", 15, 20);
+  const file = new File([document.output("arraybuffer")], "Confirmacion.pdf");
+  const attachment = await preparePdf(file);
+  const operations: string[] = [];
+  await assert.rejects(
+    () =>
+      commitWithAttachment(
+        attachment,
+        file,
+        async () => {
+          await Promise.resolve();
+          throw Error("La sesión dejó de ser válida");
+        },
+        async (_identifier, content) => {
+          operations.push(content ? "guardar" : "retirar");
+        },
+      ),
+    /sesión/,
+  );
+  assert.deepEqual(operations, ["guardar", "retirar"]);
+});
+
 function pdfFile(name = "Investigación.pdf") {
   const document = new jsPDF();
   document.text("Documento de prueba de adjuntos FCEA", 20, 20);

@@ -13,6 +13,8 @@ import { DEMO_PASSWORD, digest, randomToken, type State } from "./model";
 import { INACTIVITY_MINUTES } from "./security";
 import { Alert, Brand, errorText, Field, Password } from "./ui";
 import { loginUser, recoverPassword, requireResult } from "./userService";
+import type { AuditIntent } from "./audit";
+import { auditFailure } from "./auditSignals";
 export function Auth({
   state,
   commit,
@@ -21,7 +23,7 @@ export function Auth({
   onExit,
 }: {
   state: State;
-  commit: (value: State) => void;
+  commit: (value: State, intent?: AuditIntent) => void;
   onLogin: (targetId: string) => void;
   lockedUsername?: string;
   onExit: () => void;
@@ -54,7 +56,22 @@ export function Auth({
           String(form.get("password")),
         );
         if (result.datos) {
-          commit(result.datos.state);
+          const username = lockedUsername || String(form.get("username"));
+          const actor = state.users.find(
+            (account) =>
+              account.username.trim().toLocaleLowerCase() ===
+              username.trim().toLocaleLowerCase(),
+          );
+          commit(result.datos.state, {
+            module: "Sesiones",
+            operation: result.exito
+              ? "Iniciar sesión"
+              : "Inicio de sesión rechazado",
+            status: result.exito ? "EXITO" : "FALLIDO",
+            actorId: actor?.id ?? null,
+            actorName: actor?.name ?? username.slice(0, 40),
+            detail: result.mensaje,
+          });
         }
         if (!result.exito) {
           setError(result.mensaje);
@@ -70,20 +87,30 @@ export function Auth({
         setToken("");
         if (person) {
           const value = randomToken();
-          commit({
-            ...state,
-            recovery: [
-              ...state.recovery.filter(
-                (entry) =>
-                  entry.userId !== person.id && entry.expiresAt > Date.now(),
-              ),
-              {
-                userId: person.id,
-                hash: await digest(value),
-                expiresAt: Date.now() + 15 * 60000,
-              },
-            ],
-          });
+          commit(
+            {
+              ...state,
+              recovery: [
+                ...state.recovery.filter(
+                  (entry) =>
+                    entry.userId !== person.id && entry.expiresAt > Date.now(),
+                ),
+                {
+                  userId: person.id,
+                  hash: await digest(value),
+                  expiresAt: Date.now() + 15 * 60000,
+                },
+              ],
+            },
+            {
+              module: "Sesiones",
+              operation: "Solicitar recuperación",
+              status: "EXITO",
+              actorId: person.id,
+              detail:
+                "Se preparó una recuperación local. El token no se registra en auditoría.",
+            },
+          );
           setToken(value);
         }
         setMessage(
@@ -105,6 +132,7 @@ export function Auth({
         setMessage("Contraseña actualizada. Ya podés iniciar sesión.");
       }
     } catch (error) {
+      auditFailure("Sesiones", "Autenticación o recuperación rechazada", error);
       setError(errorText(error));
     } finally {
       setBusy(false);
