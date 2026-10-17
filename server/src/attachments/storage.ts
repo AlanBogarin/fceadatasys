@@ -20,7 +20,7 @@ export interface AttachmentStorage { write(key: string, bytes: Buffer): Promise<
 export function createAttachmentStorage(directory: string): AttachmentStorage {
   const root = resolve(directory);
   const path = (key: string) => {
-    if (!/^[a-f0-9-]{36}\.pdf$/.test(key)) throw new AppError(503, 'ATTACHMENT_UNAVAILABLE', 'El adjunto no está disponible.');
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(pdf|txt)$/.test(key)) throw new AppError(503, 'ATTACHMENT_UNAVAILABLE', 'El adjunto no está disponible.');
     return resolve(root, key);
   };
   return {

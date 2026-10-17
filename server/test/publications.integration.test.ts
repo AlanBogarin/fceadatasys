@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
 import { Client } from 'pg';
 import type { PrismaClient } from '@prisma/client';
 import type { InjectOptions } from 'fastify';
@@ -11,6 +13,7 @@ import type { AppConfig } from '../src/config.js';
 import { hashPassword } from '../src/security/crypto.js';
 import { publicationHash } from '../src/publications/schemas.js';
 import type { CatalogKey } from '../src/catalogs/schemas.js';
+import { createAttachmentStorage } from '../src/attachments/storage.js';
 
 const databaseUrl = process.env.PUBLICATIONS_TEST_DATABASE_URL;
 test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, adjuntos y auditoría', { skip: !databaseUrl }, async t => {
@@ -74,7 +77,7 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
       headers[role] = { authorization: `Bearer ${response.json().accessToken}` };
     }
     refs = await catalogSet();
-    await owner.query('UPDATE parametros_publicaciones SET limite_palabras_resumen = 300 WHERE id = 1');
+    await owner.query("UPDATE parametros_publicaciones SET limite_palabras_resumen = 300, formatos_admitidos = ARRAY['pdf']::text[] WHERE id = 1");
     await t.test('alta externa de Admin/Digitador devuelve DTO seguro, orden N:M y auditoría completa', async () => {
       for (const actor of ['ADMINISTRADOR', 'DIGITADOR']) {
         const input = nextInput();
@@ -116,14 +119,14 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
       const tooLong = await publish({ ...nextInput(), summary: summary + ' extra' });
       problem(tooLong, 400, 'VALIDATION_ERROR');
       assert.ok(tooLong.json().invalid_params.some((param: { name: string }) => param.name === 'body.summary'));
-      for (const actor of ['ADMINISTRADOR', 'DIGITADOR', 'PUBLICO']) assert.deepEqual((await send({ url: path, headers: headers[actor] })).json(), { summaryWordLimit: 300 });
+      for (const actor of ['ADMINISTRADOR', 'DIGITADOR', 'PUBLICO']) assert.deepEqual((await send({ url: path, headers: headers[actor] })).json(), { summaryWordLimit: 300, allowedFormats: ['pdf'] });
       for (const actor of ['DIGITADOR', 'PUBLICO']) problem(await send({ method: 'PATCH', url: path, headers: headers[actor], payload: { summaryWordLimit: 2 } }), 403, 'FORBIDDEN');
       assert.equal((await send({ method: 'PATCH', url: path, headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 2 } })).statusCode, 200);
       assert.equal((await publish({ ...nextInput(), summary: `${suffix}${sequence} dos` })).statusCode, 201);
       problem(await publish({ ...nextInput(), summary: `${suffix} tres palabras` }), 400, 'VALIDATION_ERROR');
       const log = await prisma.auditLog.findFirstOrThrow({ where: { operation: 'PARAMETROS_PUBLICACIONES_MODIFICADOS', userId: actorIds.ADMINISTRADOR }, orderBy: { createdAt: 'desc' } });
-      assert.deepEqual(log.before, { summaryWordLimit: 300 });
-      assert.deepEqual(log.after, { summaryWordLimit: 2 });
+      assert.deepEqual(log.before, { summaryWordLimit: 300, allowedFormats: ['pdf'] });
+      assert.deepEqual(log.after, { summaryWordLimit: 2, allowedFormats: ['pdf'] });
       await send({ method: 'PATCH', url: path, headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 300 } });
     });
     await t.test('referencias inexistentes, inactivas, del tipo equivocado y arrays inválidos no generan publicaciones', async () => {
@@ -298,6 +301,272 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
         const failures = await prisma.auditLog.count({ where: { status: 'FALLIDO', operation: 'OPERACION_RECHAZADA', userId: actorIds.DIGITADOR } });
         assert.ok(failures > 0);
       } finally { await brokenApp.close(); }
+    });
+    const detail = (id: string, actor = 'ADMINISTRADOR') => send({ url: `/api/v1/publicaciones/${id}`, headers: headers[actor] });
+    const change = (id: string, etag: string, payload: object, actor = 'ADMINISTRADOR', state = false) => send({ method: 'PATCH', url: `/api/v1/publicaciones/${id}${state ? '/estado' : ''}`, headers: { ...headers[actor], 'if-match': etag }, payload });
+    const createdPublication = async (input: object = nextInput()) => {
+      const response = await publish(input);
+      assert.equal(response.statusCode, 201, response.body);
+      return response.json<{ id: string }>().id;
+    };
+
+    await t.test('edición por Admin/Digitador conserva identidad/creación, orden N:M, FTS y snapshots auditados', async () => {
+      const id = await createdPublication();
+      const original = (await detail(id)).json();
+      for (const actor of ['ADMINISTRADOR', 'DIGITADOR']) {
+        const current = await detail(id, actor);
+        const title = `Transformacionbibliografica ${suffix} ${++sequence}`;
+        const response = await change(id, String(current.headers.etag), { title, authorIds: refs.authors.map(row => row.id), tutorIds: [refs.tutors[0].id] }, actor);
+        assert.equal(response.statusCode, 200, response.body);
+        const after = response.json();
+        assert.equal(after.title, title);
+        assert.equal(after.createdAt, original.createdAt);
+        assert.deepEqual(after.createdBy, original.createdBy);
+        assert.equal(after.code, original.code);
+        assert.deepEqual(after.authors.map((value: { id: string }) => value.id), refs.authors.map(row => row.id));
+        assert.deepEqual(after.tutors.map((value: { id: string }) => value.id), [refs.tutors[0].id]);
+        assert.notEqual(response.headers.etag, current.headers.etag);
+        assert.equal((await detail(id, actor)).headers.etag, response.headers.etag);
+        const search = await send({ url: `/api/v1/publicaciones?search=Transformacionbibliografica%20${suffix}`, headers: headers.PUBLICO });
+        assert.ok(search.json().data.some((row: { id: string }) => row.id === id));
+        const log = await prisma.auditLog.findFirstOrThrow({ where: { operation: 'PUBLICACION_MODIFICADA', publicationId: id, userId: actorIds[actor] }, orderBy: { createdAt: 'desc' } });
+        assert.deepEqual(log.before, current.json());
+        assert.deepEqual(log.after, after);
+        assert.equal(log.role, actor);
+      }
+    });
+    await t.test('permisos, precarga obligatoria, payloads estrictos y entidades inexistentes', async () => {
+      const id = await createdPublication();
+      const etag = String((await detail(id)).headers.etag);
+      problem(await change(id, etag, { title: 'Prohibido' }, 'PUBLICO'), 403, 'FORBIDDEN');
+      problem(await send({ method: 'PATCH', url: `/api/v1/publicaciones/${id}`, payload: { title: 'Anónimo' } }), 401, 'UNAUTHENTICATED');
+      problem(await send({ method: 'PATCH', url: `/api/v1/publicaciones/${id}`, headers: headers.ADMINISTRADOR, payload: { title: 'Sin precarga' } }), 428, 'PRECONDITION_REQUIRED');
+      for (const invalid of ['*', `W/${etag}`, `${etag},${etag}`]) problem(await change(id, invalid, { title: 'Inválido' }), 400, 'VALIDATION_ERROR');
+      for (const payload of [{}, { active: false }, { createdById: actorIds.DIGITADOR }, { code: 'INV-1' }, { approved: true }, { authorIds: [] }, { tutorIds: [] }, { year: 2027 }]) problem(await change(id, etag, payload), 400, 'VALIDATION_ERROR');
+      problem(await change(randomUUID(), etag, { title: 'No existe' }), 404, 'NOT_FOUND');
+      problem(await change('bad-id', etag, { title: 'No existe' }), 400, 'VALIDATION_ERROR');
+      problem(await change(id, etag, { active: false }, 'DIGITADOR', true), 403, 'FORBIDDEN');
+      problem(await change(id, etag, { active: true }, 'ADMINISTRADOR', true), 400, 'VALIDATION_ERROR');
+      problem(await send({ method: 'PATCH', url: `/api/v1/publicaciones/${id}?extra=1`, headers: { ...headers.ADMINISTRADOR, 'if-match': etag }, payload: { title: 'Extra' } }), 400, 'VALIDATION_ERROR');
+    });
+    await t.test('duplicados normalizados al editar excluyen la propia publicación e incluyen inactivas', async () => {
+      const first = await createdPublication();
+      const second = await createdPublication();
+      const before = await detail(first);
+      const source = before.json();
+      assert.equal((await change(first, String(before.headers.etag), { title: source.title, summary: source.summary, abstract: source.abstract })).statusCode, 200);
+      assert.equal((await change(first, String(before.headers.etag), { active: false }, 'ADMINISTRADOR', true)).statusCode, 200);
+      for (const field of ['title', 'summary', 'abstract']) {
+        const current = await detail(second);
+        const conflict = await change(second, String(current.headers.etag), { [field]: `  ${String(source[field]).toUpperCase()} !!! ` });
+        problem(conflict, 409, 'DUPLICATE_PUBLICATION');
+        assert.ok(conflict.json().invalid_params.some((item: { name: string }) => item.name === `body.${field}`));
+      }
+    });
+    await t.test('dos ediciones o edición/inactivación con el mismo ETag producen un solo cambio', async () => {
+      for (const inactivate of [false, true]) {
+        const id = await createdPublication();
+        const etag = String((await detail(id)).headers.etag);
+        const results = await Promise.all([
+          change(id, etag, { title: `Cambio concurrente ${suffix} ${++sequence}` }, 'DIGITADOR'),
+          change(id, etag, inactivate ? { active: false } : { keywords: 'Nueva palabra' }, 'ADMINISTRADOR', inactivate),
+        ]);
+        assert.deepEqual(results.map(row => row.statusCode).sort(), [200, 412], results.map(row => row.body).join('\n'));
+        const failed = results.find(row => row.statusCode === 412)!;
+        assert.equal(failed.json().code, 'PRECONDITION_FAILED');
+        assert.equal(await prisma.auditLog.count({ where: { publicationId: id, operation: { in: ['PUBLICACION_MODIFICADA', 'PUBLICACION_INACTIVADA'] }, status: 'EXITO' } }), 1);
+      }
+      const ids = [await createdPublication(), await createdPublication()];
+      const tags = await Promise.all(ids.map(async id => String((await detail(id)).headers.etag)));
+      const title = `Unico concurrente ${suffix} ${++sequence}`;
+      const results = await Promise.all(ids.map((id, index) => change(id, tags[index], { title }, index ? 'DIGITADOR' : 'ADMINISTRADOR')));
+      assert.deepEqual(results.map(row => row.statusCode).sort(), [200, 409], results.map(row => row.body).join('\n'));
+      assert.equal(results.find(row => row.statusCode === 409)!.json().code, 'DUPLICATE_PUBLICATION');
+    });
+    await t.test('edición valida referencias nuevas, resumen configurable y transiciones local/externa', async () => {
+      const id = await createdPublication();
+      const edit = async (payload: object) => change(id, String((await detail(id)).headers.etag), payload);
+      problem(await edit({ careerId: refs.branch.id }), 400, 'INVALID_PUBLICATION_REFERENCE');
+      const inactive = await catalog('autores');
+      await patchCatalog('autores', inactive.id, { active: false });
+      problem(await edit({ authorIds: [inactive.id] }), 400, 'INVALID_PUBLICATION_REFERENCE');
+      // Historic references can be retained without enabling them for new loads.
+      await owner.query('UPDATE autores SET activo = false WHERE id = $1', [refs.authors[0].id]);
+      try { assert.equal((await edit({ keywords: 'Historia conservada' })).statusCode, 200); }
+      finally { await owner.query('UPDATE autores SET activo = true WHERE id = $1', [refs.authors[0].id]); }
+      await send({ method: 'PATCH', url: '/api/v1/parametros/publicaciones', headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 2 } });
+      try {
+        problem(await edit({ summary: `${suffix} tres palabras` }), 400, 'VALIDATION_ERROR');
+        assert.equal((await edit({ summary: `${suffix} exacto` })).statusCode, 200);
+      } finally { await send({ method: 'PATCH', url: '/api/v1/parametros/publicaciones', headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 300 } }); }
+      problem(await edit({ source: 'LOCAL', externalUrl: '', requiresLibraryCopy: true }), 400, 'VALIDATION_ERROR');
+      assert.equal((await edit({ source: 'LOCAL', externalUrl: '', requiresLibraryCopy: false })).statusCode, 200);
+      assert.equal((await edit({ source: 'EXTERNA', externalUrl: 'https://example.org/updated' })).statusCode, 200);
+    });
+    await t.test('reemplazo de adjunto conserva reserva histórica y evita reutilización en otra publicación', async () => {
+      const first = await attachment();
+      const second = await attachment();
+      const id = await createdPublication({ ...nextInput(), source: 'LOCAL', externalUrl: '', attachmentId: first.id });
+      const current = await detail(id);
+      const edited = await change(id, String(current.headers.etag), { attachmentId: second.id });
+      assert.equal(edited.statusCode, 200, edited.body);
+      assert.equal(edited.json().attachment.id, second.id);
+      assert.equal((await prisma.attachmentAssignment.findUniqueOrThrow({ where: { attachmentId: first.id } })).publicationId, id);
+      assert.equal((await prisma.attachmentAssignment.findUniqueOrThrow({ where: { attachmentId: second.id } })).publicationId, id);
+      problem(await publish({ ...nextInput(), source: 'LOCAL', externalUrl: '', attachmentId: first.id }), 409, 'DUPLICATE_PUBLICATION');
+      const foreign = await attachment('CLEAN', actorIds.DIGITADOR_2);
+      problem(await change(id, String(edited.headers.etag), { attachmentId: foreign.id }, 'DIGITADOR'), 403, 'FORBIDDEN');
+      const pending = await attachment('PENDING');
+      problem(await change(id, String(edited.headers.etag), { attachmentId: pending.id }), 409, 'ATTACHMENT_NOT_READY');
+      const external = await change(id, String(edited.headers.etag), { source: 'EXTERNA', externalUrl: 'https://example.org/historic', requiresLibraryCopy: false, attachmentId: null });
+      assert.equal(external.statusCode, 200, external.body);
+      assert.equal(external.json().hasAttachment, false);
+      assert.equal(await prisma.attachmentAssignment.count({ where: { publicationId: id } }), 2);
+      await assert.rejects(owner.query('UPDATE asignaciones_adjuntos SET publicacion_id = publicacion_id WHERE adjunto_id = $1', [first.id]), { code: '55000' });
+      const other = await createdPublication({ ...nextInput(), source: 'LOCAL', externalUrl: '', requiresLibraryCopy: false });
+      await assert.rejects(owner.query('UPDATE publicaciones SET adjunto_id=$1,adjunto_hash=$2 WHERE id=$3', [first.id, first.sha256, other]), { code: '23505' });
+      assert.equal((await prisma.publication.findUniqueOrThrow({ where: { id: other } })).attachmentId, null);
+    });
+    await t.test('inactivación conserva datos, reserva y acceso histórico exclusivo de Admin', async () => {
+      const file = await attachment();
+      const id = await createdPublication({ ...nextInput(), source: 'LOCAL', externalUrl: '', attachmentId: file.id });
+      const current = await detail(id);
+      const disabled = await change(id, String(current.headers.etag), { active: false }, 'ADMINISTRADOR', true);
+      assert.equal(disabled.statusCode, 200, disabled.body);
+      assert.equal(disabled.json().active, false);
+      assert.equal((await detail(id)).statusCode, 200);
+      for (const role of ['PUBLICO', 'DIGITADOR']) {
+        problem(await detail(id, role), 404, 'NOT_FOUND');
+        const list = await send({ url: `/api/v1/publicaciones?code=${current.json().code}`, headers: headers[role] });
+        assert.equal(list.json().data.length, 0);
+      }
+      problem(await change(id, String(disabled.headers.etag), { keywords: 'Bloqueado' }), 404, 'NOT_FOUND');
+      const repeat = await change(id, String(disabled.headers.etag), { active: false }, 'ADMINISTRADOR', true);
+      assert.equal(repeat.statusCode, 200, repeat.body);
+      assert.equal(await prisma.auditLog.count({ where: { publicationId: id, operation: 'PUBLICACION_INACTIVADA' } }), 1);
+      assert.equal(await prisma.publicationAuthor.count({ where: { publicationId: id } }), 2);
+      assert.ok(await prisma.storedAttachment.findUnique({ where: { id: file.id } }));
+      assert.equal((await send({ url: `/api/v1/reportes/publicaciones?publicationId=${id}&active=false`, headers: headers.ADMINISTRADOR })).json().data[0].id, id);
+    });
+    await t.test('fallo de auditoría revierte edición, participantes, reserva, inactivación y formatos', async () => {
+      const id = await createdPublication();
+      const current = await detail(id);
+      const file = await attachment();
+      const broken = prisma.$extends({ query: { auditLog: { create: async ({ args, query }) => {
+        if (['PUBLICACION_MODIFICADA', 'PUBLICACION_INACTIVADA', 'PARAMETROS_PUBLICACIONES_MODIFICADOS'].includes(String(args.data.operation))) throw Error('Audit outage');
+        return query(args);
+      } } } }) as unknown as PrismaClient;
+      const brokenApp = await createApp(config, broken, { logger: false, security: { now: () => new Date(clock) } });
+      try {
+        for (const [state, payload] of [[false, { title: `Rollback ${suffix}`, source: 'LOCAL', externalUrl: '', requiresLibraryCopy: true, attachmentId: file.id, authorIds: [refs.authors[0].id] }], [true, { active: false }]] as const) {
+          problem(await brokenApp.inject({ method: 'PATCH', url: `/api/v1/publicaciones/${id}${state ? '/estado' : ''}`, headers: { ...headers.ADMINISTRADOR, 'if-match': String(current.headers.etag) }, payload }), 503, 'AUDIT_UNAVAILABLE');
+          assert.deepEqual((await detail(id)).json(), current.json());
+          assert.equal(await prisma.attachmentAssignment.findUnique({ where: { attachmentId: file.id } }), null);
+        }
+        problem(await brokenApp.inject({ method: 'PATCH', url: '/api/v1/parametros/publicaciones', headers: headers.ADMINISTRADOR, payload: { allowedFormats: ['pdf', 'txt'] } }), 503, 'AUDIT_UNAVAILABLE');
+        assert.deepEqual((await prisma.publicationSettings.findUniqueOrThrow({ where: { id: 1 } })).allowedFormats, ['pdf']);
+      } finally { await brokenApp.close(); }
+    });
+    await t.test('rol y sesión se revalidan después de esperar la publicación bloqueada', async () => {
+      for (const scenario of ['role', 'timeout']) {
+        const id = await createdPublication();
+        const current = await detail(id);
+        const savedClock = new Date(clock);
+        let pending: ReturnType<typeof change> | undefined;
+        await owner.query('BEGIN');
+        try {
+          await owner.query('SELECT id FROM publicaciones WHERE id = $1 FOR UPDATE', [id]);
+          pending = change(id, String(current.headers.etag), { title: `Espera ${suffix} ${++sequence}` }, 'DIGITADOR');
+          await waitForLock('publicaciones');
+          if (scenario === 'timeout') clock = new Date(clock.getTime() + 600000);
+          // The actor lock protects concurrent role changes; inspect a role changed
+          // before the transaction obtains that lock in the separate path below.
+          await owner.query('COMMIT');
+          if (scenario === 'timeout') problem(await pending, 401, 'UNAUTHENTICATED');
+          else assert.equal((await pending).statusCode, 200);
+        } finally { await owner.query('ROLLBACK'); if (pending) await pending; clock = savedClock; }
+      }
+      const id = await createdPublication();
+      const current = await detail(id);
+      let pending: ReturnType<typeof change> | undefined;
+      await owner.query('BEGIN');
+      try {
+        await owner.query("UPDATE usuarios SET rol = 'PUBLICO' WHERE id = $1", [actorIds.DIGITADOR]);
+        pending = change(id, String(current.headers.etag), { title: 'Rol cambiado' }, 'DIGITADOR');
+        await waitForLock('usuarios');
+        await owner.query('COMMIT');
+        problem(await pending, 403, 'FORBIDDEN');
+      } finally { await owner.query('ROLLBACK'); if (pending) await pending; await owner.query("UPDATE usuarios SET rol = 'DIGITADOR' WHERE id = $1", [actorIds.DIGITADOR]); }
+    });
+
+    await t.test('formatos administrables: TXT real, antivirus, descarga histórica y carrera con deshabilitación', async () => {
+      const path = '/api/v1/parametros/publicaciones';
+      const settings = (payload: object) => send({ method: 'PATCH', url: path, headers: headers.ADMINISTRADOR, payload });
+      for (const payload of [{ allowedFormats: [] }, { allowedFormats: ['exe'] }, { allowedFormats: ['pdf', 'pdf'] }]) problem(await settings(payload), 400, 'VALIDATION_ERROR');
+      for (const actor of ['PUBLICO', 'DIGITADOR']) problem(await send({ method: 'PATCH', url: path, headers: headers[actor], payload: { allowedFormats: ['txt'] } }), 403, 'FORBIDDEN');
+      const directory = await mkdtemp(join(resolve('.tmp'), 'formats-'));
+      let verdict = true;
+      let gate: Promise<void> | undefined;
+      let reached: (() => void) | undefined;
+      let scans = 0;
+      const filesApp = await createApp(config, prisma, { logger: false, security: { now: () => new Date(clock) }, attachments: { storage: createAttachmentStorage(directory), scanner: { scan: async () => { scans++; reached?.(); if (gate) await gate; return { clean: verdict, engine: 'fixture' }; } } } });
+      const upload = async (bytes: Buffer, name = 'resumen.txt', mime = 'text/plain') => {
+        const boundary = `test-${randomUUID()}`;
+        return filesApp.inject({ method: 'POST', url: '/api/v1/adjuntos', headers: { ...headers.DIGITADOR, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: ${mime}\r\n\r\n`), bytes, Buffer.from(`\r\n--${boundary}--\r\n`)]), remoteAddress: `203.0.113.${1 + sequence++ % 250}` });
+      };
+      const text = () => Buffer.from(`Texto académico UTF-8 ${suffix} ${++sequence}\nAbstract in English.`);
+      try {
+        problem(await upload(text()), 400, 'INVALID_ATTACHMENT');
+        assert.equal(scans, 0);
+        const enabled = await settings({ allowedFormats: ['txt', 'pdf'] });
+        assert.equal(enabled.statusCode, 200, enabled.body);
+        assert.deepEqual(enabled.json(), { summaryWordLimit: 300, allowedFormats: ['pdf', 'txt'] });
+        problem(await upload(Buffer.from([0xff])), 400, 'INVALID_ATTACHMENT');
+        problem(await upload(Buffer.from('a\0b')), 400, 'INVALID_ATTACHMENT');
+        problem(await upload(text(), 'falso.pdf', 'application/pdf'), 400, 'INVALID_ATTACHMENT');
+        const bytes = text();
+        const created = await upload(bytes);
+        assert.equal(created.statusCode, 201, created.body);
+        assert.equal(created.json().mime, 'text/plain');
+        const id = await createdPublication({ ...nextInput(), source: 'LOCAL', externalUrl: '', attachmentId: created.json().id });
+        const before = await detail(id);
+        assert.equal(before.json().attachment.mime, 'text/plain');
+        assert.equal((await detail(id, 'PUBLICO')).json().attachment, undefined);
+        const download = () => filesApp.inject({ url: `/api/v1/publicaciones/${id}/adjunto`, headers: headers.DIGITADOR, remoteAddress: `203.0.113.${1 + sequence++ % 250}` });
+        const result = await download();
+        assert.equal(result.statusCode, 200, result.body);
+        assert.deepEqual(result.rawPayload, bytes);
+        assert.match(String(result.headers['content-type']), /^text\/plain/);
+        assert.equal(result.headers['x-content-type-options'], 'nosniff');
+        await settings({ allowedFormats: ['pdf'] });
+        assert.equal((await download()).statusCode, 200);
+        assert.equal((await change(id, String(before.headers.etag), { keywords: 'Formato histórico' })).statusCode, 200);
+        const unused = await owner.query("INSERT INTO adjuntos(id,nombre,tamano,mime,sha256,almacenamiento_clave,estado,contenido_verificado,analizado_en,creado_por_id) VALUES($1,'otro.txt',10,'text/plain',$2,$3,'CLEAN',true,$4,$5) RETURNING id", [randomUUID(), createHash('sha256').update(text()).digest('hex'), `${randomUUID()}.txt`, clock, actorIds.DIGITADOR]);
+        problem(await publish({ ...nextInput(), source: 'LOCAL', externalUrl: '', attachmentId: unused.rows[0].id }), 400, 'INVALID_ATTACHMENT');
+        await settings({ allowedFormats: ['pdf', 'txt'] });
+        verdict = false;
+        problem(await upload(text()), 400, 'ATTACHMENT_REJECTED');
+        verdict = true;
+        let release!: () => void;
+        gate = new Promise<void>(resolveGate => { release = resolveGate; });
+        const started = new Promise<void>(resolveStarted => { reached = resolveStarted; });
+        const pending = upload(text());
+        try { await started; await settings({ allowedFormats: ['pdf'] }); }
+        finally { release(); }
+        problem(await pending, 400, 'INVALID_ATTACHMENT');
+        assert.equal((await readdir(directory)).length, 1, 'Solo permanece el TXT confirmado.');
+        const active = await detail(id);
+        assert.equal((await change(id, String(active.headers.etag), { active: false }, 'ADMINISTRADOR', true)).statusCode, 200);
+        problem(await download(), 404, 'NOT_FOUND');
+        const adminDownload = await filesApp.inject({ url: `/api/v1/publicaciones/${id}/adjunto`, headers: headers.ADMINISTRADOR });
+        assert.equal(adminDownload.statusCode, 200, adminDownload.body);
+        assert.deepEqual(adminDownload.rawPayload, bytes);
+      } finally {
+        await settings({ allowedFormats: ['pdf'] });
+        await filesApp.close();
+        assert.ok(directory.startsWith(resolve('.tmp') + '\\') || directory.startsWith(resolve('.tmp') + '/'));
+        await rm(directory, { recursive: true, force: true });
+      }
     });
   } finally {
     await owner.query('ROLLBACK');

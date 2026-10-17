@@ -1,6 +1,6 @@
 # Contrato API de registro de publicaciones
 
-Este contrato describe el alta bibliográfica en `server/`; `client/` conserva su simulación independiente. Complementa [API.md](API.md). El listado, búsqueda y detalle se documentan en [PUBLICATION-QUERIES.md](PUBLICATION-QUERIES.md), y la carga/descarga/ClamAV en [ATTACHMENTS.md](ATTACHMENTS.md). Edición/inactivación y reportes continúan pendientes.
+Este contrato describe el alta bibliográfica en `server/`; `client/` conserva su simulación independiente. Complementa [API.md](API.md). Listado/búsqueda/detalle: [PUBLICATION-QUERIES.md](PUBLICATION-QUERIES.md); carga/descarga/ClamAV: [ATTACHMENTS.md](ATTACHMENTS.md); edición/inactivación/formatos: [PUBLICATION-MANAGEMENT.md](PUBLICATION-MANAGEMENT.md); reportes: [REPORTS.md](REPORTS.md).
 
 ## Registrar un trabajo aprobado
 
@@ -39,9 +39,9 @@ Resumen: máximo inclusivo de 300 palabras por defecto, con límite persistido y
 
 LOCAL exige URL ausente/vacía. `requiresLibraryCopy` vale true por defecto: si corresponde conservar físicamente el trabajo en Biblioteca, la copia digital es obligatoria. En ese caso debe enviarse `attachmentId` de un archivo previamente verificado. Para un trabajo local que no requiere esa conservación, enviar explícitamente `requiresLibraryCopy:false`; el adjunto pasa a ser opcional. Esta regla sigue AGENTS.md, aunque el formulario simulado actual siempre pide archivo o enlace.
 
-El registro acepta únicamente un UUID de adjunto existente en la base, con estado CLEAN, verificación de contenido y fecha de análisis, PDF válido en sus metadatos, nombre seguro, hash SHA-256 y tamaño de 1 byte a 10 MiB. Digitador solo puede vincular sus adjuntos; Admin puede vincular cualquier adjunto verificado. Se bloquea el registro del archivo y se rechazan PENDING/REJECTED, archivos ajenos y reutilización. La FK compuesta `(attachmentId,attachmentHash)` asegura que el hash de publicación corresponda al registro del archivo.
+El registro acepta únicamente un UUID de adjunto existente en la base, con estado CLEAN, verificación de contenido y fecha de análisis, formato soportado/habilitado válido en sus metadatos, nombre seguro, hash SHA-256 y tamaño de 1 byte a 10 MiB. Digitador solo puede vincular sus adjuntos; Admin puede vincular cualquier adjunto verificado. Se bloquea el registro del archivo y se rechazan PENDING/REJECTED, archivos ajenos y reutilización, incluso de archivos retirados de otra publicación. La FK compuesta `(attachmentId,attachmentHash)` asegura que el hash de publicación corresponda al registro del archivo.
 
-**Carga previa del archivo:** `POST /api/v1/adjuntos` recibe el PDF, verifica su contenido básico y lo analiza con ClamAV antes de confirmar CLEAN y auditoría. El consumidor utiliza el ID devuelto como attachmentId; la descarga auditada es `GET /api/v1/publicaciones/:id/adjunto`. El registro sigue sin aceptar `attachment:{name,size,mime,sha256,...}`, hashes, rutas o estados construidos por el navegador. Las pruebas históricas de registro usan fixtures; la nueva suite de adjuntos valida almacenamiento/descarga y el motor real por separado. Contrato y operación en ATTACHMENTS.md.
+**Carga previa del archivo:** `POST /api/v1/adjuntos` recibe el archivo habilitado, verifica su contenido y lo analiza con ClamAV antes de confirmar CLEAN y auditoría. El consumidor utiliza el ID devuelto como attachmentId; la descarga auditada es `GET /api/v1/publicaciones/:id/adjunto`. El registro sigue sin aceptar `attachment:{name,size,mime,sha256,...}`, hashes, rutas o estados construidos por el navegador. Las pruebas históricas de registro usan fixtures; la suite de adjuntos valida almacenamiento/descarga y el motor real por separado. Contrato y operación en ATTACHMENTS.md.
 
 ## DTO y concurrencia
 
@@ -71,7 +71,7 @@ DTO basado en Publication del client, con campos adicionales `source`, `requires
 }
 ```
 
-Si hay adjunto, añade `attachment:{id,name,size,mime:"application/pdf",sha256}`. No expone almacenamiento, resultados internos del scanner, claves normalizadas ni credenciales. `externalUrl` es `""` para locales. Código `INV-` más el número secuencial PostgreSQL con un mínimo de cinco dígitos; continúa correctamente después de 99999. Secuencias pueden dejar huecos por transacciones canceladas; el código no depende del conteo ni se reutiliza.
+Si hay adjunto, añade `attachment:{id,name,size,mime,sha256}`; MIME application/pdf o text/plain. No expone almacenamiento, resultados internos del scanner, claves normalizadas ni credenciales. `externalUrl` es `""` para locales. Código `INV-` más el número secuencial PostgreSQL con un mínimo de cinco dígitos; continúa correctamente después de 99999. Secuencias pueden dejar huecos por transacciones canceladas; el código no depende del conteo ni se reutiliza.
 
 Duplicidad: normalización equivalente a catálogos/client (NFKD, sin diacríticos, minúsculas españolas, puntuación/símbolos como espacios y espacios colapsados); se calculan hashes SHA-256 de título, resumen y abstract normalizados. UNIQUE individuales conservan la regla incluso en registros inactivos y arbitran altas concurrentes. Los hashes evitan índices B-tree sobre textos largos. Adjunto ID/hash también son únicos; un mismo archivo no se reutiliza.
 
@@ -81,9 +81,9 @@ Una publicación referenciada protege los catálogos contra inactivación/elimin
 
 ## Parámetro de resumen
 
-`GET /api/v1/parametros/publicaciones`, cualquier sesión: 200 `{ "summaryWordLimit": 300 }`.
+`GET /api/v1/parametros/publicaciones`, cualquier sesión: 200 `{ "summaryWordLimit": 300, "allowedFormats": ["pdf"] }`.
 
-`PATCH /api/v1/parametros/publicaciones`, solo Admin: cuerpo estricto `{ "summaryWordLimit": 300 }`, entero 1–10000; respuesta 200 con el valor confirmado. Actualiza una fila singleton con bloqueo y auditoría transaccional. No revalida retroactivamente resúmenes históricos; los próximos registros usan el valor vigente. El límite de caracteres del resumen permanece en 5000. No implementa todavía los parámetros de formatos/extensiones.
+`PATCH /api/v1/parametros/publicaciones`, solo Admin: cuerpo parcial estricto no vacío con summaryWordLimit (entero 1–10000) y/o allowedFormats. Respuesta 200 con ambos valores confirmados. Actualiza singleton con bloqueo y auditoría transaccional. No modifica retroactivamente resúmenes históricos; altas y ediciones validan el resultado contra el límite vigente. Máximo 5000 caracteres. Formatos y reglas completos en PUBLICATION-MANAGEMENT.md.
 
 ## Errores y auditoría
 
@@ -93,7 +93,7 @@ Formato Problem Details definido en API.md. Cuerpos estrictos: se rechazan actor
 | --- | --- | --- |
 | 400 | VALIDATION_ERROR | Campos, aprobación declarada, modalidades, URL, año o límite de resumen inválidos |
 | 400 | INVALID_PUBLICATION_REFERENCE | ID inexistente, inactivo o del catálogo equivocado; campo identificado en invalid_params |
-| 400 | INVALID_ATTACHMENT | Metadatos persistidos de archivo incompatibles con PDF/tamaño/nombre seguros |
+| 400 | INVALID_ATTACHMENT | Metadatos persistidos incompatibles con formato habilitado/tamaño/nombre seguros |
 | 409 | ATTACHMENT_NOT_READY | Falta verificación de contenido o análisis satisfactorio |
 | 409 | DUPLICATE_PUBLICATION | Título/resumen/abstract/adjunto duplicado; invalid_params identifica los campos |
 | 409 | USER_IN_USE | Inactivación de creador de publicaciones rechazada por RN02 |

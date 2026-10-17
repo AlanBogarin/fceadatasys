@@ -1,20 +1,20 @@
-# Contrato de carga y descarga de PDF
+# Contrato de carga y descarga de adjuntos
 
-Implementación exclusiva de `server/`. El cliente conserva IndexedDB y su simulación independiente. Complementa API.md, PUBLICATIONS.md y SECURITY.md. Los reportes PDF/Excel son otro módulo y siguen pendientes.
+Implementación exclusiva de `server/`. El cliente conserva IndexedDB y su simulación independiente. Complementa API.md, PUBLICATIONS.md, PUBLICATION-MANAGEMENT.md y SECURITY.md. Reportes PDF/Excel implementados en REPORTS.md.
 
 ## Rutas
 
 | Método/ruta completa | Autorización | Resultado |
 | --- | --- | --- |
-| POST `/api/v1/adjuntos` | Admin/Digitador | 201, metadatos seguros de un PDF analizado |
+| POST `/api/v1/adjuntos` | Admin/Digitador | 201, metadatos seguros de un archivo habilitado y analizado |
 | GET `/api/v1/adjuntos/:id` | Admin o Digitador creador | 200, metadatos de un adjunto CLEAN; sin bytes ni rutas |
-| GET `/api/v1/publicaciones/:id/adjunto` | Admin/Digitador | 200, bytes del PDF vinculado; auditoría confirmada antes de entregar |
+| GET `/api/v1/publicaciones/:id/adjunto` | Admin/Digitador | 200, bytes del archivo vinculado; auditoría confirmada antes de entregar |
 
 Bearer y sesión central vigentes obligatorios. Público y anónimos no pueden operar con estas rutas, aunque puedan consultar metadatos bibliográficos. Digitador solo descarga publicaciones activas; Admin también puede descargar históricas/inactivas. Una publicación sin adjunto, inexistente o no visible devuelve 404. No hay descarga de archivos sueltos, ruta estática, URL pública, Range ni HEAD de descarga.
 
-POST requiere `multipart/form-data`, exactamente un archivo en el campo `file`, sin campos adicionales. No acepta actor, hash, estado, ruta, ID o veredicto construidos por el navegador. Admite MIME declarado application/pdf o application/octet-stream y comprueba el contenido independientemente. Las tres rutas rechazan query desconocida; UUID inválidos producen 400. No hay If-Match para estas operaciones.
+POST requiere `multipart/form-data`, exactamente un archivo en el campo `file`, sin campos adicionales. No acepta actor, hash, estado, ruta, ID o veredicto construidos por el navegador. Admite el MIME canónico del formato (application/pdf o text/plain) o application/octet-stream y comprueba el contenido independientemente. PDF habilitado por defecto; TXT solo si Admin lo configura. Ambos pasan por ClamAV y máximo 10 MiB. Las tres rutas rechazan query desconocida; UUID inválidos producen 400. No hay If-Match para estas operaciones.
 
-Respuesta de carga/detalle: `{id,name,size,mime:"application/pdf",sha256}`. Location apunta a `/api/v1/adjuntos/:id`. No incluye creador, almacenamiento, firmas ni rutas internas. El frontend futuro debe conservar el ID y enviarlo como `attachmentId` en POST de publicaciones; no enviar el objeto attachment local. La publicación conserva su validación de propietario, estado y hash, así como la unicidad de uso del adjunto.
+Respuesta de carga/detalle: `{id,name,size,mime,sha256}`, MIME application/pdf o text/plain. Location apunta a `/api/v1/adjuntos/:id`. No incluye creador, almacenamiento, firmas ni rutas internas. El frontend futuro debe conservar el ID y enviarlo como `attachmentId` en POST/PATCH de publicaciones; no enviar el objeto attachment local. La publicación conserva validación de propietario, estado, formato habilitado y hash. El archivo retirado conserva su reserva histórica a la publicación original. Parámetros, TXT UTF-8 y transición de formatos en PUBLICATION-MANAGEMENT.md.
 
 Ejemplo desde server/ (el Bearer se obtiene por login):
 
@@ -26,6 +26,8 @@ curl.exe http://localhost:3000/api/v1/publicaciones/<uuid>/adjunto -H "Authoriza
 ## Validación y ClamAV
 
 PDF de 1 byte a 10 MiB (10485760 bytes), extensión PDF, cabecera PDF 1.0–1.7/2.0 y marcador final EOF. Nombre normalizado NFKC, sin rutas, controles/bidi ni caracteres inseguros, hasta 144 caracteres; clave UUID generada por servidor. Estas comprobaciones equivalen a las de contenido básicas de la demo y no constituyen validación estructural completa de PDF.
+
+TXT opcional: UTF-8 estricto, contenido no vacío y sin controles binarios salvo tabulador, CR y LF, mismo límite de 10 MiB y ClamAV obligatorio. allowedFormats se lee antes de analizar y se revalida bajo lock antes de confirmar la carga; deshabilitar durante el análisis rechaza la carga y compensa el archivo. No se aceptan extensiones arbitrarias. Históricos conservan descarga al deshabilitar su formato. Detalles en PUBLICATION-MANAGEMENT.md.
 
 El adaptador invoca **clamscan**, instalado separadamente, mediante spawn sin shell, ventana oculta en Windows y argumentos fijos. Envía los bytes por stdin; no interpreta nombres enviados por usuarios como comandos. No requiere clamd ni expone sockets de antivirus. Se eligió CLI para utilizar la instalación local existente y evitar administrar un servicio adicional en este hito. Cada análisis carga firmas; su costo se acota mediante concurrencia y timeout.
 
@@ -45,7 +47,7 @@ Escritura exclusiva, sin sobrescribir archivos existentes. La transacción reval
 
 Descarga: locks actor/sesión → publicación FOR SHARE → adjunto FOR UPDATE; comprobar estado → leer como máximo tamaño esperado + 1 → verificar tamaño/hash → revalidar actor → auditar → confirmar → enviar los mismos bytes verificados. Una ausencia/alteración produce 503 sin entregar el archivo. No se vuelve a analizar en cada descarga; la descarga requiere el veredicto persistido vigente. Un mecanismo programado de reanálisis no forma parte de este hito.
 
-Entrega `Content-Type: application/pdf`, `Content-Disposition: attachment` con filename* UTF-8 seguro, Content-Length, Cache-Control no-store y X-Content-Type-Options nosniff. CORS expone Content-Disposition. Un cupo compartido acota análisis/cargas y descargas, sin cola ilimitada; la descarga libera el cupo al finalizar/cerrar la respuesta. El log acredita entrega iniciada tras autorización, no que el receptor haya guardado o leído el archivo.
+Entrega Content-Type canónico (application/pdf o text/plain), `Content-Disposition: attachment` con filename* UTF-8 seguro, Content-Length, Cache-Control no-store y X-Content-Type-Options nosniff. Deshabilitar un formato no cancela descargas históricas. CORS expone Content-Disposition. Un cupo compartido acota análisis/cargas y descargas, sin cola ilimitada; la descarga libera el cupo al finalizar/cerrar la respuesta. El log acredita entrega iniciada tras autorización, no que el receptor haya guardado o leído el archivo.
 
 ## Auditoría y errores
 

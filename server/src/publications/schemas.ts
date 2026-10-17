@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { normalizeCatalog } from '../catalogs/schemas.js';
+import { attachmentMimes, supportedFormats } from '../attachments/formats.js';
 
 // Match the client before counting words; compatibility normalization can expand
 // a single character into several words. Unicode normalization belongs to hashes.
@@ -42,10 +43,22 @@ export const publicationDtoSchema = z.object({
   career: reference, level: reference, type: reference, branch: reference,
   summary: z.string(), abstract: z.string(), keywords: z.string(), year: z.number(),
   source: z.enum(['LOCAL', 'EXTERNA']), requiresLibraryCopy: z.boolean(), externalUrl: z.string(),
-  attachment: z.object({ id: z.uuid(), name: z.string(), size: z.number(), mime: z.literal('application/pdf'), sha256: z.string() }).strict().optional(),
+  attachment: z.object({ id: z.uuid(), name: z.string(), size: z.number(), mime: z.enum(attachmentMimes), sha256: z.string() }).strict().optional(),
   active: z.boolean(), createdAt: z.iso.datetime(), createdBy: reference,
 }).strict();
-export const settingsSchema = z.object({ summaryWordLimit: z.number().int().min(1).max(10000) }).strict();
+export const settingsSchema = z.object({
+  summaryWordLimit: z.number().int().min(1).max(10000),
+  allowedFormats: z.array(z.enum(supportedFormats)).min(1).max(supportedFormats.length).refine(values => new Set(values).size === values.length, 'No repitas formatos.').transform(values => [...values].sort()),
+}).strict();
+export const settingsPatchSchema = settingsSchema.partial().refine(value => Object.keys(value).length > 0, 'Enviá al menos un parámetro.');
+export const publicationPatchSchema = z.object({
+  title: requiredText(250), authorIds: identifiers, tutorIds: identifiers,
+  careerId: id, levelId: id, typeId: id, branchId: id,
+  summary: requiredText(5000), abstract: requiredText(5000), keywords: requiredText(300), year: z.number().int().min(1900),
+  source: z.enum(['LOCAL', 'EXTERNA']), externalUrl: z.string().trim().max(2000),
+  requiresLibraryCopy: z.boolean(), attachmentId: id.nullable(),
+}).partial().strict().refine(value => Object.keys(value).length > 0, 'Enviá al menos un campo.');
+export const publicationStateSchema = z.object({ active: z.literal(false) }).strict();
 
 const filterDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const date = new Date(`${value}T00:00:00.000Z`);

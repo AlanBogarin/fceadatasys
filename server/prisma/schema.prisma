@@ -241,6 +241,7 @@ model StoredAttachment {
   createdById     String          @map("creado_por_id") @db.Uuid
   createdBy       User            @relation(fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
   publication     Publication?
+  assignment      AttachmentAssignment?
 
   @@index([createdById], map: "adjuntos_creador_idx")
   @@unique([id, sha256], map: "adjuntos_id_sha256_key")
@@ -282,6 +283,7 @@ model Publication {
   createdAt           DateTime          @default(now()) @map("creado_en") @db.Timestamptz(3)
   createdById         String            @map("creado_por_id") @db.Uuid
   createdBy           User              @relation(fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  attachmentHistory   AttachmentAssignment[]
 
   @@unique([attachmentId, attachmentHash], map: "publicaciones_adjunto_id_hash_key")
   @@index([careerId, careerKind], map: "publicaciones_carrera_idx")
@@ -323,6 +325,18 @@ model PublicationTutor {
 model PublicationSettings {
   id               Int @id @default(1)
   summaryWordLimit Int @default(300) @map("limite_palabras_resumen")
+  allowedFormats   String[] @default(["pdf"]) @map("formatos_admitidos")
 
   @@map("parametros_publicaciones")
+}
+
+// A detached file remains reserved to its original publication.
+model AttachmentAssignment {
+  attachmentId  String @id @map("adjunto_id") @db.Uuid
+  publicationId String @map("publicacion_id") @db.Uuid
+  attachment StoredAttachment @relation(fields: [attachmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publication Publication @relation(fields: [publicationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([publicationId], map: "asignaciones_adjuntos_publicacion_idx")
+  @@map("asignaciones_adjuntos")
 }

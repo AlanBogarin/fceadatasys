@@ -211,6 +211,7 @@ test('Adjuntos PostgreSQL: carga, descarga, seguridad de archivos, permisos y au
         assert.equal(clean.statusCode, 201, clean.body);
         const publication = await publish(clean.json().id, 'DIGITADOR');
         assert.equal((await real.inject({ url: `/api/v1/publicaciones/${publication.id}/adjunto`, headers: headers.DIGITADOR })).statusCode, 200);
+        assert.equal((await createClamScanner(config.attachments!).scan(Buffer.from(`Texto UTF-8 limpio ${suffix}`))).clean, true);
         // A private signature for a random benign marker exercises the real
         // engine without triggering endpoint protection or modifying official DBs.
         const testDatabase = await mkdtemp(resolve('.tmp/clam-signature-test-'));
@@ -222,6 +223,9 @@ test('Adjuntos PostgreSQL: carga, descarga, seguridad de archivos, permisos y au
           detecting = await createApp(config, prisma, { logger: false, security: options.security, attachments: { storage, scanner: createClamScanner({ ...config.attachments!, database: testDatabase }) } });
           const rejected = await upload(pdf(marker), 'ADMINISTRADOR', 'Prueba inocua.pdf', detecting);
           problem(rejected, 400, 'ATTACHMENT_REJECTED');
+          const rejectedText = await createClamScanner({ ...config.attachments!, database: testDatabase }).scan(Buffer.from(`Texto UTF-8 ${marker}`));
+          assert.equal(rejectedText.clean, false);
+          assert.match(rejectedText.signature!, /FCEA.Test.Attachment/);
           const event = await prisma.auditLog.findFirstOrThrow({ where: { operation: 'ADJUNTO_RECHAZADO', after: { path: ['signature'], string_contains: 'FCEA.Test.Attachment' } }, orderBy: { createdAt: 'desc' } });
           assert.equal(event.status, 'FALLIDO');
         } finally {

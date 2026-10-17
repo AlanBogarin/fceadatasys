@@ -1,6 +1,6 @@
 # Servidor FCEA Datasys
 
-Servidor Fastify/TypeScript, PostgreSQL/Prisma, autenticación, usuarios/perfil, siete catálogos, registro/listado/consulta de publicaciones con búsqueda FTS, adjuntos PDF con ClamAV y reportes bibliográficos PDF/Excel generados en servidor. El frontend existente permanece intacto y todavía no consume estos endpoints. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
+Servidor Fastify/TypeScript, PostgreSQL/Prisma, autenticación, usuarios/perfil, siete catálogos, registro/listado/consulta/edición/inactivación de publicaciones con búsqueda FTS, formatos administrables PDF/TXT con ClamAV y reportes bibliográficos PDF/Excel generados en servidor. El frontend permanece intacto y todavía no consume estos endpoints. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
 
 ## Preparación
 
@@ -16,7 +16,7 @@ Configurar `.env` con credenciales propias y un `JWT_SECRET` aleatorio de al men
 
 Crear base vacía y roles separados para migración y aplicación siguiendo [docs/DATABASE.md](docs/DATABASE.md). Inyectar `DATABASE_URL` del propietario para `npm run db:migrate`, aplicar `scripts/runtime-grants.sql` y volver al rol runtime. Las variables ya inyectadas prevalecen sobre `.env`; no ejecutar API con el usuario propietario. No se inicializa ninguna base existente automáticamente.
 
-En este entorno local de desarrollo se preparó `fceadatasys_dev` en 127.0.0.1:5432, con las cuatro migraciones y los grants vigentes aplicados a `fceadatasys_dev_app`, un rol limitado. `server/.env` contiene su contraseña generada y JWT_SECRET propio; está ignorado por Git. La contraseña administrativa no se guarda allí. Las otras bases locales se conservan. La API se inicia desde server/ y permanece independiente del frontend. Para otra instalación o producción, crear/configurar su propia base, identidades, secretos y parámetros; no reutilizar ni copiar estas credenciales de desarrollo. La preparación de base/permisos no crea cuentas de usuario de la aplicación.
+En este entorno local de desarrollo se preparó `fceadatasys_dev` en 127.0.0.1:5432 con el rol limitado `fceadatasys_dev_app`. El 16/10/2026 se aplicó la quinta migración de mantenimiento y se actualizaron sus grants con el propietario, después de crear un backup custom local y comprobar que pg_restore lee su índice. Se verificaron las cinco migraciones, permisos efectivos, parámetros y readiness 200 usando el rol limitado; base vacía conservada sin crear cuentas/datos demo. `server/.env` conserva su contraseña runtime generada y JWT_SECRET, ignorados por Git; la contraseña administrativa solo se utilizó transitoriamente. La API se inicia desde server/ y permanece independiente del frontend. Otras instalaciones requieren su propia base, identidades, secretos, migraciones y grants; no reutilizar estas credenciales.
 
 Inyectar `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_CI`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`; ejecutar `npm run db:bootstrap` con el rol runtime. Solo crea la primera cuenta en una base vacía y registra auditoría; no hay credenciales de demostración. Retirar las variables de bootstrap después.
 
@@ -125,3 +125,9 @@ Prisma 7.10, Fastify 5, Zod 4/type provider 6, pg/adapter-pg, Argon2id y JWT. Lo
 ADMINISTRADOR consulta `/api/v1/reportes/publicaciones` y exporta `/api/v1/reportes/publicaciones/exportar` con los mismos filtros, `format=pdf|xlsx` y el snapshot recibido. Generación en server, control de versión de resultados, auditoría previa a entrega y 200 JSON sin archivo si está vacío. Hasta 500 registros por exportación. Contrato y errores en [docs/REPORTS.md](docs/REPORTS.md).
 
 `npm run reports:examples` genera PDF y Excel de muestra con datos ficticios en `.local/report-examples/`, sin tocar PostgreSQL ni conectar el frontend. El despliegue debe conservar `assets/fonts/` junto a dist y dependencias. No se requieren migraciones/grants adicionales para esta ampliación.
+
+## Edición, inactivación y formatos admitidos
+
+Admin/Digitador editan con `PATCH /api/v1/publicaciones/:id`; Admin inactiva con `PATCH /api/v1/publicaciones/:id/estado` y `{"active":false}`. Ambas rutas requieren el ETag del detalle en If-Match. Conservan historia, participantes y reservas de archivos retirados; rechazos y mutaciones tienen auditoría transaccional. `GET/PATCH /api/v1/parametros/publicaciones` admite límite de resumen y `allowedFormats`: PDF inicial, TXT UTF-8 opcional, ambos con ClamAV. No se aceptan formatos sin validador implementado. Contrato completo: [docs/PUBLICATION-MANAGEMENT.md](docs/PUBLICATION-MANAGEMENT.md).
+
+Aplicar `20261016030000_publication_management` con propietario, repetir runtime-grants.sql y regenerar/compilar. Reversión protegida en prisma/rollback-publication-management.sql. Consulta/exportación de auditoría pospuesta hasta su futura ventana en client; la escritura de logs continúa obligatoria.

@@ -1,6 +1,6 @@
 # Seguridad del primer hito de servidor
 
-El servidor implementa autenticación, sesiones, recuperación, cambios de contraseña, autorización, catálogos, registro/listado/consulta/búsqueda de publicaciones, carga/descarga de PDF con ClamAV y escritura de auditoría. Los contratos HTTP están en `API.md` y `ATTACHMENTS.md`. Edición/inactivación de publicaciones y exportación/consulta de auditoría siguen pendientes. `client/` conserva su demostración independiente y no consume aún estos endpoints.
+El servidor implementa autenticación, sesiones, recuperación, cambios de contraseña, autorización, catálogos, registro/listado/consulta/búsqueda/edición/inactivación de publicaciones, formatos administrables PDF/TXT, carga/descarga con ClamAV y escritura de auditoría. Contratos en API.md, ATTACHMENTS.md y PUBLICATION-MANAGEMENT.md. Exportación/consulta de auditoría pospuesta hasta su ventana futura en client. El cliente conserva su demostración independiente.
 
 ## Credenciales, roles y sesión
 

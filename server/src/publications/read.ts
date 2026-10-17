@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient, type Role } from '@prisma/client';
 import { AppError } from '../errors.js';
 import { publicationWhere } from './query.js';
 import type { PublicationQuery } from './schemas.js';
+import { isSupportedFile, type attachmentMimes } from '../attachments/formats.js';
 
 // Explicit allowlists: no CI/email/ORCID, password data, hashes of normalized text
 // or storage keys are fetched. Public readers do not fetch attachment metadata.
@@ -18,7 +19,7 @@ export const readSelect = (role: Role) => ({
 type ReadRow = Prisma.PublicationGetPayload<{ select: ReturnType<typeof readSelect> }>;
 export function publicationReadDto(row: ReadRow, role: Role) {
   const file = row.attachment;
-  const safeFile = role !== 'PUBLICO' && file?.state === 'CLEAN' && file.contentVerified && file.scannedAt && file.mime === 'application/pdf';
+  const safeFile = role !== 'PUBLICO' && file?.state === 'CLEAN' && file.contentVerified && file.scannedAt && isSupportedFile(file);
   return {
     id: row.id, code: `INV-${row.number.toString().padStart(5, '0')}`, title: row.title,
     authors: row.authors.map(link => link.author), tutors: row.tutors.map(link => link.tutor),
@@ -26,7 +27,7 @@ export function publicationReadDto(row: ReadRow, role: Role) {
     summary: row.summary, abstract: row.abstract, keywords: row.keywords, year: row.year,
     source: row.source, requiresLibraryCopy: row.requiresLibraryCopy, externalUrl: row.externalUrl ?? '',
     hasAttachment: !!row.attachmentId,
-    ...(safeFile ? { attachment: { id: file.id, name: file.name, size: file.size, mime: 'application/pdf' as const, sha256: file.sha256 } } : {}),
+    ...(safeFile ? { attachment: { id: file.id, name: file.name, size: file.size, mime: file.mime as typeof attachmentMimes[number], sha256: file.sha256 } } : {}),
     active: row.active, createdAt: row.createdAt.toISOString(), createdBy: row.createdBy,
   };
 }
