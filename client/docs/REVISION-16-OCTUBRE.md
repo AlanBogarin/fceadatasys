@@ -1,5 +1,7 @@
 # Revisión posterior al segundo parcial · 16/10/2026
 
+Registro del hito del 16/10/2026, con aclaraciones del estado actual al 17/10. Las 52 pruebas y recorridos visuales citados son evidencia histórica. La guía vigente es [ADAPTACIONES-CLIENTE.md](ADAPTACIONES-CLIENTE.md); el cierre H1–H3 registra 87 pruebas de cliente.
+
 Base revisada: `AlanBogarin/fceadatasys`, commit `de0a7c0` (ventana Carga de archivos). Se conserva la carga previa, las modalidades local/externa y la selección de un archivo ya cargado al registrar una publicación.
 
 ## Cambios funcionales
@@ -8,11 +10,11 @@ Base revisada: `AlanBogarin/fceadatasys`, commit `de0a7c0` (ventana Carga de arc
 - **Búsqueda avanzada:** combina los criterios anteriores con nivel, filial, autor, tutor, año de publicación, procedencia y período de registro. Los filtros se combinan con AND. El período corresponde a creación del registro en horario de Paraguay, no al año del trabajo.
 - La búsqueda local ignora acentos y mayúsculas y admite subcadenas en español/inglés. Es búsqueda local; no se presenta como FTS de PostgreSQL.
 - **Rol Público:** consulta los metadatos y sabe si hay adjunto, pero la proyección de lectura y la pantalla no incluyen nombre, identificador, hash ni botón de descarga del adjunto. Admin y Digitador conservan la descarga controlada existente. Los enlaces externos válidos siguen disponibles como metadatos.
-- **Personas:** nombre completo, cédula y correo obligatorios al crear/editar autores y tutores. ORCID sigue opcional; si se informa, se valida su formato. La especialidad del tutor también es opcional.
-- **Carreras:** nombre y código obligatorios. Se conserva la comprobación de duplicados.
+- **Personas:** nombre obligatorio; CI, correo y ORCID opcionales, validados cuando se informan, según el contrato maestro y la adaptación del 17/10. La especialidad del tutor es opcional.
+- **Carreras:** nombre obligatorio y código opcional; se conserva la comprobación de duplicados cuando se informa.
 - **Reportes PDF:** membrete FCEA/UNC con ambos escudos en todas las páginas, nombre de la universidad/facultad y Dirección de Investigación. Los recursos se incluyen en la exportación para que el membrete no dependa de conexión externa.
 
-Los nuevos requisitos de cédula/correo obligatorios sustituyen, en el cliente, la regla anterior que permitía dejarlos vacíos. No se inventan datos para personas guardadas en versiones previas: pueden consultarse y deben completarse cuando se editen. Las muestras nuevas sí incluyen cédulas explícitamente ficticias.
+El hito del 16/10 exigió CI/correo y código de carrera en el cliente. Esa obligatoriedad fue retirada el 17/10 para respetar AGENTS.md y el contrato API; no debe trasladarse al servidor. Las muestras conservan sus datos explícitamente ficticios.
 
 ## Confirmación por contraseña: decisión del usuario
 
@@ -32,7 +34,7 @@ La contraseña ingresada no se guarda en localStorage/sessionStorage ni se inclu
 
 Al pulsar **Cerrar sesión**, se cierran las demás pestañas de **esa misma cuenta, navegador y origen**. Se utiliza una generación persistida de cierre y notificación mediante eventos de almacenamiento/BroadcastChannel. También se comprueba la generación antes de guardar y al recuperar foco, para evitar que una pestaña suspendida continúe una sesión cerrada.
 
-Cerrar físicamente una pestaña no cierra las demás. No se agregan cierres automáticos al recargar o navegar. Cuentas distintas y otros equipos/orígenes conservan sus sesiones independientes. El bloqueo por diez minutos de inactividad permanece vigente.
+Cerrar físicamente una pestaña no cierra las demás. No se agregan cierres automáticos al recargar o navegar. La adaptación del 17/10 admite una sola cuenta compartida por navegador/origen; un segundo login recibe BROWSER_SESSION_ACTIVE mientras siga vigente. Otros perfiles, navegadores, equipos u orígenes conservan sus sesiones independientes. El bloqueo por diez minutos de inactividad permanece vigente.
 
 ## Pruebas para presentar
 
@@ -47,12 +49,12 @@ Cuentas de demostración iniciales: `admin`, `digitador`, `publico`; contraseña
 
 Verificación: **52 pruebas automáticas** tras agregar las verificaciones de datos institucionales UNC, compilación TypeScript/Vite y pruebas reales de catálogo, paginación, búsqueda avanzada, alta sin ORCID, cancelación, contraseña incorrecta/correcta, cierre simultáneo de dos pestañas y exportación con membrete. Se inspeccionó visualmente el PDF descargado en A4. La revisión de datos institucionales también comprobó las seis facultades, cuatro carreras y dos sedes en la interfaz; los nombres largos se ajustan a su celda.
 
-## Integración pendiente con el servidor de Alan
+## Estado actual de integración
 
-Esta revisión modifica `client/`, que sigue usando almacenamiento local. `server/` se conserva sin modificaciones y el cliente no lo invoca. No se aplican migraciones ni se altera su base de datos.
+El hito del 16/10 modificó solo `client/`, con almacenamiento local y sin migraciones de servidor. Las adaptaciones posteriores están documentadas por separado; actualmente el cliente continúa sin invocar la API.
 
-Antes de conectar ambos, los nuevos requisitos deben aplicarse también en sus esquemas/endpoints de escritura: cédula/correo obligatorios para personas y código para carreras, y una política de reautenticación de servidor para modificaciones/bajas. El contrato actual del servidor permite CI/correo opcionales; un formulario obligatorio no cambia ese contrato por sí solo. No se afirma que una confirmación local impida solicitudes directas a una API.
+El cliente y el servidor ya admiten CI/correo y código de carrera opcionales. El servidor implementa confirmación mediante X-Confirmation-Password para PATCH/DELETE, salvo el cambio personal de contraseña que usa currentPassword; el adaptador debe enviar la credencial efímera. La confirmación local no autoriza solicitudes directas a la API.
 
-La futura adaptación debe mapear las consultas a `/api/v1/publicaciones`; el servidor usa FTS y filtros `authorId`/`tutorId`, mientras esta pantalla local admite búsqueda por nombres. No se debe enviar el State del navegador al servidor ni confiar en su rol, hash o bitácora. Conectar el transporte de descarga debe conservar las restricciones de Público y las verificaciones del servidor.
+La futura adaptación debe mapear las consultas a `/api/v1/publicaciones`; el servidor usa FTS, filtros `authorId`/`tutorId` y filtros por nombres `author`/`tutor`. La búsqueda FTS puede diferir de las subcadenas del simulador. No se debe enviar el State del navegador al servidor ni confiar en su rol, hash o bitácora. Conectar el transporte de descarga debe conservar las restricciones de Público y las verificaciones del servidor.
 
 Archivos principales: `BibliographicPage.tsx`, `bibliography.ts`, `mutationPolicy.ts`, `useMutationConfirmation.tsx`, `useSession.ts`, `sessionSignals.ts`, `catalogs.ts`, `CatalogPage.tsx`, `publicationExports.ts`; adaptación de formularios y del servicio de adjuntos para esperar la confirmación.

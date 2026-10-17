@@ -6,7 +6,7 @@ La API consulta PostgreSQL y genera ambos documentos en **server**. El client ma
 
 `GET /api/v1/reportes/publicaciones`
 
-Query estricta: los [filtros de publicaciones](PUBLICATION-QUERIES.md), más `publicationId` UUID opcional para seleccionar un trabajo. Incluye `from`/`to` de registro, `careerId`, `levelId`, `typeId`, `branchId`, `authorId`, `tutorId`, `year`, `source`, `active`, `code`, `search`. Combina los filtros con AND. Las fechas son días inclusivos de America/Asuncion, independientes del año académico. Sin filtro de estado se incluyen activas e inactivas, como en la demo administrativa. Se conservan referencias históricas.
+Query estricta: los [filtros de publicaciones](PUBLICATION-QUERIES.md), más `publicationId` UUID opcional para seleccionar un trabajo. Incluye `from`/`to` de registro, `careerId`, `levelId`, `typeId`, `branchId`, `authorId`, `tutorId`, `author`, `tutor`, `year`, `source`, `active`, `code`, `search`. Combina los filtros con AND. Las fechas son días inclusivos de America/Asuncion, independientes del año académico. Sin filtro de estado se incluyen activas e inactivas, como en la demo administrativa. Se conservan referencias históricas.
 
 `page` predeterminado 1; `pageSize` predeterminado 20, máximo 100. Orden: registro descendente y número descendente. Respuesta 200:
 
@@ -59,4 +59,4 @@ PDFKit y ExcelJS están fijados en package-lock.json; UUID transitivo de ExcelJS
 
 `npm run reports:examples` genera `.local/report-examples/reporte-publicaciones-ejemplo.pdf` y `.xlsx`, usando el mismo generador de la API. Admite directorio alternativo: `npm run reports:examples -- <directorio>`. Tres trabajos ficticios, claramente marcados; no lee ni modifica bases, no crea cuentas ni requiere ClamAV. La fecha fija permite comparar el diseño. `.local` está ignorado. En producción los datos provienen exclusivamente del servidor y no se activa la marca de ejemplo.
 
-La exportación de **auditoría** es otro caso de uso y continúa pendiente. Esta implementación cubre el reporte bibliográfico de publicaciones de la demo.
+La exportación de **auditoría** también está implementada como caso de uso separado en `/api/v1/auditoria/exportar`, con permisos, filtros y snapshot documentados en [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md). Este documento describe exclusivamente el reporte bibliográfico de publicaciones.

@@ -1,6 +1,6 @@
 # Correo de recuperación
 
-El servidor envía instrucciones de restablecimiento de contraseña. No recibe correo, no necesita POP/IMAP y no envía contraseñas por email. El cliente continúa con backend simulado: para usar estos enlaces deberá interpretar `token` y consumir los endpoints de recuperación/reset documentados en [API.md](API.md).
+El servidor envía instrucciones de restablecimiento de contraseña. No recibe correo, no necesita POP/IMAP y no envía contraseñas por email. El cliente continúa con backend simulado: ya interpreta `token` de la query y lo retira del historial visible. Para usar el correo real deberá consumir los endpoints de recuperación/reset documentados en [API.md](API.md).
 
 ## Configuración
 
@@ -20,7 +20,7 @@ Reemplazar usuario/remitente y secreto con la cuenta autorizada. Para Gmail usar
 
 `SMTP_SECURE=true` activa TLS desde la conexión (Gmail 465). Para proveedores con STARTTLS usar su host, puerto 587 y `SMTP_SECURE=false`; STARTTLS sigue siendo obligatorio. Se validan certificados y TLS >=1.2. El servidor rechaza el puerto 465 sin TLS implícito, credenciales incompletas, credenciales sin host y enlaces de recuperación ajenos a HTTP/HTTPS o con usuario/contraseña. No desactivar validaciones de certificados para resolver errores de conexión.
 
-`RECOVERY_URL` debe apuntar a la futura pantalla de restablecimiento. El servidor añade `token` a la query, antes del fragmento si existe. Producción requiere HTTPS y la URL real del frontend. Los cambios en `.env` requieren reiniciar el proceso; una caída temporal del servicio se recupera sin reinicio.
+`RECOVERY_URL` debe apuntar a la pantalla de restablecimiento del cliente; su transporte HTTP sigue pendiente. El servidor añade `token` a la query, antes del fragmento si existe. Producción requiere HTTPS y la URL real del frontend. Los cambios en `.env` requieren reiniciar el proceso; una caída temporal del servicio se recupera sin reinicio.
 
 ## Verificación y operación
 

@@ -1,5 +1,9 @@
 # Pruebas de regresión del servidor
 
+## Cierre vigente — 17/10/2026
+
+Último cierre integrado H1–H3: **348 aprobadas** (212 sin servicios y 136 PostgreSQL), cero fallos/omitidas; ClamAV real habilitado, build/tipos correctos, siete comprobaciones de persistencia y connection-smoke correctos. Cliente: **87 pruebas** y build. Detalles y límites en la sección final de H1–H3 y en [la nota de implementación](../../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md). Los conteos de fases anteriores se conservan como evidencia histórica. La consolidación documental no repite las suites ni acredita conexión real desde navegador.
+
 Las pruebas de server/test/unit se ejecutan sin PostgreSQL, SMTP ni servidor HTTP escuchando en un puerto. Usan funciones reales del servidor y sustituyen únicamente dependencias externas. Las comprobaciones del manejador HTTP emplean Fastify inject en memoria; son pruebas de componente dentro de la suite sin servicios.
 
 ## Ejecución habitual

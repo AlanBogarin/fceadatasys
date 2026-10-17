@@ -291,7 +291,7 @@ La seguridad de archivos debe considerar, según corresponda:
 
 El mecanismo antimalware debe priorizar una solución gratuita o de bajo costo y sencilla de operar.
 
-La selección técnica concreta queda pendiente de la implementación y no debe inventarse antes de inspeccionar el repositorio.
+La implementación actual seleccionó ClamAV mediante clamscan local, sin enviar documentos a servicios externos. Decisión, controles, configuración y límites en [ATTACHMENTS.md](server/docs/ATTACHMENTS.md) y [SECURITY.md](server/docs/SECURITY.md). Las reglas funcionales de seguridad de esta sección siguen vigentes.
 
 Las publicaciones externas deben almacenar una URL en lugar de exigir un archivo local.
 
@@ -1008,22 +1008,18 @@ La estructura definitiva debe mantenerse consistente en toda la API.
 
 # 15. Restricciones de diseño y alcance
 
-Actualmente quedan deliberadamente sin definir en este documento:
+Este documento especifica requisitos funcionales y no funcionales. Las siguientes decisiones técnicas ya están registradas en el repositorio al 17/10/2026:
 
-- framework backend;
-- framework frontend;
-- ORM;
-- biblioteca concreta de autenticación;
-- proveedor concreto de almacenamiento;
-- herramienta concreta de antimalware;
-- infraestructura de despliegue;
-- CI/CD;
-- estructura definitiva de directorios;
-- estrategia concreta de sesiones;
-- detalles internos de implementación.
+- backend: Fastify/TypeScript en `server/`;
+- frontend: React/TypeScript/Vite en `client/`, todavía con simulador;
+- persistencia: PostgreSQL y Prisma, con siete migraciones versionadas;
+- autenticación: Argon2id, JWT Bearer en memoria y refresh/contexto de navegador en cookies HttpOnly;
+- sesiones: una compartida por navegador, máximo siete días y diez minutos de inactividad;
+- archivos: almacenamiento privado del servidor y ClamAV local; PDF inicial y TXT opcional con validadores;
+- contratos, operación y validación: [README del servidor](server/README.md), [API.md](server/docs/API.md), [DATABASE.md](server/docs/DATABASE.md), [TESTING.md](server/docs/TESTING.md) y [adaptaciones del cliente](client/docs/ADAPTACIONES-CLIENTE.md).
 
-Estas decisiones deberán tomarse únicamente cuando sean necesarias para implementar el sistema, después de inspeccionar el repositorio y respetando las restricciones existentes.
+La conexión HTTP real del cliente y su validación completa siguen pendientes. La infraestructura institucional, CI/CD, retención, backups y monitoreo deben concretarse para el despliegue; la validación local no acredita su operación.
 
 Las decisiones técnicas que no estén previamente definidas deberán registrarse como decisiones del proyecto.
 
-Este documento define **qué debe hacer el sistema y cuáles son sus restricciones funcionales y no funcionales**; no pretende definir todavía la arquitectura técnica detallada ni la implementación.
+Este documento define **qué debe hacer el sistema y cuáles son sus restricciones funcionales y no funcionales**; remite a las guías enlazadas para la arquitectura técnica detallada y la implementación vigente.

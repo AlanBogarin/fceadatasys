@@ -4,7 +4,7 @@ Este contrato describe el alta bibliográfica en `server/`; `client/` conserva s
 
 ## Registrar un trabajo aprobado
 
-`POST /api/v1/publicaciones`, Bearer obligatorio; solo ADMINISTRADOR o DIGITADOR con sesión vigente. HTTP 201 con el DTO del registro confirmado y Location `/api/v1/publicaciones/:id`, apuntando al detalle implementado posteriormente. Usuario creador, rol, fecha, código, estado y hashes se obtienen en servidor.
+`POST /api/v1/publicaciones`, Bearer obligatorio; solo ADMINISTRADOR o DIGITADOR con sesión vigente. HTTP 201 con el DTO del registro confirmado y Location `/api/v1/publicaciones/:id`, apuntando al detalle disponible. Usuario creador, rol, fecha, código, estado y hashes se obtienen en servidor.
 
 ```json
 {
@@ -37,9 +37,9 @@ Resumen: máximo inclusivo de 300 palabras por defecto, con límite persistido y
 
 `source` opcional: se infiere EXTERNA si hay URL no vacía; en otro caso LOCAL. EXTERNA exige URL HTTP/HTTPS de hasta 2000 caracteres, sin credenciales; se guarda la representación canónica de URL. El servidor no descarga ni visita el enlace. No permite `attachmentId` ni `requiresLibraryCopy:true` junto a una URL externa.
 
-LOCAL exige URL ausente/vacía. `requiresLibraryCopy` vale true por defecto: si corresponde conservar físicamente el trabajo en Biblioteca, la copia digital es obligatoria. En ese caso debe enviarse `attachmentId` de un archivo previamente verificado. Para un trabajo local que no requiere esa conservación, enviar explícitamente `requiresLibraryCopy:false`; el adjunto pasa a ser opcional. Esta regla sigue AGENTS.md, aunque el formulario simulado actual siempre pide archivo o enlace.
+LOCAL exige URL ausente/vacía. `requiresLibraryCopy` vale true por defecto: si corresponde conservar físicamente el trabajo en Biblioteca, la copia digital es obligatoria. En ese caso debe enviarse `attachmentId` de un archivo previamente verificado. Para un trabajo local que no requiere esa conservación, enviar explícitamente `requiresLibraryCopy:false`; el adjunto pasa a ser opcional. Esta regla sigue AGENTS.md y el formulario simulado también admite la modalidad local sin copia obligatoria.
 
-El registro acepta únicamente un UUID de adjunto existente en la base, con estado CLEAN, verificación de contenido y fecha de análisis, formato soportado/habilitado válido en sus metadatos, nombre seguro, hash SHA-256 y tamaño de 1 byte a 10 MiB. Digitador solo puede vincular sus adjuntos; Admin puede vincular cualquier adjunto verificado. Se bloquea el registro del archivo y se rechazan PENDING/REJECTED, archivos ajenos y reutilización, incluso de archivos retirados de otra publicación. La FK compuesta `(attachmentId,attachmentHash)` asegura que el hash de publicación corresponda al registro del archivo.
+El registro acepta únicamente un UUID de adjunto existente en la base, con estado CLEAN, verificación de contenido y fecha de análisis, formato soportado/habilitado válido en sus metadatos, nombre seguro, hash SHA-256 y tamaño de 1 byte a 25 MiB. El límite configurable maxPdfSizeMb se aplica a las nuevas cargas; reducirlo no invalida los archivos ya aceptados, que conservan el límite absoluto y los demás controles de vinculación. Digitador solo puede vincular sus adjuntos; Admin puede vincular cualquier adjunto verificado. Se bloquea el registro del archivo y se rechazan PENDING/REJECTED, archivos ajenos y reutilización, incluso de archivos retirados de otra publicación. La FK compuesta `(attachmentId,attachmentHash)` asegura que el hash de publicación corresponda al registro del archivo.
 
 **Carga previa del archivo:** `POST /api/v1/adjuntos` recibe el archivo habilitado, verifica su contenido y lo analiza con ClamAV antes de confirmar CLEAN y auditoría. El consumidor utiliza el ID devuelto como attachmentId; la descarga auditada es `GET /api/v1/publicaciones/:id/adjunto`. El registro sigue sin aceptar `attachment:{name,size,mime,sha256,...}`, hashes, rutas o estados construidos por el navegador. Las pruebas históricas de registro usan fixtures; la suite de adjuntos valida almacenamiento/descarga y el motor real por separado. Contrato y operación en ATTACHMENTS.md.
 
@@ -77,13 +77,13 @@ Duplicidad: normalización equivalente a catálogos/client (NFKD, sin diacrític
 
 Transacción ReadCommitted: locks usuario → sesión → parámetros → catálogos en orden estable → adjunto. Se comprueba el actor otra vez tras esperar referencias y se releen catálogos activos bajo bloqueo. Conteos y precomprobaciones no sustituyen UNIQUE/FK. Las FKs tipadas impiden carrera/nivel/tipo/filial equivocadas. Triggers diferidos impiden confirmar una publicación sin autores o tutores. La publicación, relaciones N:M y auditoría confirman juntas; si falla el log se revierte toda el alta y el uso del adjunto.
 
-Una publicación referenciada protege los catálogos contra inactivación/eliminación usando el guard FK existente. RN02 también impide inactivar a un usuario que creó publicaciones, incluso históricas, con `409 USER_IN_USE`; otros cambios permitidos y el ETag de usuarios conservan su contrato.
+Las publicaciones activas bloquean la inactivación de sus catálogos; las referencias exclusivamente inactivas se conservan y permiten inactivarlos. Cualquier referencia histórica impide DELETE del catálogo. RN02 también impide inactivar a un usuario que creó publicaciones, incluso históricas, con `409 USER_IN_USE`; otros cambios permitidos y el ETag de usuarios conservan su contrato.
 
 ## Parámetro de resumen
 
-`GET /api/v1/parametros/publicaciones`, cualquier sesión: 200 `{ "summaryWordLimit": 300, "allowedFormats": ["pdf"] }`.
+`GET /api/v1/parametros/publicaciones`, cualquier sesión: 200 `{ "summaryWordLimit": 300, "allowedFormats": ["pdf"], "maxPdfSizeMb": 10 }` y ETag.
 
-`PATCH /api/v1/parametros/publicaciones`, solo Admin: cuerpo parcial estricto no vacío con summaryWordLimit (entero 1–10000) y/o allowedFormats. Respuesta 200 con ambos valores confirmados. Actualiza singleton con bloqueo y auditoría transaccional. No modifica retroactivamente resúmenes históricos; altas y ediciones validan el resultado contra el límite vigente. Máximo 5000 caracteres. Formatos y reglas completos en PUBLICATION-MANAGEMENT.md.
+`PATCH /api/v1/parametros/publicaciones`, solo Admin: cuerpo parcial estricto no vacío con summaryWordLimit (entero 10–1000), allowedFormats y/o maxPdfSizeMb (entero 1–25 MiB para PDF/TXT). Exige If-Match de GET y X-Confirmation-Password. Respuesta 200 con los tres valores confirmados y ETag. Actualiza singleton con bloqueo y auditoría transaccional. No modifica retroactivamente resúmenes históricos; altas y ediciones validan el resultado contra el límite vigente. Máximo 5000 caracteres. Formatos y reglas completos en PUBLICATION-MANAGEMENT.md.
 
 ## Errores y auditoría
 
@@ -100,10 +100,10 @@ Formato Problem Details definido en API.md. Cuerpos estrictos: se rechazan actor
 
 Reutiliza 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND para adjunto ausente y 503 AUDIT_UNAVAILABLE. Campos de error usan `body.title`, `body.summary`, `body.abstract`, `body.attachmentId` y los IDs del formulario. También se aplican rate limit y límite de cuerpo global existentes.
 
-Eventos `REGISTRAR_INVESTIGACION` (recurso publicaciones, UUID de recurso/publicación, DTO seguro y confirmación de aprobación externa) y `PARAMETROS_PUBLICACIONES_MODIFICADOS` (antes/después del límite). Conservan actor/rol revalidados, sesión, fecha, IP, User-Agent y ÉXITO. Rechazos se registran como OPERACION_RECHAZADA/FALLIDO por separado del rollback. Auditoría sigue inmutable.
+Eventos `REGISTRAR_INVESTIGACION` (recurso publicaciones, UUID de recurso/publicación, DTO seguro y confirmación de aprobación externa) y `PARAMETROS_PUBLICACIONES_MODIFICADOS` (antes/después de los parámetros). Conservan actor/rol revalidados, sesión, fecha, IP, User-Agent y ÉXITO. Rechazos se registran como OPERACION_RECHAZADA/FALLIDO por separado del rollback. Auditoría sigue inmutable.
 
 ## Instalación y límites
 
-Aplicar `20261016010000_publication_registration` con propietario y repetir `scripts/runtime-grants.sql`. Runtime tiene SELECT/INSERT en publicaciones/N:M, USAGE de la secuencia y SELECT/UPDATE de parámetros. El módulo posterior de adjuntos añade INSERT en archivos, UPDATE de estado/analizado_en y UPDATE activo en publicaciones para locks de descarga; no DELETE de publicaciones/adjuntos, TRUNCATE ni modificación de auditoría. No hay cambio de esquema para incorporar transporte; los grants vigentes y su reversión se documentan en ATTACHMENTS.md.
+Aplicar `20261016010000_publication_registration` con propietario y repetir `scripts/runtime-grants.sql`. La instalación vigente requiere todas las migraciones versionadas y los grants actuales, que también habilitan mantenimiento de publicaciones, participantes y reservas de archivos. Runtime tiene SELECT/INSERT y UPDATE acotado en publicaciones, SELECT/INSERT/DELETE en N:M, USAGE de la secuencia, SELECT/UPDATE de parámetros, INSERT en archivos y UPDATE de estado/analizado_en. No se concede DELETE de publicaciones/adjuntos, TRUNCATE ni modificación de auditoría. Ver DATABASE.md, ATTACHMENTS.md y CLIENT-INTEGRATION.md.
 
 `prisma/rollback-publications.sql` revierte esta ampliación únicamente si no hay publicaciones/adjuntos ni parámetros modificados; preserva usuarios, catálogos y auditoría. Mantenimiento y backup verificado requeridos. No modifica el historial Prisma; restaurar un backup coherente o aplicar reparación hacia adelante tras un down manual. Relaciones N:M y códigos quedan validados en pruebas aisladas; no se modificó una base institucional ni se conectó el frontend.

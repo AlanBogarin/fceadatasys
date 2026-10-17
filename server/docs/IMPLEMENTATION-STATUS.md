@@ -1,6 +1,16 @@
-# Estado del primer hito de servidor
+# Estado actual e historial de implementación
 
-Fecha: 15 de octubre de 2026.
+## Estado consolidado — 17/10/2026
+
+Los dominios de autenticación/sesión, usuarios, catálogos, publicaciones, adjuntos/ClamAV, parámetros, reportes y consulta/exportación de auditoría están implementados. H1–H3 están resueltos; falta el transporte HTTP del cliente y su validación completa desde navegador. El cliente ya cuenta con las adaptaciones de servicios/DTO descritas en [ADAPTACIONES-CLIENTE.md](../../client/docs/ADAPTACIONES-CLIENTE.md).
+
+Último cierre integrado: **348 pruebas de servidor** (212 sin servicios y 136 PostgreSQL), **87 de cliente**, builds y tipos correctos. La [nota H1–H3](../../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md) y [TESTING.md](TESTING.md) conservan evidencia y límites; este ajuste documental no vuelve a ejecutar las suites. Hay siete migraciones hasta summary_limits; el registro de desarrollo del 16/10 acredita solo las cinco comprobadas entonces.
+
+## Archivo de hitos
+
+Los apartados siguientes conservan el alcance, pendientes y resultados que tenía cada entrega en su fecha. Las afirmaciones de cliente intacto, funciones futuras y conteos menores pertenecen a esos hitos; el estado vigente es el resumen anterior y los contratos API actuales.
+
+### Hito inicial — 15 de octubre de 2026
 
 Este desarrollo se limita a server/. client/ se utilizó únicamente como referencia de lectura. Sus pantallas todavía funcionan con persistencia local: no se conectaron al servidor ni se modificaron para esta entrega.
 
@@ -232,4 +242,4 @@ El transportador incorpora comprobación automática y compartida (cinco minutos
 
 Validación: **341 pruebas aprobadas: 210 sin servicios y 131 PostgreSQL**, cero fallos/omitidas, con ClamAV real habilitado; build y test:typecheck correctos. Se añadieron nueve unitarias del transportador, una de configuración y dos integradas para impedir correos si falla auditoría y comprobar el cierre ordenado. Pasaron además las siete comprobaciones de persistencia/permisos y aplicación/down/up de migraciones. El clúster aislado quedó detenido. Se conserva el aviso conocido de pg sobre consultas encoladas.
 
-La verificación real acredita conexión/autenticación, no entrega en bandeja de entrada. Continúan pendientes la pantalla real del cliente y el despliegue institucional. La cola de correo permanece en memoria: un cierre abrupto puede perder entregas; no se reenvían mensajes de aceptación incierta ni se persisten tokens crudos.
+La verificación real acredita conexión/autenticación, no entrega en bandeja de entrada. La pantalla de recuperación ya interpreta el token; siguen pendientes el transporte HTTP del cliente y el despliegue institucional. La cola de correo permanece en memoria: un cierre abrupto puede perder entregas; no se reenvían mensajes de aceptación incierta ni se persisten tokens crudos.

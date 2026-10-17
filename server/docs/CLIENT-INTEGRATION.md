@@ -1,6 +1,6 @@
 # Contrato para integrar el cliente — 17/10/2026
 
-Este hito modifica exclusivamente `server/`. `client/` conserva su backend simulado y no se conecta automáticamente. Este documento forma parte de API.md y sustituye las restricciones anteriores sobre auditoría, adjuntos, confirmación, parámetros y sesión de navegador.
+El servidor implementa este contrato y el cliente tiene adaptaciones de servicios/DTO descritas en [ADAPTACIONES-CLIENTE.md](../../client/docs/ADAPTACIONES-CLIENTE.md). `client/` conserva su backend simulado y todavía no tiene adaptador HTTP. Este documento forma parte de API.md y sustituye las restricciones anteriores sobre auditoría, adjuntos, confirmación, parámetros y sesión de navegador.
 
 ## Una sesión por navegador
 
@@ -13,6 +13,8 @@ Todas las pestañas de un mismo navegador/origen comparten una cuenta y un mismo
 5. Logout revoca el ID compartido y sus refresh dentro de una transacción auditada. Todas las pestañas pierden autorización; las demás sesiones de otros navegadores se conservan. El adaptador deberá propagar el cambio visual por BroadcastChannel/eventos de almacenamiento y manejar 401, sin esperar a una próxima interacción para ocultar las pantallas. El servidor no controla el DOM de pestañas desconectadas.
 
 PostgreSQL impide dos sesiones sin revocación para la misma clave de navegador mediante un índice único parcial. Los logins del contexto se serializan. Una sesión vencida se finaliza antes de crear otra. Las cookies son identidad del contexto, no un mecanismo de fingerprinting.
+
+En desarrollo usar el mismo host para cliente y API, por ejemplo `127.0.0.1:5173` y `127.0.0.1:3000`, con el origen exacto autorizado por CORS. Mezclar `localhost` y `127.0.0.1` impide el flujo esperado de cookies SameSite=Strict; `credentials:"include"` no elimina esa restricción. Producción requiere HTTPS y una configuración compatible de sitio/orígenes.
 
 ## Confirmación de modificaciones y bajas
 
@@ -99,4 +101,4 @@ Reversión en orden inverso: `rollback-summary-limits.sql`, `rollback-client-int
 
 El despliegue todavía necesita PostgreSQL activo, cuentas iniciales mediante bootstrap, firmas de ClamAV vigentes y SMTP configurado si se requiere recuperación por correo. Son condiciones de operación; esta entrega no instala credenciales, no inicia servicios permanentes ni conecta el cliente.
 
-Actualización de correo del 17/10/2026: SMTP Gmail quedó configurado localmente en el archivo ignorado de server y su conexión/autenticación pasó `npm run mail:check`. El transportador se recupera automáticamente de caídas temporales. No cambia ningún payload de cliente: la integración futura debe extraer `token` de la query de `RECOVERY_URL` (incluso si tiene fragmento) y enviarlo con `newPassword` a `/api/v1/auth/reset-password`; el cliente simulado todavía no lo hace. Ver [EMAIL.md](EMAIL.md) para operación y límites de entrega.
+Actualización de correo del 17/10/2026: SMTP Gmail quedó configurado localmente en el archivo ignorado de server y su conexión/autenticación pasó `npm run mail:check`. El transportador se recupera automáticamente de caídas temporales. No cambia ningún payload de cliente: la integración futura debe extraer `token` de la query de `RECOVERY_URL` (incluso si tiene fragmento) y enviarlo con `newPassword` a `/api/v1/auth/reset-password`; el cliente ya extrae el token de la query al abrir, muestra recuperación y lo retira de la URL visible. Lo pendiente es enviarlo al endpoint mediante el adaptador HTTP. Ver [EMAIL.md](EMAIL.md) para operación y límites de entrega.

@@ -5,9 +5,9 @@ Base `/api/v1/catalogos/:catalog`. Valores de `catalog`: `autores`, `tutores`, `
 | Método y ruta relativa | Respuesta | Permiso |
 | --- | --- | --- |
 | `GET /:catalog` | 200 `{data:[],pagination:{page,pageSize,total,totalPages}}` | Admin/Digitador; Público solo clasificaciones activas |
-| `GET /:catalog/:id` | 200 DTO; 404 si no existe en ese catálogo | Mismo alcance de lectura |
-| `POST /:catalog` | 201 DTO y `Location` | Admin; Digitador solo autores/tutores |
-| `PATCH /:catalog/:id` | 200 DTO | Admin; Digitador solo autores/tutores |
+| `GET /:catalog/:id` | 200 DTO y ETag; 404 si no existe en ese catálogo | Mismo alcance de lectura |
+| `POST /:catalog` | 201 DTO, `Location` y ETag | Admin; Digitador solo autores/tutores |
+| `PATCH /:catalog/:id` | 200 DTO y ETag | Admin; Digitador solo autores/tutores |
 | `DELETE /:catalog/:id` | 204 sin cuerpo | Solo Admin, sin referencias |
 
 DTO compatible con la forma pública de `CatalogRecord` del client:
@@ -20,7 +20,7 @@ No expone claves normalizadas, `participantIds` ni `demoKey`. La autoría de los
 
 ## Escrituras y campos
 
-Alta: `{ "name": "Nombre", "fields": {} }`; `name` obligatorio hasta 150 caracteres, no vacío después de normalizar. `fields` puede omitirse. Se crea activo. PATCH acepta `name`, `fields` y/o `active`; exige al menos uno. Los campos omitidos se conservan; `fields` se combina por clave con los campos actuales bajo bloqueo. Enviar `""` limpia un campo opcional; `null` no es válido para estos campos. No exige If-Match: cambios al mismo campo siguen el orden de adquisición del bloqueo; no ofrece detección de precarga desactualizada. DELETE no requiere cuerpo; admite `{}` o `null` como vacío, rechaza propiedades adicionales.
+Alta: `{ "name": "Nombre", "fields": {} }`; `name` obligatorio hasta 150 caracteres, no vacío después de normalizar. `fields` puede omitirse. Se crea activo. PATCH acepta `name`, `fields` y/o `active`; exige al menos uno. Los campos omitidos se conservan; `fields` se combina por clave con los campos actuales bajo bloqueo. Enviar `""` limpia un campo opcional; `null` no es válido para estos campos. GET detalle, POST y PATCH emiten ETag opaco. PATCH/DELETE exigen If-Match de la precarga y X-Confirmation-Password con la contraseña del actor en Base64 de UTF-8. Sin versión: 428 PRECONDITION_REQUIRED; formato inválido: 400 VALIDATION_ERROR; versión desactualizada: 412 RESOURCE_VERSION_CONFLICT. Comparación bajo bloqueo; conservar formulario y revisar el conflicto antes de reenviar. DELETE no requiere cuerpo; admite `{}` o `null` como vacío, rechaza propiedades adicionales.
 
 | Catálogo | Claves admitidas dentro de `fields` (todas opcionales) |
 | --- | --- |
@@ -35,9 +35,9 @@ Se normaliza Unicode NFKC y espacios para guardar; correo en minúsculas y ORCID
 
 ## Listados y búsqueda
 
-Query: `page` (1–100000, predeterminado 1), `pageSize` (1–100, predeterminado 20), `search` (hasta 300 caracteres), `active` (`true`/`false`). Sin `active`, Admin/Digitador reciben ambos estados; para nuevas cargas usar `active=true`. Público recibe únicamente clasificaciones activas, también si envía `active=false`; no tiene acceso a los directorios de autores/tutores, que contienen datos personales. Las referencias públicas de autores/tutores deberán devolverse como metadatos por las futuras rutas de publicaciones. Un detalle inactivo solicitado por Público responde 404.
+Query: `page` (1–100000, predeterminado 1), `pageSize` (1–100, predeterminado 20), `search` (hasta 300 caracteres), `active` (`true`/`false`). Sin `active`, Admin/Digitador reciben ambos estados; para nuevas cargas usar `active=true`. Público recibe únicamente clasificaciones activas, también si envía `active=false`; no tiene acceso a los directorios de autores/tutores, que contienen datos personales. Las rutas de publicaciones devuelven los nombres/IDs públicos de autores/tutores sin exponer sus datos personales. Un detalle inactivo solicitado por Público responde 404.
 
-Búsqueda por subcadena sobre nombre y todos los campos, con la normalización del client: NFKD, eliminación de marcas diacríticas, minúsculas españolas, puntuación/símbolos convertidos a espacios y espacios colapsados. No interpreta patrones SQL. Orden ascendente por nombre normalizado y UUID; conteo y página comparten snapshot. Vacío: HTTP 200 con `data:[]`, `total:0`, `totalPages:0`; una página fuera del rango devuelve `data:[]` conservando el total. Esta búsqueda de catálogos no acredita la futura búsqueda FTS de publicaciones.
+Búsqueda por subcadena sobre nombre y todos los campos, con la normalización del client: NFKD, eliminación de marcas diacríticas, minúsculas españolas, puntuación/símbolos convertidos a espacios y espacios colapsados. No interpreta patrones SQL. Orden ascendente por nombre normalizado y UUID; conteo y página comparten snapshot. Vacío: HTTP 200 con `data:[]`, `total:0`, `totalPages:0`; una página fuera del rango devuelve `data:[]` conservando el total. La búsqueda FTS de publicaciones tiene implementación y mediciones separadas en PUBLICATION-QUERIES.md y TESTING.md.
 
 ## Integridad, concurrencia y auditoría
 

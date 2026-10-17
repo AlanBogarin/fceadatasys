@@ -63,6 +63,6 @@ El estado final de una muestra nueva contiene **45 registros de catálogos y 8 i
 
 ## Límites
 
-Los datos siguen siendo locales al navegador y dirección utilizada. Catálogo bibliográfico y Búsqueda avanzada están disponibles; los otros módulos conservan su alcance previo. La carga de muestras no implementa backend, migraciones SQL ni sincronización con la universidad.
+Los datos siguen siendo locales al navegador y dirección utilizada. Catálogo bibliográfico, Búsqueda avanzada, edición/inactivación, parámetros y auditoría están disponibles; alcance actual en [ADAPTACIONES-CLIENTE.md](ADAPTACIONES-CLIENTE.md). Las muestras pertenecen exclusivamente al simulador y no se importan al servidor. La carga de muestras no implementa backend, migraciones SQL ni sincronización con la universidad.
 
 Implementación: `src/institutionalDemo.ts` contiene los datos institucionales, sus fuentes y la fecha de consulta; `src/demoData.ts` prepara las muestras y correcciones; `src/DemoDataPanel.tsx` permite cargarlas como Administrador; `src/storage.ts` aplica la carga automática únicamente al crear un almacenamiento nuevo. El guardado se realiza en una sola confirmación local. Pruebas de actualización, idempotencia, preservación y conflictos: `src/demoData.test.ts`.

@@ -12,7 +12,7 @@ Se aplica el criterio solicitado: una función se considera **preparada** si la 
 
 Este documento integra la revisión inicial y el cierre de las correcciones H1–H3. La implementación modificó reglas de negocio y DTO de servidor/cliente, sin habilitar la conexión real. La preparación funcional aquí descrita no acredita por sí sola el despliegue institucional.
 
-Base de la revisión inicial: rama `main`, commit `01d20d7` (`preparar compatibilidad con cliente`), entonces sin cambios rastreados. El estado actualizado incorpora las correcciones posteriores de H1–H3 en el árbol de trabajo. Entorno de validación: Node.js `v24.20.0`, npm `11.19.0`.
+Base de la revisión inicial: rama `main`, commit `01d20d7` (`preparar compatibilidad con cliente`), entonces sin cambios rastreados. Las correcciones H1–H3 quedaron incorporadas en `4680937` (`preparar conexion cliente servidor`), base de la consolidación documental del 17/10/2026. Entorno de validación: Node.js `v24.20.0`, npm `11.19.0`.
 
 ## Alcance y fuentes
 
@@ -131,25 +131,25 @@ El nombre de Digitador en Mi perfil es de solo lectura en el cliente y editable 
 
 ## Estado de la documentación
 
-Los contratos afectados por H1–H3 están actualizados. Conviven también notas de hitos anteriores con afirmaciones superadas; para integrar deben utilizarse los contratos vigentes y distinguirse los antecedentes fechados que se señalan a continuación.
+Consolidación del 17/10/2026: se corrigieron las afirmaciones superadas en las guías actuales y se identificó expresamente la evidencia histórica. Los contratos de API, catálogos, publicaciones, archivos, parámetros y seguridad describen ahora el código vigente; los README enlazan las guías de ejecución e integración.
 
-| Documento o afirmación | Situación comprobada |
+| Área corregida | Documentación vigente |
 | --- | --- |
-| `server/docs/API.md` y `PUBLICATION-MANAGEMENT.md`: consulta/exportación de auditoría pospuesta o inexistente | Las tres rutas ya se registran en `auditing/routes.ts`; rige `CLIENT-INTEGRATION.md`. |
-| `API.md`, `ATTACHMENTS.md` y documentación anterior de carga: máximo fijo de 10 MiB | Hoy es configurable de 1 a 25 MiB, inicialmente 10, para PDF y TXT. |
-| `ATTACHMENTS.md`: detalle de adjuntos | Corregido: distingue el POST básico del GET detalle con `createdAt`, `createdBy` y `reservedPublicationId`. |
-| `client/docs/CARGA-DE-ARCHIVOS.md`: no hay listado de cargas y resumen fijo en 300 | Ya existe `GET /adjuntos` y el límite es configurable en ambos proyectos. |
-| Cierre de `CLIENT-INTEGRATION.md`: el cliente todavía no extrae el token del enlace | `App.tsx:301` lo extrae, lo pasa a `Auth` y lo elimina de la URL visible. Lo pendiente es enviarlo al servidor mediante el adaptador. |
-| `CATALOGS.md`: inactivación y referencias históricas | Corregido con H1: publicaciones únicamente inactivas no bloquean la inactivación; cualquier referencia sigue bloqueando DELETE. |
-| `API.md`, `DATABASE.md` y `CLIENT-INTEGRATION.md`: vínculos de usuarios | Actualizados con H2: publicaciones, archivos y participación histórica; sesiones y rechazos no bloquean por sí solos. |
-| `CLIENT-INTEGRATION.md` y DTO del cliente: identificación de reservas | Actualizados con H3 y sus reglas de visibilidad, reconstrucción y selección. |
-| Documentos de hitos con números de pruebas diferentes | Son evidencias históricas, no resultados de la revisión actual. Mantener fecha, alcance y servicios utilizados al citarlos. |
+| Auditoría: listado, detalle y exportación ya disponibles | API.md, SECURITY.md, REPORTS.md, PUBLICATION-MANAGEMENT.md y CLIENT-INTEGRATION.md. |
+| Adjuntos: listado, visibilidad del detalle, reservas H3 y reemplazo mediante PATCH | ATTACHMENTS.md, PUBLICATIONS.md, CLIENT-INTEGRATION.md y CARGA-DE-ARCHIVOS.md. |
+| Parámetros: resumen 10–1000, tamaño 1–25 MiB y formatos PDF/TXT | Contratos de publicaciones, persistencia y guías de parámetros/carga/transacción del cliente. Valores iniciales 300/PDF/10 MiB. |
+| Sesión compartida, restauración por cookie, concurrencia de refresh y confirmación del actor | API.md, SECURITY.md, CLIENT-INTEGRATION.md y documentación de usuarios del cliente. |
+| CI/correo de personas y código de carrera opcionales; filtros author/tutor disponibles | CATALOGS.md, PUBLICATION-QUERIES.md, REPORTS.md y revisión del cliente del 16/10 con aclaración de la regla vigente. |
+| Recuperación: el cliente ya interpreta y retira token de la URL | EMAIL.md y CLIENT-INTEGRATION.md; enviar la petición real sigue siendo trabajo del adaptador. |
+| Siete migraciones y permisos actuales; registro local de cinco migraciones identificado por fecha | DATABASE.md y README del servidor. No se declara actualizada una instalación sin verificarla. |
+| H1/H2: inactivación de catálogos y usuarios con reglas históricas | CATALOGS.md, API.md, DATABASE.md y CLIENT-INTEGRATION.md. |
+| Conteos anteriores y material de usuarios del 8/10 | IMPLEMENTATION-STATUS.md y TESTING.md distinguen el último cierre de los antecedentes. El DOCX y los diagramas originales se conservan como archivo histórico, identificado en su README. |
 
-Las filas corregidas describen comportamiento implementado y validado. Las observaciones restantes sobre notas históricas no se contabilizan como módulos de negocio faltantes. Se preserva la evidencia fechada de cada hito.
+PROJECT_CONTEXT.md conserva los requisitos y remite a las decisiones técnicas ya implementadas; no presenta como indefinidos el stack, las sesiones o ClamAV. No queda pendiente la consolidación de las guías señaladas en la revisión inicial. El material histórico conserva su fecha y alcance, sin convertir resultados antiguos en pruebas de esta actualización documental.
 
 ## Validaciones de cierre y límites
 
-Los resultados siguientes corresponden al cierre de la implementación H1–H3, documentado en [TESTING.md](../server/docs/TESTING.md) y en la [nota de implementación](IMPLEMENTACION-H1-H2-H3-2026-10-17.md). Esta actualización del informe no vuelve a ejecutar las suites.
+Los resultados siguientes corresponden al cierre de la implementación H1–H3, documentado en [TESTING.md](../server/docs/TESTING.md) y en la [nota de implementación](IMPLEMENTACION-H1-H2-H3-2026-10-17.md). La consolidación documental no vuelve a ejecutar las suites. Se comprobaron 131 enlaces locales sin destinos inexistentes, coherencia con rutas/validadores y las siete migraciones, y `git diff --check` sin errores.
 
 | Validación de cierre | Resultado |
 | --- | --- |
@@ -172,12 +172,13 @@ Las mediciones históricas de FTS son locales al servidor. La conexión futura n
 
 ## Pendientes para la conexión futura
 
+La ejecución por ventanas está detallada en el [plan de conexión cliente–servidor](PLAN-CONEXION-CLIENTE-SERVIDOR-2026-10-17.md). Es un plan de implementación; los pendientes siguientes aún no se consideran realizados.
+
 1. Implementar el adaptador HTTP y la composición real del cliente con los endpoints y contratos disponibles, incluidas identidad, sesión compartida y confirmaciones.
 2. Traducir DTO, errores, versiones, filtros y respuestas vacías; obtener conteos y opciones globales sin tratar una página como si fuera todo el catálogo. Conservar `reservedPublicationId` al reconstruir los datos reales.
 3. Sustituir cargas, descargas y exportaciones simuladas por los servicios reales, con multipart, autorización y snapshots opacos.
 4. Validar el recorrido completo desde el navegador por rol: sesión entre pestañas, 401, concurrencia/412, confirmaciones, reservas tras recarga, carga/descarga y exportación con snapshot/vacío. Medir búsqueda en las condiciones definidas para el proyecto.
-5. Usar los contratos vigentes y completar la consolidación de notas históricas señaladas en la tabla de documentación, sin alterar sus evidencias fechadas.
 
 PostgreSQL, migraciones/grants, bootstrap administrativo, orígenes/cookies/HTTPS, almacenamiento privado, firmas de ClamAV y SMTP/URL de recuperación son condiciones de operación. Su disponibilidad no se deduce de que las pruebas sin servicios pasen. Backups, retención, monitoreo y la cola de correo en memoria conservan los límites operacionales ya documentados; no constituyen módulos faltantes de interfaz para este análisis.
 
-**Estado de entrega:** H1, H2 y H3 cerrados con cambios de servidor/cliente, contratos actualizados y regresiones aprobadas. No requieren cambios de esquema ni grants adicionales. El trabajo pendiente es la conexión real y su validación completa desde el navegador, además de las condiciones operacionales descritas. Esta actualización modifica únicamente el informe de revisión.
+**Estado de entrega:** H1, H2 y H3 cerrados con cambios de servidor/cliente, contratos actualizados y regresiones aprobadas. No requieren cambios de esquema ni grants adicionales. El trabajo pendiente es la conexión real y su validación completa desde el navegador, además de las condiciones operacionales descritas. La consolidación documental actualiza las guías de cliente/servidor y este informe; no cambia código, configuración ni bases de datos.

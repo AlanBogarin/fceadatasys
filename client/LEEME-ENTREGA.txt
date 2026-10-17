@@ -1,83 +1,43 @@
-FCEA-DATASYS - REVISION POSTERIOR AL PARCIAL (16/10/2026)
+FCEA-DATASYS - GUIA ACTUALIZADA (17/10/2026)
 
-ACTUALIZACION: AUDITORIA Y PARAMETROS
-- Ya no quedan modulos del menu marcados En construccion.
-- Auditoria: consultas, filtros, detalle, PDF y Excel. Solo Administrador.
-- Parametros: limite del resumen y tamano maximo de nuevas cargas PDF.
-- Altas: mensaje Confirmar registro. Modificar/eliminar: contrasena actual.
-- Las operaciones nuevas se guardan junto con su evento de auditoria.
-- Conserva cuentas, muestras UNC (demo) y datos anteriores. Frontend local.
-Guia actual: docs/AUDITORIA-Y-PARAMETROS.md. Verificacion: 61 pruebas.
-Las instrucciones anteriores sobre altas sin confirmacion quedan reemplazadas.
+ALCANCE
+Cliente React/TypeScript con backend simulado. El servidor existe por separado;
+el cliente todavia no consume su API. No comparten cuentas, datos ni archivos.
+Guia vigente: README.md y docs/ADAPTACIONES-CLIENTE.md.
+Contratos reales: ../server/docs/API.md y CLIENT-INTEGRATION.md.
 
-Extraer todo en una carpeta nueva y abrir Iniciar-Frontend.cmd.
-Ingresar con admin / Fcea2026! si no se cambió antes la contraseña.
+ABRIR LA DEMOSTRACION
+1. Extraer todo en una carpeta nueva y ejecutar Iniciar-Frontend.cmd.
+2. Tener Node.js 24.11+ de la rama 24 y esperar la instalacion inicial.
+3. Abrir la direccion indicada por Vite y mantener abierta la ventana.
+4. Cuentas iniciales del simulador: admin, digitador y publico.
+   Contrasena inicial: Fcea2026!; si se cambio, usar la guardada.
+5. No borrar el almacenamiento. Mantener navegador, host y puerto para
+   conservar cuentas, catalogos, publicaciones y archivos anteriores.
 
-NOVEDADES
-- Catálogo bibliográfico y Búsqueda avanzada funcionales.
-- Confirmación con TU contraseña al modificar/inactivar/eliminar.
-- Altas nuevas sin segunda contraseña; cancelar no guarda.
-- Nombre, cédula y correo obligatorios en autores/tutores. ORCID opcional.
-- Código de carrera obligatorio.
-- Cerrar sesión también cierra las otras pestañas de la misma cuenta.
-- Reporte PDF con membrete FCEA/UNC y ambos escudos.
+FUNCIONES DISPONIBLES
+- Catalogo bibliografico y busqueda avanzada para los tres roles.
+- Usuarios y siete catalogos, con permisos por rol.
+- Registro/edicion de publicaciones locales y externas; inactivacion solo Admin.
+- Carga previa de archivos, reservas historicas y descarga autorizada.
+- PDF inicial y TXT configurable. Tamano 1-25 MiB, inicialmente 10.
+- Resumen hasta el limite vigente: 10-1000 palabras, inicialmente 300 inclusive.
+- Reportes y auditoria PDF/Excel exclusivamente para Administrador.
+- CI/correo de autores/tutores y codigo de carrera opcionales.
+- Una cuenta compartida entre pestanas del mismo navegador/origen.
+  Cerrar sesion en una la cierra en todas. Diez minutos de inactividad;
+  tres fallos de login bloquean cinco minutos.
+- Altas con confirmacion visual; cambios/bajas con contrasena actual del actor.
+  Tres fallos de confirmacion cierran la sesion compartida.
+- Las operaciones nuevas se guardan junto con su auditoria local.
 
-Conserva datos de prueba y la Carga de archivos desarrollada por Alan.
-No borrar datos del navegador para actualizar. Usar el mismo host y puerto
-si se quieren conservar las cuentas, catálogos y archivos anteriores.
+DATOS DE DEMOSTRACION
+Muestras UNC identificadas con (demo); personas, trabajos y codigos ficticios.
+Inicio > Cargar / actualizar datos de prueba conserva los registros propios.
+Fuentes y recorrido: docs/DATOS-DE-DEMOSTRACION.md.
 
-Recorrido y detalles: docs/REVISION-16-OCTUBRE.md
-Alcance: frontend local. No conecta el servidor ni cambia su base de datos.
-
---- Instrucciones anteriores ---
-
-FCEA-DATASYS - ENTREGA: TRANSACCION Y REPORTE
-
-1. Extraer todo el ZIP en una carpeta nueva.
-2. Ejecutar Iniciar-Frontend.cmd. Tener Node.js instalado.
-3. Esperar la instalación inicial y abrir la dirección junto a Local.
-4. Ingresar con admin / Fcea2026! (contraseña inicial de demostración).
-5. La primera apertura ya incluye datos de muestra. Si hay datos anteriores,
-   ir a Inicio > Cargar / actualizar datos de prueba con la cuenta Administrador.
-6. Ir a Publicaciones > Registrar investigación y guardar el trabajo.
-7. En el detalle guardado, pulsar Reporte de esta investigación.
-8. Descargar PDF o Excel. Los reportes se habilitan para Administrador.
-
-El menú Reporte de investigaciones permite filtrar por fecha de registro,
-carrera y nivel. Sin resultados, las descargas están deshabilitadas.
-
-Guía para presentar y defender: docs/TRANSACCION-Y-REPORTE.md
-
-Este avance conserva usuarios, catálogos y seguridad. Agrega UNA transacción:
-registro de una investigación aprobada con enlace externo o archivo PDF adjunto (hasta 10 MB),
-y el reporte generado a partir de los datos guardados de esa transacción.
-
-Alcance: frontend local, SIN backend. Los datos quedan en el navegador de
-cada equipo, no dentro del ZIP. Usar el mismo navegador y dirección/puerto
-para volver a encontrar los datos. No borrar el almacenamiento.
-
-No hace falta instalar Visual Studio Code para abrirlo. Node.js y las
-dependencias del proyecto sí son necesarios; el iniciador las instala.
-Mantener abierta la ventana del iniciador mientras se utiliza el sistema.
-
-ACTUALIZACIÓN 14/10/2026
-Buscadores de autores/tutores con selección persistente y paginación.
-PDF o enlace: elegir una modalidad al registrar; no se requieren ambos.
-Los PDF se conservan en este navegador y se descargan desde el detalle.
-Administrador puede eliminar catálogos sin investigaciones vinculadas.
-El escudo FCEA aparece en la pestaña del navegador.
-
-DATOS DE PRUEBA
-14 autores, 12 tutores, siete catálogos y ocho investigaciones ficticias.
-Incluye ocho PDF de muestra y fechas variadas para demostrar reportes.
-La carga no reemplaza tus datos ni duplica las muestras ya agregadas.
-Recorrido sugerido: docs/DATOS-DE-DEMOSTRACION.md
-
-DATOS INSTITUCIONALES UNC (16/10/2026)
-Se incluyen las 6 facultades UNC, las 4 carreras FCEA y las sedes Concepcion /
-Horqueta verificadas en www.unc.edu.py y fcea-unc.edu.py. Todos llevan (demo).
-Las personas, los trabajos y los codigos siguen siendo ficticios.
-Para corregir muestras de versiones anteriores: Admin > Inicio > Cargar /
-actualizar datos de prueba. Confirmar con la contrasena actual si hay cambios.
-No borrar el almacenamiento: se conservan cuentas, contrasenas y registros propios.
-Fuentes y reglas: docs/DATOS-DE-DEMOSTRACION.md. Verificacion: 52 pruebas.
+VALIDACION Y ANTECEDENTES
+Cierre H1-H3: 87 pruebas de cliente y build correctos. Esto no acredita
+conexion real navegador/API. Ver ../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md.
+Los documentos de transaccion, revision del 16/10 y usuarios/seguridad
+conservan evidencia historica; los conteos 37, 52, 61 y 63 pertenecen a esos hitos.

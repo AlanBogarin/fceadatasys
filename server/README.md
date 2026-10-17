@@ -2,7 +2,7 @@
 
 La [revisión conjunta de preparación para la integración — 17/10/2026](../docs/REVISION-PREPARACION-INTEGRACION-2026-10-17.md) distingue cobertura funcional y trabajo futuro de conexión. Sus tres diferencias de reglas/DTO se corrigieron en la [implementación de H1–H3](../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md), sin migraciones ni nuevos grants.
 
-Servidor Fastify/TypeScript, PostgreSQL/Prisma, autenticación, usuarios/perfil, siete catálogos, registro/listado/consulta/edición/inactivación de publicaciones con búsqueda FTS, formatos administrables PDF/TXT con ClamAV y reportes bibliográficos PDF/Excel generados en servidor. El frontend permanece intacto y todavía no consume estos endpoints. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
+Servidor Fastify/TypeScript, PostgreSQL/Prisma, autenticación, usuarios/perfil, siete catálogos, registro/listado/consulta/edición/inactivación de publicaciones con búsqueda FTS, formatos administrables PDF/TXT con ClamAV y reportes bibliográficos PDF/Excel generados en servidor. El frontend conserva su simulador, con adaptaciones de servicios/DTO y H3, y todavía no consume estos endpoints. Consulta, detalle y exportación de auditoría también están implementados. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
 
 ## Preparación
 
@@ -16,9 +16,11 @@ npm run db:generate
 
 Configurar `.env` con credenciales propias y un `JWT_SECRET` aleatorio de al menos 32 caracteres. Los valores de ejemplo no sirven como secretos. `.env`, `.env.test`, `.tmp`, node_modules y dist están ignorados; no versionar credenciales. npm conserva la política global `min-release-age=7`; no se desactiva para instalar novedades.
 
+La versión actual requiere las siete migraciones hasta `20261017010000_summary_limits`, no solo las cinco de la preparación histórica de desarrollo.
+
 Crear base vacía y roles separados para migración y aplicación siguiendo [docs/DATABASE.md](docs/DATABASE.md). Inyectar `DATABASE_URL` del propietario para `npm run db:migrate`, aplicar `scripts/runtime-grants.sql` y volver al rol runtime. Las variables ya inyectadas prevalecen sobre `.env`; no ejecutar API con el usuario propietario. No se inicializa ninguna base existente automáticamente.
 
-En este entorno local de desarrollo se preparó `fceadatasys_dev` en 127.0.0.1:5432 con el rol limitado `fceadatasys_dev_app`. El 16/10/2026 se aplicó la quinta migración de mantenimiento y se actualizaron sus grants con el propietario, después de crear un backup custom local y comprobar que pg_restore lee su índice. Se verificaron las cinco migraciones, permisos efectivos, parámetros y readiness 200 usando el rol limitado; base vacía conservada sin crear cuentas/datos demo. `server/.env` conserva su contraseña runtime generada y JWT_SECRET, ignorados por Git; la contraseña administrativa solo se utilizó transitoriamente. La API se inicia desde server/ y permanece independiente del frontend. Otras instalaciones requieren su propia base, identidades, secretos, migraciones y grants; no reutilizar estas credenciales.
+Antecedente local del 16/10/2026 (no certifica las siete migraciones actuales): en este entorno de desarrollo se preparó `fceadatasys_dev` en 127.0.0.1:5432 con el rol limitado `fceadatasys_dev_app`. El 16/10/2026 se aplicó la quinta migración de mantenimiento y se actualizaron sus grants con el propietario, después de crear un backup custom local y comprobar que pg_restore lee su índice. Se verificaron las cinco migraciones, permisos efectivos, parámetros y readiness 200 usando el rol limitado; base vacía conservada sin crear cuentas/datos demo. `server/.env` conserva su contraseña runtime generada y JWT_SECRET, ignorados por Git; la contraseña administrativa solo se utilizó transitoriamente. La API se inicia desde server/ y permanece independiente del frontend. Otras instalaciones requieren su propia base, identidades, secretos, migraciones y grants; no reutilizar estas credenciales.
 
 Inyectar `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_CI`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`; ejecutar `npm run db:bootstrap` con el rol runtime. Solo crea la primera cuenta en una base vacía y registra auditoría; no hay credenciales de demostración. Retirar las variables de bootstrap después.
 
@@ -37,11 +39,15 @@ Variables SMTP opcionales: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `
 
 El backend admite login, consulta de identidad/plazos mediante `GET /api/v1/auth/session`, actividad explícita, refresh rotatorio y logout idempotente. Tres contraseñas incorrectas consecutivas bloquean la cuenta cinco minutos; la respuesta pública conserva el error genérico. Access token de quince minutos, sesión con máximo de siete días e inactividad de diez minutos. Los plazos se comprueban en PostgreSQL; consultar o refrescar no renueva actividad.
 
+Primero inicializar `POST /api/v1/auth/browser` con cookies y origen permitido; el contexto admite una sesión compartida entre pestañas y `GET /auth/session` puede restaurarla mediante refresh. Coordinar las pestañas antes de login/refresh; ver [docs/CLIENT-INTEGRATION.md](docs/CLIENT-INTEGRATION.md).
+
 La integración futura debe guardar el access token solo en memoria, enviar Bearer en operaciones protegidas y `credentials:"include"` para transportar el refresh HttpOnly. Login/refresh/logout necesitan origen permitido. El logout puede cerrar con la cookie aun con JWT expirado o sesión inactiva; credenciales que identifican sesiones distintas se rechazan. Reautenticar usa el mismo login y crea una sesión nueva. El contrato completo, incluidos errores y finalización auditada, está en [docs/API.md](docs/API.md).
 
 `client/` conserva su demostración local. Todavía requiere un adaptador HTTP para consumir este ciclo de servidor; estos endpoints no conectan automáticamente sus pantallas.
 
 ## Mantenimiento de usuarios
+
+Todas las rutas PATCH/DELETE requieren `X-Confirmation-Password`, contraseña actual del actor en Base64 de UTF-8, además del ETag cuando corresponda. Solo `PATCH /me/password` usa su campo `currentPassword` en lugar de ese encabezado. Catálogos y parámetros también exigen If-Match; tres errores de confirmación revocan la sesión compartida.
 
 ADMINISTRADOR puede crear, consultar, buscar/filtrar, editar y activar/inactivar usuarios. El listado es paginado y combina texto, rol y estado. El texto se normaliza NFKC y busca subcadenas literales; no interpreta `%`, `_` o `\` como patrones. La inactivación conserva datos e invalida sesiones; reactivar permite un login nuevo y conserva la historia.
 
@@ -57,13 +63,15 @@ Cada rol consulta su identidad mediante `GET /api/v1/me` y modifica únicamente 
 
 ## Validación
 
+Cierre integrado H1–H3 del 17/10/2026: **348 pruebas aprobadas** (212 sin servicios y 136 PostgreSQL), ClamAV real habilitado para su suite, build y tipos correctos; cliente: **87 pruebas** y build correctos. Evidencia y límites en [docs/TESTING.md](docs/TESTING.md). Los conteos menores fechados que aparecen más abajo pertenecen a hitos anteriores.
+
 La ampliación de catálogos requiere aplicar `20261016000000_catalogs` con `npm run db:migrate` usando el propietario y volver a ejecutar `scripts/runtime-grants.sql`. El runtime recibe DELETE exclusivamente sobre autores/tutores/catálogos, manteniendo la auditoría inmutable y la inactivación de usuarios.
 
 Rutas `/api/v1/catalogos/{autores|tutores|carreras|facultades|filiales|tipos|niveles}` con listado paginado/búsqueda/filtro, detalle, alta, PATCH de metadatos/estado y DELETE sin referencias. Admin gestiona todos; Digitador gestiona autores/tutores y consulta los demás; Público consulta solo clasificaciones activas. Usar `active=true` en los selectores de nuevas cargas. Todos los cambios se auditan transaccionalmente. Ver [contrato de catálogos](docs/CATALOGS.md).
 
 `POST /api/v1/publicaciones` registra trabajos ya aprobados para Admin/Digitador, con autores/tutores N:M ordenados, referencias activas y tipadas, duplicados normalizados, código secuencial y auditoría atómica. `GET/PATCH /api/v1/parametros/publicaciones` consulta el límite de resumen y permite a Admin cambiarlo (300 palabras por defecto). Aplicar `20261016010000_publication_registration` y repetir grants antes de usarlo. Ver [contrato de registro](docs/PUBLICATIONS.md).
 
-Admite enlaces externos y trabajos locales sin obligación de copia; los locales que requieren copia vinculan un adjunto previamente verificado mediante `attachmentId`. Cargar primero con `POST /api/v1/adjuntos` (multipart, campo file): el servidor valida el PDF, calcula hash y ejecuta ClamAV instalado antes de confirmar archivo y auditoría. El registro bibliográfico no acepta bytes, hashes ni estados del navegador. Descargar mediante `GET /api/v1/publicaciones/:id/adjunto`, solo Admin/Digitador y con auditoría previa. Contrato completo en [ATTACHMENTS.md](docs/ATTACHMENTS.md).
+Admite enlaces externos y trabajos locales sin obligación de copia; los locales que requieren copia vinculan un adjunto previamente verificado mediante `attachmentId`. Cargar primero con `POST /api/v1/adjuntos` (multipart, campo file): el servidor valida el formato habilitado (PDF/TXT), calcula hash y ejecuta ClamAV instalado antes de confirmar archivo y auditoría. El registro bibliográfico no acepta bytes, hashes ni estados del navegador. Descargar mediante `GET /api/v1/publicaciones/:id/adjunto`, solo Admin/Digitador y con auditoría previa. Contrato completo en [ATTACHMENTS.md](docs/ATTACHMENTS.md).
 
 Desde server/, preparar firmas oficiales con `./scripts/update-clamav.ps1` en Windows (FreshClam instalado). Las variables de .env.example apuntan a `.local/clamav/database` y almacenamiento privado `.local/attachments`; esos datos están ignorados por Git. Configurar CLAMAV_COMMAND según plataforma y arquitectura. Mantener las firmas actualizadas periódicamente: sin firmas vigentes o scanner operativo, la carga falla cerrada. No requiere clamd. Reaplicar `scripts/runtime-grants.sql` con el propietario para habilitar los permisos del nuevo módulo; no cambia el esquema ni conecta client/.
 
@@ -94,6 +102,9 @@ $env:PUBLICATIONS_TEST_OWNER_URL='postgresql://ROL_PROPIETARIO@127.0.0.1:PUERTO/
 $env:PUBLICATION_QUERIES_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_publication_queries_test'
 $env:PUBLICATION_QUERIES_TEST_OWNER_URL='postgresql://ROL_PROPIETARIO@127.0.0.1:PUERTO/fceadatasys_publication_queries_test'
 $env:ATTACHMENTS_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_attachments_test'
+$env:REPORTS_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_reports_test'
+$env:REPORTS_TEST_OWNER_URL='postgresql://ROL_PROPIETARIO@127.0.0.1:PUERTO/fceadatasys_reports_test'
+$env:CONNECTION_TEST_DATABASE_URL='postgresql://ROL_RUNTIME@127.0.0.1:PUERTO/fceadatasys_connection_test'
 $env:CLAMAV_TEST_ENABLED='1'
 $env:CLAMAV_TEST_COMMAND='C:\Program Files\ClamAV\clamscan.exe'
 $env:CLAMAV_TEST_DATABASE_DIR='.local/clamav/database'
@@ -110,7 +121,7 @@ Consulta de publicaciones usa otra base aislada con sus dos URLs, para no interf
 
 Perfil comparte explícitamente la base de seguridad mediante `PROFILE_TEST_DATABASE_URL`, con prefijos únicos `profile.<id>`. No necesita una tercera base ni debe apuntar a la base exclusiva de usuarios. Su suite comprueba edición por rol, unicidad concurrente, preservación de sesión, invalidación de recuperación y rollback real; seguridad cubre los cambios personal/administrativo de contraseña y sus carreras.
 
-Validación final de perfil/contraseñas: build/tipos correctos y **198 pruebas aprobadas: 150 sin servicios y 48 PostgreSQL (31 seguridad, 10 usuarios y 7 perfil)**, cero fallos y cero omitidas. La primera ejecución integrada de esta fase pasó sin reparaciones; el cluster aislado quedó detenido, con datos conservados.
+Validación histórica de la fase de perfil/contraseñas: build/tipos correctos y **198 pruebas aprobadas: 150 sin servicios y 48 PostgreSQL (31 seguridad, 10 usuarios y 7 perfil)**, cero fallos y cero omitidas. La primera ejecución integrada de esta fase pasó sin reparaciones; el cluster aislado quedó detenido, con datos conservados.
 
 El cierre anterior de usuarios conserva su evidencia histórica de 156 aprobadas: allí se corrigieron fechas de tres fixtures y se repitió solo usuarios, sin afirmar que el primer `npm test` completo hubiera aprobado. Los 49 archivos rastreados de `client/` conservaron su SHA-256 en aquella revisión. Evidencia y límites por fase en [docs/TESTING.md](docs/TESTING.md).
 
@@ -120,7 +131,7 @@ Pruebas de DB/roles, migración y recuperación del esquema se describen en DATA
 
 Prisma 7.10, Fastify 5, Zod 4/type provider 6, pg/adapter-pg, Argon2id y JWT. Lockfile versionado para `npm ci`. Se fijan overrides de `deepmerge-ts=8.0.2` y `mysql2=3.24.5` por vulnerabilidades transitivas de Prisma; `nodemailer=10.0.16` es una versión corregida elegible bajo la política temporal npm. Validar generación/migración/build/pruebas al actualizar Prisma u overrides.
 
-`GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes de operación: integración frontend, retención de tokens/logs, backups operacionales y alertas externas. La comprobación SMTP se recupera automáticamente; no existe entrega durable de correos (ver EMAIL.md). Los siete catálogos, registro N:M/FKs, listado/consulta, búsqueda FTS y carga/descarga PDF con ClamAV están implementados. Adjuntos requiere su base exclusiva de pruebas y CLAMAV_TEST_ENABLED=1 para validar el motor real; la prueba positiva usa una firma propia inocua en una copia temporal de las firmas oficiales, sin modificar Defender ni generar EICAR.
+`GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes de operación: integración frontend, retención de tokens/logs, backups operacionales y alertas externas. La comprobación SMTP se recupera automáticamente; no existe entrega durable de correos (ver EMAIL.md). Los siete catálogos, registro N:M/FKs, listado/consulta, búsqueda FTS y carga/descarga PDF/TXT con ClamAV están implementados. Adjuntos requiere su base exclusiva de pruebas y CLAMAV_TEST_ENABLED=1 para validar el motor real; la prueba positiva usa una firma propia inocua en una copia temporal de las firmas oficiales, sin modificar Defender ni generar EICAR.
 
 ## Reportes PDF/Excel
 
@@ -132,7 +143,7 @@ ADMINISTRADOR consulta `/api/v1/reportes/publicaciones` y exporta `/api/v1/repor
 
 Admin/Digitador editan con `PATCH /api/v1/publicaciones/:id`; Admin inactiva con `PATCH /api/v1/publicaciones/:id/estado` y `{"active":false}`. Ambas rutas requieren el ETag del detalle en If-Match. Conservan historia, participantes y reservas de archivos retirados; rechazos y mutaciones tienen auditoría transaccional. `GET/PATCH /api/v1/parametros/publicaciones` admite límite de resumen y `allowedFormats`: PDF inicial, TXT UTF-8 opcional, ambos con ClamAV. No se aceptan formatos sin validador implementado. Contrato completo: [docs/PUBLICATION-MANAGEMENT.md](docs/PUBLICATION-MANAGEMENT.md).
 
-Aplicar `20261016030000_publication_management` con propietario, repetir runtime-grants.sql y regenerar/compilar. Reversión protegida en prisma/rollback-publication-management.sql. Consulta/exportación de auditoría pospuesta hasta su futura ventana en client; la escritura de logs continúa obligatoria.
+Aplicar `20261016030000_publication_management` con propietario, repetir runtime-grants.sql y regenerar/compilar. Reversión protegida en prisma/rollback-publication-management.sql. Consulta, detalle y exportación PDF/Excel de auditoría ya disponibles exclusivamente para Admin. El listado de adjuntos incluye reservas históricas; los parámetros incluyen resumen 10–1000, formatos y tamaño 1–25 MiB (300/PDF/10 iniciales). Contratos y migraciones posteriores en [docs/CLIENT-INTEGRATION.md](docs/CLIENT-INTEGRATION.md).
 
 
 ## Integración del cliente · 17/10/2026

@@ -1,13 +1,13 @@
 # Contrato API de listado y consulta de publicaciones
 
-Complementa [API.md](API.md) y [PUBLICATIONS.md](PUBLICATIONS.md). Implementación exclusivamente en `server/`; el client sigue usando su simulación. No incorpora edición/inactivación, reportes ni carga/descarga de archivos.
+Complementa [API.md](API.md) y [PUBLICATIONS.md](PUBLICATIONS.md). Contrato de consulta vigente al 17/10/2026; el cliente sigue usando su simulación. Edición/inactivación, reportes y carga/descarga están implementados en rutas separadas, documentadas en PUBLICATION-MANAGEMENT.md, REPORTS.md y ATTACHMENTS.md.
 
 ## Rutas y permisos
 
 | Ruta | Respuesta | Acceso |
 | --- | --- | --- |
 | `GET /api/v1/publicaciones` | 200 `{data:[],pagination:{page,pageSize,total,totalPages}}` | Cualquier sesión vigente |
-| `GET /api/v1/publicaciones/:id` | 200 DTO de lectura | Cualquier sesión vigente, según estado |
+| `GET /api/v1/publicaciones/:id` | 200 DTO de lectura y ETag | Cualquier sesión vigente, según estado |
 
 ADMINISTRADOR puede consultar activas/inactivas; sin filtro de estado recibe ambas. DIGITADOR y PUBLICO reciben solo activas; `active=false` en el listado produce 403 FORBIDDEN. Un detalle inactivo solicitado por esos roles responde 404 NOT_FOUND, igual que un UUID válido inexistente. UUID inválido es 400 VALIDATION_ERROR. No existe acceso anónimo: falta de Bearer/sesión válida produce 401. Una cuenta creada por Admin con rol Público no necesita permisos de mantenimiento para consultar metadatos.
 
@@ -23,6 +23,7 @@ El detalle no acepta query adicional: `?download=true`, actor/rol o flags de amp
 | `code` | Código exacto INV- seguido de 1–19 dígitos, dentro del bigint positivo/0 de PostgreSQL; case-insensitive |
 | `careerId`, `levelId`, `typeId`, `branchId` | UUID de clasificación; no intercambiables entre tipos |
 | `authorId`, `tutorId` | UUID de persona relacionada N:M |
+| `author`, `tutor` | Hasta 150 caracteres; subcadena literal normalizada del nombre, sin consultar directorios |
 | `year` | Año de publicación, entero 1900–9999 |
 | `source` | LOCAL o EXTERNA |
 | `active` | true/false, sujeto al rol |
@@ -58,7 +59,7 @@ Se busca en título, resumen, abstract y palabras clave como documento bibliogr�
 
 Usa plainto_tsquery: interpreta texto como datos y combina términos por AND dentro de cada configuración, sin aceptar operadores SQL/tsquery del usuario. Las configuraciones se combinan por OR. Puntuación o stop words pueden desaparecer; por ejemplo, "1=1" es una búsqueda del lexema numérico 1, no una instrucción. Una consulta sin lexemas devuelve vacío; search vacío omite la búsqueda. Código completo INV-00001 enviado en search también consulta el número exacto.
 
-La simulación del client filtraba subcadenas de código/título/autores. Este contrato usa términos completos/raíces FTS y amplía campos: no garantiza subcadenas arbitrarias como "eco" ni códigos parciales. El adaptador futuro debe usar estos parámetros sin enviar el State local; `code` cubre el código exacto y authorId/tutorId filtran por identidad.
+La simulación del client filtraba subcadenas de código/título/autores. Este contrato usa términos completos/raíces FTS y amplía campos: no garantiza subcadenas arbitrarias como "eco" ni códigos parciales. El adaptador futuro debe usar estos parámetros sin enviar el State local; `code` cubre el código exacto y authorId/tutorId filtran por identidad, mientras author/tutor permiten subcadenas normalizadas de nombres.
 
 Índices GIN sobre documento bibliográfico y nombres de autores/tutores; ramas UNION de IDs independientes permiten usarlos y deduplican publicaciones con varios participantes. Los índices de expresión reflejan renombrados sin mantener copias manuales de nombres. Índice adicional estado/fecha/número y los índices de relaciones existentes soportan filtros y orden. El plan de la consulta completa se comprueba mediante EXPLAIN ANALYZE sin forzar enable_seqscan.
 

@@ -1,10 +1,12 @@
-# API inicial — autenticación, usuarios y perfil
+# Contrato API vigente
 
-Contrato implementado en este hito. Base `/api/v1`; JSON UTF-8; UUID; fechas ISO 8601 UTC. Los cuerpos de datos y filtros definidos rechazan propiedades desconocidas. Refresh, logout y actividad admiten cuerpo ausente o `{}`, sin campos adicionales. El cliente actual sigue usando almacenamiento local: este trabajo no cambia `client/` ni conecta sus pantallas.
+Contrato consolidado al 17/10/2026. Base `/api/v1`; JSON UTF-8; UUID; fechas ISO 8601 UTC. Los cuerpos de datos y filtros definidos rechazan propiedades desconocidas. Inicialización de navegador, refresh, logout y actividad admiten cuerpo ausente o `{}`, sin campos adicionales. El cliente conserva su simulador y todavía necesita el adaptador HTTP. Los contratos de los demás dominios se enlazan al final; [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md) detalla sesión compartida, confirmación, auditoría y versiones.
+
+Todas las rutas PATCH/DELETE requieren `X-Confirmation-Password` con la contraseña actual del actor en Base64 de UTF-8, excepto `PATCH /me/password`, que utiliza `currentPassword`. Este encabezado se exige además de Bearer e If-Match cuando corresponda; no se envía en consultas, exportaciones ni altas POST.
 
 ## Identidad y transporte
 
-Roles canónicos: `ADMINISTRADOR`, `DIGITADOR`, `PUBLICO`. Actor, rol y sesión se obtienen exclusivamente del JWT validado y PostgreSQL; nunca se acepta `actorId`, hash ni bitácora del navegador.
+Roles canónicos: `ADMINISTRADOR`, `DIGITADOR`, `PUBLICO`. Actor, rol y sesión se obtienen de las credenciales verificadas por la ruta (Bearer o refresh autorizado para restauración) y PostgreSQL; nunca se acepta `actorId`, hash ni bitácora del navegador.
 
 DTO User, usado por autenticación, usuarios y perfil:
 
@@ -22,9 +24,10 @@ El refresh aleatorio de 64 bytes se transporta exclusivamente en cookie `refresh
 
 | Método/ruta | Cuerpo/autorización | Respuesta |
 | --- | --- | --- |
+| POST `/auth/browser` | Origen permitido; cuerpo ausente o `{}` | 204, cookie de contexto compartido; no autentica |
 | POST `/auth/login` | `{username,password}`, origen permitido | 200, token pair + User; Set-Cookie refresh |
 | POST `/auth/refresh` | Cookie refresh y origen permitido | 200, nuevo token pair + User; Set-Cookie rotada |
-| GET `/auth/session` | Bearer vigente | 200, identidad y plazos de la sesión, sin renovar actividad |
+| GET `/auth/session` | Bearer vigente, o refresh vigente y origen permitido | 200, identidad/plazos; con cookie también access token sin rotar refresh ni renovar actividad |
 | POST `/auth/logout` | Origen permitido; Bearer firmado o cookie refresh conocida | 204, cierre idempotente y cookie expirada |
 | POST `/auth/activity` | Bearer | 204, actualiza interacción si sesión sigue vigente |
 | POST `/auth/recover-password` | `{email}` | 200, `{message}` genérico |
@@ -32,7 +35,7 @@ El refresh aleatorio de 64 bytes se transporta exclusivamente en cookie `refresh
 | PATCH `/me/password` | Bearer; `{currentPassword,newPassword}` | 200, nuevo token pair + User |
 | PATCH `/usuarios/:id/password` | Admin; `{newPassword}` | 204, revoca sesiones de cuenta afectada |
 
-Token pair: `{accessToken,tokenType:"Bearer",expiresIn:900,user:User}`. Refresh consume el token anterior de forma atómica. Reutilizar uno consumido/revocado revoca todas las sesiones de la cuenta y se audita, excepto la ventana de concurrencia del mismo navegador definida en CLIENT-INTEGRATION.md; un token desconocido simplemente se rechaza. Coordinar refresh entre pestañas: dos llamadas con la misma cookie cuentan como reutilización, incluso si provienen del mismo navegador.
+Token pair: `{accessToken,tokenType:"Bearer",expiresIn:900,user:User}`. Refresh consume el token anterior de forma atómica. Un refresh consumido hace hasta cinco segundos puede devolver access token sin Set-Cookie si coincide el contexto del navegador y la sesión sigue vigente. Fuera de esa excepción, reutilizar uno consumido/revocado revoca todas las sesiones de la cuenta y se audita; un token desconocido simplemente se rechaza. El cliente debe coordinar las renovaciones entre pestañas. Inicializar `/auth/browser` antes del login; un contexto con sesión vigente rechaza un segundo login con `409 BROWSER_SESSION_ACTIVE`.
 
 `GET /auth/session` devuelve el rol actual de PostgreSQL y este contrato seguro:
 
@@ -81,6 +84,7 @@ CU02 exige revalidar la precarga antes de guardar. Para editar o activar/inactiv
 ```http
 PATCH /api/v1/usuarios/d0347d10-079a-423d-a191-bf55608f1e38
 Authorization: Bearer <accessToken>
+X-Confirmation-Password: <contraseña actual del actor en Base64 de UTF-8>
 If-Match: "sha256-<64 caracteres hexadecimales minúsculos emitidos por la API>"
 Content-Type: application/json
 
@@ -95,7 +99,7 @@ RN-01: el nombre Público es de solo lectura, también si el PATCH convierte des
 
 Perfil usa exclusivamente la identidad autenticada: `GET /me` no acepta otro usuario y `PATCH /me` solo permite `name,email,username`. CI, rol, estado, fechas y credenciales son de solo lectura. El cuerpo debe incluir al menos un campo; propiedades desconocidas producen 400 y duplicados normalizados producen 409, también ante peticiones concurrentes. Nombre Público mantiene RN-01. La sesión y el rol se releen bajo bloqueo antes de modificar y `PERFIL_MODIFICADO` conserva el rol revalidado. Este contrato no exige If-Match en `/me`; la serialización evita mutaciones simultáneas sin aislamiento, pero no añade rechazo de precarga a formularios personales. Un cambio de perfil sí modifica el ETag de metadatos obtenido previamente por un administrador.
 
-Cambiar el correo efectivo normalizado, mediante perfil o edición administrativa, consume las recuperaciones pendientes en la misma transacción que los datos y su auditoría. Cambios equivalentes de mayúsculas/Unicode/espacios no invalidan enlaces innecesariamente. La edición de correo o username conserva contraseña, sesiones y plazos; no requiere contraseña actual ni verifica entrega al correo nuevo. Un mensaje ya encolado al correo anterior puede llegar, pero su enlace consumido no permite restablecer la contraseña. Si falla la auditoría, también se revierten el correo y el consumo de recuperaciones.
+Cambiar el correo efectivo normalizado, mediante perfil o edición administrativa, consume las recuperaciones pendientes en la misma transacción que los datos y su auditoría. Cambios equivalentes de mayúsculas/Unicode/espacios no invalidan enlaces innecesariamente. La edición de correo o username conserva contraseña, sesiones y plazos; exige la confirmación del actor mediante `X-Confirmation-Password` y no verifica entrega al correo nuevo. Un mensaje ya encolado al correo anterior puede llegar, pero su enlace consumido no permite restablecer la contraseña. Si falla la auditoría, también se revierten el correo y el consumo de recuperaciones.
 
 La inactivación es `PATCH {active:false}`, conserva cuenta y auditoría. RN-02 responde `409 USER_IN_USE` si la cuenta creó publicaciones (activas o inactivas), tiene adjuntos en cualquier estado o participó en catálogos que aún se conservan, incluidos los inactivos. La participación se consulta en los eventos exitosos inmutables `CATALOGO_CREADO`, `CATALOGO_MODIFICADO`, `CATALOGO_ACTIVADO` y `CATALOGO_INACTIVADO`, por actor, recurso y registro existente. No incluye intentos fallidos, sesiones, accesos ni otras bitácoras por sí solos. Un catálogo eliminado ya no constituye esa dependencia de inactivación; sus logs siguen impidiendo la eliminación física del actor. Las comprobaciones ocurren en la transacción bajo el mismo lock de usuario adquirido por los escritores de negocio y fallan cerradas si no pueden consultar las dependencias. No se acepta información de participantes suministrada por el navegador. No requiere migración ni nuevos grants: utiliza publicaciones, adjuntos y la auditoría transaccional existente.
 
@@ -111,7 +115,7 @@ ETag, protecciones, referencias, eliminación y evento `USUARIO_ELIMINADO` confi
 
 Reutiliza `SELF_PRIVILEGE_CHANGE` para eliminar la cuenta propia y `LAST_ADMIN_REQUIRED` para el último Admin. CI/email/username quedan disponibles para una cuenta nueva con otro UUID; la historia mantiene el ID anterior. Antes de usar la ruta, repetir los grants documentados en DATABASE.md. No cambia datos del navegador ni activa conexión: el futuro adaptador debe consultar la versión y llamar DELETE.
 
-El cierre previo de mantenimiento de usuarios conserva su evidencia histórica de 156 aprobadas. La ampliación de perfil/contraseñas fue validada con build/tipos correctos y **198 pruebas aprobadas: 150 sin servicios y 48 PostgreSQL (31 seguridad, 10 usuarios y 7 perfil)**, cero fallos y cero omitidas. Evidencia y límites de cada fase en [TESTING.md](TESTING.md).
+La evidencia siguiente es histórica: el cierre previo de mantenimiento de usuarios registró 156 aprobadas. La ampliación de perfil/contraseñas fue validada con build/tipos correctos y **198 pruebas aprobadas: 150 sin servicios y 48 PostgreSQL (31 seguridad, 10 usuarios y 7 perfil)**, cero fallos y cero omitidas en esa fase. El cierre H1–H3 posterior registra 348 aprobadas (212 sin servicios y 136 PostgreSQL). Evidencia y límites de cada fase en [TESTING.md](TESTING.md).
 
 ## Errores
 
@@ -121,7 +125,7 @@ El cierre previo de mantenimiento de usuarios conserva su evidencia histórica d
 {"type":"about:blank","status":400,"code":"VALIDATION_ERROR","title":"Error de validación de datos","detail":"Los datos enviados no son válidos.","timestamp":"2026-10-15T00:00:00.000Z","path":"/api/v1/usuarios/:id","invalid_params":[{"name":"body.ci","reason":"La CI debe contener entre 5 y 12 dígitos."}]}
 ```
 
-`path` es la plantilla de la ruta identificada por Fastify (incluye `:id`), o el pathname sin query si la ruta no existe. No incluye tokens de query. `invalid_params` siempre es un arreglo; puede estar vacío. JSON malformado, campos desconocidos y formatos inválidos son 400. Límite de cuerpo: 64 KiB (413). Rate limit global por proceso/IP: 120/minuto; recuperación tiene además límites persistidos indicados antes. Despliegues con varias instancias requieren store compartido para el límite general. `trustProxy=false`: configurar un proxy requiere revisión explícita de IP confiables.
+`path` es la plantilla de la ruta identificada por Fastify (incluye `:id`), o el pathname sin query si la ruta no existe. No incluye tokens de query. `invalid_params` siempre es un arreglo; puede estar vacío. JSON malformado, campos desconocidos y formatos inválidos son 400. Límite de cuerpo JSON: 64 KiB (413); la ruta multipart usa el límite de adjuntos documentado en ATTACHMENTS.md. Rate limit global por proceso/IP: 120/minuto; recuperación tiene además límites persistidos indicados antes. Despliegues con varias instancias requieren store compartido para el límite general. `trustProxy=false`: configurar un proxy requiere revisión explícita de IP confiables.
 
 | HTTP | code | Significado |
 | --- | --- | --- |
@@ -151,7 +155,7 @@ El cierre previo de mantenimiento de usuarios conserva su evidencia histórica d
 
 Rechazos se auditan separadamente para sobrevivir al rollback. Si falla esa escritura se responde 503. Éxito de mutaciones y su audit log comparten transacción. Ningún endpoint permite UPDATE/DELETE de auditoría.
 
-Operaciones de auditoría de este hito: `USER_BOOTSTRAP`, `LOGIN`, `LOGOUT`, `REFRESH`, `REFRESH_REUTILIZADO`, `ACTIVIDAD_SESION`, `SESION_FINALIZADA`, `SESION_RECHAZADA`, `RECUPERACION_SOLICITADA`, `RECUPERACION_ENVIO_FALLIDO`, `CONTRASENA_RESTABLECIDA`, `CONTRASENA_PERSONAL_MODIFICADA`, `CONTRASENA_ADMIN_MODIFICADA`, `USUARIO_CREADO`, `USUARIO_MODIFICADO`, `USUARIO_INACTIVADO`, `ROL_ASIGNADO`, `PERFIL_MODIFICADO`, `OPERACION_RECHAZADA`. `SESION_FINALIZADA` conserva motivo, instante efectivo, duración y última actividad, sin tokens. Antes/después contienen DTO seguros; no credenciales. Consultar/exportar auditoría pertenece a un hito posterior.
+Operaciones de auditoría de autenticación, usuarios y perfil: `USER_BOOTSTRAP`, `LOGIN`, `LOGOUT`, `REFRESH`, `REFRESH_REUTILIZADO`, `ACTIVIDAD_SESION`, `SESION_FINALIZADA`, `SESION_RECHAZADA`, `RECUPERACION_SOLICITADA`, `RECUPERACION_ENVIO_FALLIDO`, `CONTRASENA_RESTABLECIDA`, `CONTRASENA_PERSONAL_MODIFICADA`, `CONTRASENA_ADMIN_MODIFICADA`, `USUARIO_CREADO`, `USUARIO_MODIFICADO`, `USUARIO_INACTIVADO`, `ROL_ASIGNADO`, `PERFIL_MODIFICADO`, `OPERACION_RECHAZADA`. `SESION_FINALIZADA` conserva motivo, instante efectivo, duración y última actividad, sin tokens. Antes/después contienen DTO seguros; no credenciales. La consulta, detalle y exportación de auditoría ya están implementados para Admin; contrato en [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md).
 
 ## Salud
 
@@ -163,9 +167,9 @@ Los siete catálogos tienen rutas de listado/detalle/alta/edición/estado/elimin
 
 El [contrato de registro de publicaciones](PUBLICATIONS.md), también parte de esta API, documenta `POST /api/v1/publicaciones`, relaciones N:M, DTO, límite configurable de resumen (`GET/PATCH /api/v1/parametros/publicaciones`), modalidades y errores adicionales. El [contrato de listado/consulta](PUBLICATION-QUERIES.md) incorpora `GET /api/v1/publicaciones` y `GET /api/v1/publicaciones/:id`, con paginación, filtros, búsqueda FTS y DTO seguro según rol. POST emite Location del detalle.
 
-El [contrato de adjuntos](ATTACHMENTS.md), parte de esta API, incorpora `POST /api/v1/adjuntos` multipart, `GET /api/v1/adjuntos/:id` de metadatos y `GET /api/v1/publicaciones/:id/adjunto` para descarga auditada. Admin/Digitador exclusivamente; formatos habilitados hasta 10 MiB analizados por ClamAV instalado, almacenamiento privado, hash/estado confiables y fallos cerrados. CORS expone Content-Disposition para la integración futura. El frontend sigue independiente.
+El [contrato de adjuntos](ATTACHMENTS.md), parte de esta API, incorpora `GET /api/v1/adjuntos` paginado, `POST /api/v1/adjuntos` multipart, `GET /api/v1/adjuntos/:id` de metadatos y `GET /api/v1/publicaciones/:id/adjunto` para descarga auditada. Admin/Digitador exclusivamente; formatos habilitados con límite configurable de 1 a 25 MiB (10 iniciales) analizados por ClamAV instalado, almacenamiento privado, hash/estado confiables y fallos cerrados. CORS expone Content-Disposition para la integración futura. El frontend sigue independiente.
 
-El [contrato de mantenimiento de publicaciones](PUBLICATION-MANAGEMENT.md), parte de esta API, añade `PATCH /api/v1/publicaciones/:id`, inactivación Admin con `PATCH /api/v1/publicaciones/:id/estado`, ETag/If-Match, 412 `PRECONDITION_FAILED` y eventos `PUBLICACION_MODIFICADA`/`PUBLICACION_INACTIVADA`. `GET/PATCH /api/v1/parametros/publicaciones` incluye `allowedFormats` además de `summaryWordLimit`; PATCH parcial. PDF por defecto y TXT opcional bajo controles de contenido y ClamAV. Los DTO de archivo admiten MIME application/pdf o text/plain. Consulta/exportación de auditoría pospuesta hasta su futura ventana en client.
+El [contrato de mantenimiento de publicaciones](PUBLICATION-MANAGEMENT.md), parte de esta API, añade `PATCH /api/v1/publicaciones/:id`, inactivación Admin con `PATCH /api/v1/publicaciones/:id/estado`, ETag/If-Match, 412 `PRECONDITION_FAILED` y eventos `PUBLICACION_MODIFICADA`/`PUBLICACION_INACTIVADA`. `GET/PATCH /api/v1/parametros/publicaciones` incluye `allowedFormats`, `summaryWordLimit` (10–1000) y `maxPdfSizeMb` (1–25 MiB); PATCH parcial con ETag/If-Match y confirmación. PDF por defecto y TXT opcional bajo controles de contenido y ClamAV. Los DTO de archivo admiten MIME application/pdf o text/plain. Consulta/exportación de auditoría disponible para Admin en `/api/v1/auditoria`, `/:id` y `/exportar`; contrato en CLIENT-INTEGRATION.md.
 
 El [contrato de reportes](REPORTS.md), parte de esta API, incorpora `GET /api/v1/reportes/publicaciones` paginado y `GET /api/v1/reportes/publicaciones/exportar` con `format=pdf|xlsx`, mismos filtros y snapshot de la consulta. Exclusivo de ADMINISTRADOR; los documentos se generan en server. Vacío: 200 JSON sin archivo. Documenta diseño, límites, errores `REPORT_LIMIT_EXCEEDED`, `REPORT_VERSION_CONFLICT`, `REPORT_SERVICE_BUSY`, `REPORT_GENERATION_FAILED` y evento `REPORTE_EXPORTADO`, confirmado antes de entregar el archivo. No requiere nuevos grants ni migraciones.
 
