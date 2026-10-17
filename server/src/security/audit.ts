@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient, Role, AuditStatus } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
 import { AppError } from '../errors.js';
+import { isTransactionConflict } from '../db.js';
 
 export interface AuditEvent {
   operation: string; resource: string; resourceId?: string; publicationId?: string;
@@ -20,7 +21,8 @@ export async function audit(tx: Prisma.TransactionClient | PrismaClient, request
       ip: request.ip.slice(0, 64),
       userAgent: (request.headers['user-agent'] ?? '').slice(0, 1024),
     } });
-  } catch {
+  } catch (error) {
+    if (isTransactionConflict(error)) throw error;
     throw new AppError(503, 'AUDIT_UNAVAILABLE', 'No se pudo registrar la auditoría; la operación fue cancelada.');
   }
 }

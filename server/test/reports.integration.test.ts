@@ -4,7 +4,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import ExcelJS from 'exceljs';
 import type { InjectOptions } from 'fastify';
-import { createApp } from '../src/app.js';
+import { createApp } from './helpers/integration-app.js';
 import { createPrisma } from '../src/db.js';
 import { hashPassword } from '../src/security/crypto.js';
 import { generateReport, MAX_REPORT_BYTES } from '../src/reports/documents.js';

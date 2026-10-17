@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import type { PrismaClient, Role, Session, User } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
 import { AppError } from '../../src/errors.js';
-import { createApp } from '../../src/app.js';
+import { createApp } from '../helpers/unit-app.js';
 import type { AppConfig } from '../../src/config.js';
 import { authenticate, requireAdmin, requireRoles, validateOrigin } from '../../src/security/index.js';
 import { hashPassword, normalizeIdentity, passwordSchema, randomToken, tokenHash, verifyPassword } from '../../src/security/crypto.js';
@@ -22,7 +22,7 @@ type StoredSession = Session & { user: User };
 function storedSession(role: Role = 'PUBLICO'): StoredSession {
   return {
     id: SESSION_ID, userId: USER_ID, createdAt: new Date(NOW.getTime() - 120000),
-    lastActivityAt: new Date(NOW.getTime() - 60000), expiresAt: new Date(NOW.getTime() + 3600000), revokedAt: null,
+    lastActivityAt: new Date(NOW.getTime() - 60000), expiresAt: new Date(NOW.getTime() + 3600000), revokedAt: null, browserKey: null, confirmationFailures: 0,
     user: { id: USER_ID, name: 'Persona', ci: '123456', email: 'persona@example.invalid', emailKey: 'persona@example.invalid',
       username: 'persona', usernameKey: 'persona', role, active: true, passwordHash: 'never-expose-me', failures: 0,
       lockedUntil: null, createdAt: new Date(NOW.getTime() - 3600000), updatedAt: new Date(NOW.getTime() - 3600000) },

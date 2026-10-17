@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { PrismaClient, Role } from '@prisma/client';
-import { createApp } from '../src/app.js';
+import { createApp } from './helpers/integration-app.js';
 import type { AppConfig } from '../src/config.js';
 import { createPrisma } from '../src/db.js';
 import { hashPassword, randomToken, tokenHash, verifyPassword } from '../src/security/crypto.js';
@@ -42,7 +42,7 @@ test('Seguridad HTTP con PostgreSQL real', { skip: !process.env.TEST_DATABASE_UR
   };
   const login = (username: string, secret = password) => app.inject({ method: 'POST', url: '/api/v1/auth/login', remoteAddress: `198.18.0.${Number.parseInt(tokenHash(username).slice(0, 2), 16) % 254 + 1}`, headers: { origin }, payload: { username, password: secret } });
   const bearer = (accessToken: string) => ({ authorization: `Bearer ${accessToken}` });
-  const refreshCookie = (response: { headers: Record<string, unknown> }) => String(response.headers['set-cookie']).split(';')[0]!;
+  const refreshCookie = (response: { headers: Record<string, unknown> }) => [response.headers['set-cookie']].flat().map(String).find(value => value.startsWith('refresh_token='))!.split(';')[0]!;
   const refresh = (cookie: string) => app.inject({ method: 'POST', url: '/api/v1/auth/refresh', remoteAddress: '198.19.0.1', headers: { origin, cookie } });
   const me = (accessToken: string) => app.inject({ method: 'GET', url: '/api/v1/me', remoteAddress: '198.19.0.2', headers: bearer(accessToken) });
   const changeOwn = (accessToken: string, currentPassword: string, newPassword: string) => app.inject({ method: 'PATCH', url: '/api/v1/me/password', remoteAddress: '198.19.0.3', headers: bearer(accessToken), payload: { currentPassword, newPassword } });
@@ -586,6 +586,48 @@ test('Seguridad HTTP con PostgreSQL real', { skip: !process.env.TEST_DATABASE_UR
       await app.security.drainMail();
       assert.equal(await prisma.auditLog.count({ where: { userId: user.id, operation: 'RECUPERACION_ENVIO_FALLIDO' } }), 1);
       failDelivery = false;
+    });
+
+    await t.test('fallo de auditoría de solicitud revierte token/límites y evita enviar correo', async () => {
+      const user = await account();
+      const before = captured.length;
+      const failingPrisma = prisma.$extends({ query: { auditLog: { async create({ args, query }) {
+        if (args.data.operation === 'RECUPERACION_SOLICITADA') throw new Error('Fallo de auditoría simulado');
+        return query(args);
+      } } } }) as unknown as PrismaClient;
+      const failing = await createApp(config, failingPrisma, { logger: false, security: { mailer, now: () => new Date(clock) } });
+      try {
+        const response = await failing.inject({ method: 'POST', url: '/api/v1/auth/recover-password', remoteAddress: ip(5), payload: { email: user.email } });
+        assert.equal(response.statusCode, 503, response.body);
+        await failing.security.drainMail();
+        assert.equal(captured.length, before);
+        assert.equal(await prisma.recoveryToken.count({ where: { userId: user.id } }), 0);
+        assert.equal(await prisma.recoveryRate.count({ where: { key: `email:${tokenHash(user.email)}` } }), 0);
+      } finally { await failing.close(); }
+    });
+
+    await t.test('cierre ordenado espera entrega pendiente antes de cerrar SMTP', async () => {
+      const user = await account();
+      let release!: () => void;
+      const waiting = new Promise<void>(resolve => { release = resolve; });
+      const events: string[] = [];
+      const closingMailer: Mailer = {
+        available: true, async verify() { return true; },
+        async sendRecovery() { events.push('sending'); await waiting; events.push('sent'); },
+        async close() { events.push('closed'); },
+      };
+      const closing = await createApp(config, prisma, { logger: false, security: { mailer: closingMailer, now: () => new Date(clock) } });
+      try {
+        const response = await closing.inject({ method: 'POST', url: '/api/v1/auth/recover-password', remoteAddress: ip(6), payload: { email: user.email } });
+        assert.equal(response.statusCode, 200, response.body);
+        assert.deepEqual(events, ['sending']);
+        const stopped = closing.close();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(events, ['sending']);
+        release();
+        await stopped;
+        assert.deepEqual(events, ['sending', 'sent', 'closed']);
+      } finally { release(); await closing.close(); }
     });
 
     await t.test('recuperación limita por correo e IP; reset es concurrente de uso único', async () => {

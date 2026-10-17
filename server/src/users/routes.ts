@@ -4,6 +4,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTransaction } from '../db.js';
 import { AppError } from '../errors.js';
+import { assertConfirmationCurrent } from '../security/confirmation.js';
 import { audit, authenticate, hashPassword, requireAdmin, revokeUserSessions } from '../security/index.js';
 import { userDto } from './dto.js';
 import { requireUserIfMatch, userEtag } from './concurrency.js';
@@ -19,6 +20,7 @@ async function actorInTransaction(tx: Prisma.TransactionClient, request: Fastify
   const now = request.server.security.now();
   if (!user?.active || !session || session.userId !== user.id || session.revokedAt || session.expiresAt <= now || now.getTime() - session.lastActivityAt.getTime() >= 600000) throw new AppError(401, 'UNAUTHENTICATED', 'La sesión no es válida o ha vencido.');
   if (admin && user.role !== 'ADMINISTRADOR') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta operación.');
+  assertConfirmationCurrent(request, user);
   return user;
 }
 

@@ -27,10 +27,10 @@ const environmentSchema = z.object({
   ALLOWED_ORIGINS: z.string().min(1),
   SECURE_COOKIES: booleanEnv.default(true),
   RECOVERY_URL: z.url(),
-  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_HOST: z.string().trim().min(1).max(253).refine(value => !/[\s/@?#]/.test(value)).optional(),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
+  SMTP_USER: z.string().min(1).optional(),
+  SMTP_PASS: z.string().min(1).optional(),
   SMTP_FROM: z.email().optional(),
   SMTP_SECURE: booleanEnv.default(false),
   ATTACHMENT_DIRECTORY: z.string().min(1).default('.local/attachments'),
@@ -53,7 +53,11 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     if (env.NODE_ENV === 'production' && url.protocol !== 'https:') throw new Error('Los orígenes de producción requieren HTTPS.');
   }
   if (env.NODE_ENV === 'production' && (!env.SECURE_COOKIES || !env.RECOVERY_URL.startsWith('https://'))) throw new Error('Producción requiere cookies Secure y RECOVERY_URL HTTPS.');
+  const recoveryUrl = new URL(env.RECOVERY_URL);
+  if (!['http:', 'https:'].includes(recoveryUrl.protocol) || recoveryUrl.username || recoveryUrl.password) throw new Error('RECOVERY_URL debe ser HTTP/HTTPS y no incluir credenciales.');
+  if (!env.SMTP_HOST && (env.SMTP_FROM || env.SMTP_USER || env.SMTP_PASS)) throw new Error('Configuración SMTP incompleta: falta SMTP_HOST.');
   if (env.SMTP_HOST && (!env.SMTP_FROM || Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASS))) throw new Error('Configuración SMTP incompleta.');
+  if (env.SMTP_HOST && env.SMTP_PORT === 465 && !env.SMTP_SECURE) throw new Error('SMTP_PORT 465 requiere SMTP_SECURE=true.');
   return {
     nodeEnv: env.NODE_ENV, host: env.HOST, port: env.PORT, databaseUrl: env.DATABASE_URL,
     jwtSecret: env.JWT_SECRET, jwtIssuer: env.JWT_ISSUER, jwtAudience: env.JWT_AUDIENCE,

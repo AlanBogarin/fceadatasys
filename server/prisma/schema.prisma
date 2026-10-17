@@ -55,6 +55,8 @@ model Session {
   lastActivityAt DateTime       @default(now()) @map("ultima_actividad_en") @db.Timestamptz(3)
   expiresAt      DateTime       @map("vence_en") @db.Timestamptz(3)
   revokedAt      DateTime?      @map("revocado_en") @db.Timestamptz(3)
+  browserKey     String?        @map("navegador_clave") @db.Char(64)
+  confirmationFailures Int     @default(0) @map("fallos_confirmacion")
   user           User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   refreshTokens  RefreshToken[]
   auditLogs      AuditLog[]
@@ -326,6 +328,7 @@ model PublicationSettings {
   id               Int @id @default(1)
   summaryWordLimit Int @default(300) @map("limite_palabras_resumen")
   allowedFormats   String[] @default(["pdf"]) @map("formatos_admitidos")
+  maxPdfSizeMb     Int @default(10) @map("tamano_maximo_mb")
 
   @@map("parametros_publicaciones")
 }

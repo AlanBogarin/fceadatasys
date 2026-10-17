@@ -5,7 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from 'pg';
 import type { PrismaClient, User } from '@prisma/client';
 import type { InjectOptions } from 'fastify';
-import { createApp } from '../src/app.js';
+import { createApp } from './helpers/integration-app.js';
 import { createPrisma } from '../src/db.js';
 import type { AppConfig } from '../src/config.js';
 import { hashPassword, randomToken, tokenHash, verifyPassword } from '../src/security/crypto.js';

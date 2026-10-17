@@ -5,7 +5,7 @@ import { copyFile, mkdtemp, readFile, readdir, rmdir, unlink, writeFile } from '
 import { resolve, join } from 'node:path';
 import type { PrismaClient } from '@prisma/client';
 import type { InjectOptions } from 'fastify';
-import { createApp } from '../src/app.js';
+import { createApp } from './helpers/integration-app.js';
 import { createPrisma } from '../src/db.js';
 import type { AppConfig } from '../src/config.js';
 import { AppError } from '../src/errors.js';

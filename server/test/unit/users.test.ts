@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import type { Prisma, PrismaClient, Role, User } from '@prisma/client';
-import { createApp } from '../../src/app.js';
+import { createApp } from '../helpers/unit-app.js';
 import type { AppConfig } from '../../src/config.js';
 import { enforceUserRules } from '../../src/users/routes.js';
 import { userDto } from '../../src/users/dto.js';

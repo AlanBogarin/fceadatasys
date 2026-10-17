@@ -47,7 +47,8 @@ export const publicationDtoSchema = z.object({
   active: z.boolean(), createdAt: z.iso.datetime(), createdBy: reference,
 }).strict();
 export const settingsSchema = z.object({
-  summaryWordLimit: z.number().int().min(1).max(10000),
+  summaryWordLimit: z.number().int().min(10).max(1000),
+  maxPdfSizeMb: z.number().int().min(1).max(25),
   allowedFormats: z.array(z.enum(supportedFormats)).min(1).max(supportedFormats.length).refine(values => new Set(values).size === values.length, 'No repitas formatos.').transform(values => [...values].sort()),
 }).strict();
 export const settingsPatchSchema = settingsSchema.partial().refine(value => Object.keys(value).length > 0, 'Enviá al menos un parámetro.');
@@ -77,6 +78,7 @@ export const publicationQuerySchema = z.object({
   code: z.string().trim().toUpperCase().refine(value => publicationNumber(value) !== undefined, 'Usá INV- seguido de hasta 19 dígitos dentro del rango bigint.').optional(),
   careerId: id.optional(), levelId: id.optional(), typeId: id.optional(), branchId: id.optional(),
   authorId: id.optional(), tutorId: id.optional(),
+  author: z.string().trim().max(150).optional(), tutor: z.string().trim().max(150).optional(),
   year: z.coerce.number().int().min(1900).max(9999).optional(),
   source: z.enum(['LOCAL', 'EXTERNA']).optional(),
   active: z.enum(['true', 'false']).transform(value => value === 'true').optional(),

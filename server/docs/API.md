@@ -32,7 +32,7 @@ El refresh aleatorio de 64 bytes se transporta exclusivamente en cookie `refresh
 | PATCH `/me/password` | Bearer; `{currentPassword,newPassword}` | 200, nuevo token pair + User |
 | PATCH `/usuarios/:id/password` | Admin; `{newPassword}` | 204, revoca sesiones de cuenta afectada |
 
-Token pair: `{accessToken,tokenType:"Bearer",expiresIn:900,user:User}`. Refresh consume el token anterior de forma atómica. Reutilizar uno consumido/revocado revoca todas las sesiones de la cuenta y se audita; un token desconocido simplemente se rechaza. Coordinar refresh entre pestañas: dos llamadas con la misma cookie cuentan como reutilización, incluso si provienen del mismo navegador.
+Token pair: `{accessToken,tokenType:"Bearer",expiresIn:900,user:User}`. Refresh consume el token anterior de forma atómica. Reutilizar uno consumido/revocado revoca todas las sesiones de la cuenta y se audita, excepto la ventana de concurrencia del mismo navegador definida en CLIENT-INTEGRATION.md; un token desconocido simplemente se rechaza. Coordinar refresh entre pestañas: dos llamadas con la misma cookie cuentan como reutilización, incluso si provienen del mismo navegador.
 
 `GET /auth/session` devuelve el rol actual de PostgreSQL y este contrato seguro:
 
@@ -40,7 +40,7 @@ Token pair: `{accessToken,tokenType:"Bearer",expiresIn:900,user:User}`. Refresh 
 {"user":{"id":"d0347d10-079a-423d-a191-bf55608f1e38","name":"Persona","ci":"1234567","email":"persona@example.org","username":"persona","role":"PUBLICO","active":true,"createdAt":"2026-10-15T00:00:00.000Z"},"session":{"id":"e2c71b98-2253-40aa-a2f4-97b2e4f7cb91","createdAt":"2026-10-15T12:00:00.000Z","lastActivityAt":"2026-10-15T12:01:00.000Z","expiresAt":"2026-10-22T12:00:00.000Z","idleExpiresAt":"2026-10-15T12:11:00.000Z"},"serverTime":"2026-10-15T12:02:00.000Z"}
 ```
 
-`idleExpiresAt` es la última actividad más diez minutos; el límite efectivo es el menor entre ese plazo y `expiresAt`. `serverTime` permite presentar los plazos sin confiar en el reloj del navegador. Consultar sesión no altera ninguno de esos plazos. Una cookie sola no autoriza esta consulta; usar refresh para obtener un nuevo access token cuando la sesión siga activa.
+`idleExpiresAt` es la última actividad más diez minutos; el límite efectivo es el menor entre ese plazo y `expiresAt`. `serverTime` permite presentar los plazos sin confiar en el reloj del navegador. Consultar sesión no altera ninguno de esos plazos. Con refresh vigente y origen permitido, esta consulta también permite recuperar la sesión compartida y un access token sin rotación ni renovación de actividad; ver CLIENT-INTEGRATION.md.
 
 Logout admite JWT expirado únicamente para identificar y cerrar su sesión: siguen siendo obligatorias firma, algoritmo, emisor y audiencia válidos. También puede identificarla mediante el refresh conocido, incluso si ya se consumió/revocó o venció; no lo consume como refresh ni revoca las otras sesiones por reutilización. Si ambas credenciales identifican sesiones distintas, devuelve `403 SESSION_MISMATCH` sin cerrar ninguna ni eliminar la cookie. Corregir el estado local antes de repetir.
 
@@ -58,7 +58,7 @@ Cambio administrativo no permite la propia cuenta: usar cambio personal. Revalid
 
 Recuperación: token de 32 bytes en hexadecimal, SHA-256 persistido, quince minutos y un uso. Límite compartido en BD de tres solicitudes por email normalizado y por IP cada hora; el límite, cuenta inexistente/inactiva y SMTP indisponible devuelven el mismo HTTP 200 y mensaje. Mensaje exacto: “Si la dirección corresponde a una cuenta registrada y activa, recibirás las instrucciones para restablecer tu contraseña.” No confirma entrega. El token se añade como query `token` a `RECOVERY_URL`; al integrar frontend, elegir una URL que la pantalla pueda interpretar. Los tokens nunca se registran en logs.
 
-SMTP se comprueba al arrancar. Sin SMTP o ante fallo continúa la API en modo degradado. Después de confirmar la transacción, el correo se procesa en segundo plano mediante una cola en memoria de hasta 100 tareas; la respuesta HTTP no espera a SMTP. Fallo de envío invalida el token y registra el fallo en otra transacción. El cierre ordenado espera tareas pendientes; una caída del proceso puede perder envíos encolados. No existe cola durable ni atomicidad distribuida PostgreSQL/SMTP. Recuperar disponibilidad del transportador requiere reiniciar la API en este hito.
+SMTP se comprueba al arrancar, cada cinco minutos si está disponible y cada minuto si está caído. Sin SMTP o ante fallo continúa la API en modo degradado; la disponibilidad se recupera automáticamente cuando la verificación vuelve a funcionar. Después de confirmar la transacción, el correo en texto/HTML se procesa en segundo plano mediante una cola en memoria de hasta 100 tareas; la respuesta HTTP no espera a SMTP. Fallo de envío invalida el token y registra el fallo en otra transacción. El rechazo de un destinatario no deshabilita SMTP para las demás cuentas. El cierre ordenado espera tareas pendientes y cierra el transportador/temporizadores. Una caída del proceso puede perder envíos encolados. No existe cola durable ni atomicidad distribuida PostgreSQL/SMTP; no se reenvía automáticamente un mensaje cuya aceptación sea incierta. Tras recuperar SMTP se solicita otro enlace. Operación en [EMAIL.md](EMAIL.md).
 
 ## Usuarios y perfil
 
@@ -168,3 +168,8 @@ El [contrato de adjuntos](ATTACHMENTS.md), parte de esta API, incorpora `POST /a
 El [contrato de mantenimiento de publicaciones](PUBLICATION-MANAGEMENT.md), parte de esta API, añade `PATCH /api/v1/publicaciones/:id`, inactivación Admin con `PATCH /api/v1/publicaciones/:id/estado`, ETag/If-Match, 412 `PRECONDITION_FAILED` y eventos `PUBLICACION_MODIFICADA`/`PUBLICACION_INACTIVADA`. `GET/PATCH /api/v1/parametros/publicaciones` incluye `allowedFormats` además de `summaryWordLimit`; PATCH parcial. PDF por defecto y TXT opcional bajo controles de contenido y ClamAV. Los DTO de archivo admiten MIME application/pdf o text/plain. Consulta/exportación de auditoría pospuesta hasta su futura ventana en client.
 
 El [contrato de reportes](REPORTS.md), parte de esta API, incorpora `GET /api/v1/reportes/publicaciones` paginado y `GET /api/v1/reportes/publicaciones/exportar` con `format=pdf|xlsx`, mismos filtros y snapshot de la consulta. Exclusivo de ADMINISTRADOR; los documentos se generan en server. Vacío: 200 JSON sin archivo. Documenta diseño, límites, errores `REPORT_LIMIT_EXCEEDED`, `REPORT_VERSION_CONFLICT`, `REPORT_SERVICE_BUSY`, `REPORT_GENERATION_FAILED` y evento `REPORTE_EXPORTADO`, confirmado antes de entregar el archivo. No requiere nuevos grants ni migraciones.
+
+
+## Integración del cliente · 17/10/2026
+
+El contrato vigente de auditoría consultable/exportable, listado de adjuntos, confirmación por contraseña, ETags de catálogos/parámetros, tamaño configurable, filtros por nombres y sesión compartida de navegador está en [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md). Sustituye los pendientes históricos de esos módulos. El cliente conserva su simulación y no se conecta en este hito.

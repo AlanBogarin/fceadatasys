@@ -3,6 +3,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { AppError } from '../errors.js';
+import { assertConfirmationCurrent } from '../security/confirmation.js';
+import { contentEtag, requireIfMatch, assertVersion } from '../concurrency.js';
 import { audit, authenticate } from '../security/index.js';
 import { canManageCatalog, catalogDtoSchema, catalogIdParams, catalogParams, catalogQuerySchema, createCatalogSchema, patchCatalogSchema, validateCatalogInput, type CatalogKey } from './schemas.js';
 import { assertCatalogUnreferenced, createCatalog, deleteCatalog, getCatalog, listCatalog, lockCatalog, updateCatalog } from './store.js';
@@ -19,6 +21,7 @@ async function lockedActor(tx: Prisma.TransactionClient, request: FastifyRequest
   const now = request.server.security.now();
   if (!user?.active || !session || session.userId !== user.id || session.revokedAt || session.expiresAt <= now || now.getTime() - session.lastActivityAt.getTime() >= 600000) throw new AppError(401, 'UNAUTHENTICATED', 'La sesión no es válida o ha vencido.');
   if (deleting ? user.role !== 'ADMINISTRADOR' : !canManageCatalog(user.role, key)) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para modificar este catálogo.');
+  assertConfirmationCurrent(request, user);
   return user;
 }
 async function mutation<T>(prisma: PrismaClient, callback: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
@@ -45,12 +48,12 @@ export async function registerCatalogRoutes(app: FastifyInstance, prisma: Prisma
     }
     return prisma.$transaction(tx => listCatalog(tx, request.params.catalog, query), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   });
-  api.get(`${base}/:id`, { preHandler: authenticate, schema: { params: catalogIdParams, response: { 200: catalogDtoSchema } } }, async request => {
+  api.get(`${base}/:id`, { preHandler: authenticate, schema: { params: catalogIdParams, response: { 200: catalogDtoSchema } } }, async (request, reply) => {
     const { catalog, id } = request.params;
     if (request.auth!.role === 'PUBLICO' && (catalog === 'autores' || catalog === 'tutores')) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para consultar este directorio.');
     const row = await getCatalog(prisma, catalog, id);
     if (!row || (request.auth!.role === 'PUBLICO' && !row.active)) throw new AppError(404, 'NOT_FOUND', 'El registro del catálogo no existe.');
-    return row;
+    return reply.header('ETag', contentEtag(row)).send(row);
   });
   api.post(base, { preHandler: authenticate, schema: { params: catalogParams, body: createCatalogSchema, response: { 201: catalogDtoSchema } } }, async (request, reply) => {
     const { catalog } = request.params;
@@ -62,33 +65,38 @@ export async function registerCatalogRoutes(app: FastifyInstance, prisma: Prisma
       await audit(tx, request, { operation: 'CATALOGO_CREADO', resource: catalog, resourceId: after.id, role: actor.role, status: 'EXITO', after });
       return after;
     });
-    return reply.code(201).header('Location', `/api/v1/catalogos/${catalog}/${row.id}`).send(row);
+    return reply.code(201).header('Location', `/api/v1/catalogos/${catalog}/${row.id}`).header('ETag', contentEtag(row)).send(row);
   });
-  api.patch(`${base}/:id`, { preHandler: authenticate, schema: { params: catalogIdParams, body: patchCatalogSchema, response: { 200: catalogDtoSchema } } }, async request => {
+  api.patch(`${base}/:id`, { preHandler: authenticate, schema: { params: catalogIdParams, body: patchCatalogSchema, response: { 200: catalogDtoSchema } } }, async (request, reply) => {
     const { catalog, id } = request.params;
     authorize(request, catalog);
-    return mutation(prisma, async tx => {
+    const expected = requireIfMatch(request.headers['if-match']);
+    const result = await mutation(prisma, async tx => {
       await lockedActor(tx, request, catalog);
       await lockCatalog(tx, catalog, id);
       const actor = await lockedActor(tx, request, catalog);
       const before = await getCatalog(tx, catalog, id);
       if (!before) throw new AppError(404, 'NOT_FOUND', 'El registro del catálogo no existe.');
+      assertVersion(expected, before);
       const input = validateCatalogInput(catalog, { name: request.body.name ?? before.name, fields: { ...before.fields, ...request.body.fields } });
       if (before.active && request.body.active === false) await assertCatalogUnreferenced(tx, catalog, id);
       const after = await updateCatalog(tx, catalog, id, input, request.body.active ?? before.active);
       await audit(tx, request, { operation: before.active !== after.active ? after.active ? 'CATALOGO_ACTIVADO' : 'CATALOGO_INACTIVADO' : 'CATALOGO_MODIFICADO', resource: catalog, resourceId: id, role: actor.role, status: 'EXITO', before, after });
       return after;
     });
+    return reply.header('ETag', contentEtag(result)).send(result);
   });
   api.delete(`${base}/:id`, { preHandler: authenticate, schema: { params: catalogIdParams, body: z.object({}).strict().nullish() } }, async (request, reply) => {
     const { catalog, id } = request.params;
     authorize(request, catalog, true);
+    const expected = requireIfMatch(request.headers['if-match']);
     await mutation(prisma, async tx => {
       await lockedActor(tx, request, catalog, true);
       await lockCatalog(tx, catalog, id);
       const actor = await lockedActor(tx, request, catalog, true);
       const before = await getCatalog(tx, catalog, id);
       if (!before) throw new AppError(404, 'NOT_FOUND', 'El registro del catálogo no existe.');
+      assertVersion(expected, before);
       await assertCatalogUnreferenced(tx, catalog, id);
       await deleteCatalog(tx, catalog, id);
       await audit(tx, request, { operation: 'CATALOGO_ELIMINADO', resource: catalog, resourceId: id, role: actor.role, status: 'EXITO', before });

@@ -13,7 +13,7 @@ export const institutionalDate = (value: string | Date) => new Intl.DateTimeForm
 const names = (people: { name: string }[]) => people.map(person => person.name).join('; ');
 export function filterLabels(filters: ReportFilters, rows: ReportRecord[]) {
   const labels: [string, string][] = [];
-  const text: Partial<Record<keyof ReportFilters, string>> = { from: 'Registro desde', to: 'Registro hasta', search: 'Búsqueda', code: 'Código', year: 'Año de publicación', source: 'Origen', active: 'Estado', publicationId: 'Publicación', careerId: 'Carrera', levelId: 'Nivel académico', typeId: 'Tipo', branchId: 'Filial', authorId: 'Autor', tutorId: 'Tutor' };
+  const text: Partial<Record<keyof ReportFilters, string>> = { from: 'Registro desde', to: 'Registro hasta', search: 'Búsqueda', code: 'Código', year: 'Año de publicación', source: 'Origen', active: 'Estado', publicationId: 'Publicación', careerId: 'Carrera', levelId: 'Nivel académico', typeId: 'Tipo', branchId: 'Filial', authorId: 'Autor', tutorId: 'Tutor', author: 'Nombre de autor', tutor: 'Nombre de tutor' };
   const references = { careerId: rows.map(row => row.career), levelId: rows.map(row => row.level), typeId: rows.map(row => row.type), branchId: rows.map(row => row.branch), authorId: rows.flatMap(row => row.authors), tutorId: rows.flatMap(row => row.tutors) };
   for (const [key, value] of Object.entries(filters)) {
     if (value === undefined || value === '') continue;

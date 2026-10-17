@@ -1,5 +1,6 @@
 import { Prisma, type Role } from '@prisma/client';
 import { AppError } from '../errors.js';
+import { normalizeCatalog } from '../catalogs/schemas.js';
 import { publicationNumber, type PublicationQuery } from './schemas.js';
 
 export function publicationWhere(query: PublicationQuery, role: Role): Prisma.Sql {
@@ -12,6 +13,9 @@ export function publicationWhere(query: PublicationQuery, role: Role): Prisma.Sq
   for (const key of Object.keys(columns) as (keyof typeof columns)[]) if (query[key]) conditions.push(Prisma.sql`p.${Prisma.raw(columns[key])} = ${query[key]}::uuid`);
   if (query.authorId) conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM public.publicacion_autores pa WHERE pa.publicacion_id = p.id AND pa.autor_id = ${query.authorId}::uuid)`);
   if (query.tutorId) conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM public.publicacion_tutores pt WHERE pt.publicacion_id = p.id AND pt.tutor_id = ${query.tutorId}::uuid)`);
+  for (const [term, relation, person, foreign] of [[query.author, 'publicacion_autores', 'autores', 'autor_id'], [query.tutor, 'publicacion_tutores', 'tutores', 'tutor_id']] as const) {
+    if (term) { const pattern = '%' + normalizeCatalog(term).replace(/[\\%_]/g, '\\  if (query.year !== undefined)') + '%'; conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM public.${Prisma.raw(relation)} j JOIN public.${Prisma.raw(person)} person ON person.id=j.${Prisma.raw(foreign)} WHERE j.publicacion_id=p.id AND person.nombre_clave LIKE ${pattern})`); }
+  }
   if (query.year !== undefined) conditions.push(Prisma.sql`p.anio = ${query.year}`);
   if (query.source) conditions.push(Prisma.sql`p.origen = ${query.source}::public.origen_publicacion`);
   if (query.code) conditions.push(Prisma.sql`p.numero = ${publicationNumber(query.code)!}`);

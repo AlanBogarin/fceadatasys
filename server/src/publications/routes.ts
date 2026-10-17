@@ -2,6 +2,8 @@ import { Prisma, type PrismaClient, type StoredAttachment } from '@prisma/client
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { AppError } from '../errors.js';
+import { assertConfirmationCurrent } from '../security/confirmation.js';
+import { contentEtag, requireIfMatch, assertVersion } from '../concurrency.js';
 import { audit, authenticate, requireAdmin, requireRoles } from '../security/index.js';
 import { getCatalog, lockCatalog } from '../catalogs/store.js';
 import type { CatalogKey } from '../catalogs/schemas.js';
@@ -19,13 +21,14 @@ async function lockedActor(tx: Prisma.TransactionClient, request: FastifyRequest
   const now = request.server.security.now();
   if (!user?.active || !session || session.userId !== user.id || session.revokedAt || session.expiresAt <= now || now.getTime() - session.lastActivityAt.getTime() >= 600000) throw new AppError(401, 'UNAUTHENTICATED', 'La sesión no es válida o ha vencido.');
   if (admin ? user.role !== 'ADMINISTRADOR' : user.role === 'PUBLICO') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta operación.');
+  assertConfirmationCurrent(request, user);
   return user;
 }
 const reference = (row: { id: string; name: string }) => ({ id: row.id, name: row.name });
 const hashes = (input: RegistrationInput) => ({ titleHash: publicationHash(input.title), summaryHash: publicationHash(input.summary), abstractHash: publicationHash(input.abstract) });
 export function validateStoredAttachment(file: StoredAttachment, allowedFormats?: string[]) {
   if (file.state !== 'CLEAN' || !file.contentVerified || !file.scannedAt) throw new AppError(409, 'ATTACHMENT_NOT_READY', 'El adjunto todavía no cuenta con una verificación de contenido y análisis de seguridad satisfactorios.');
-  if (!isSupportedFile(file) || file.size <= 0 || file.size > 10 * 1024 * 1024 || !/^[a-f0-9]{64}$/.test(file.sha256) || !file.name || file.name.length > 150 || /[\\/:*?"<>|\u0000-\u001f\u007f]/u.test(file.name)) throw new AppError(400, 'INVALID_ATTACHMENT', 'El registro del adjunto no contiene un archivo válido de hasta 10 MiB con nombre seguro.');
+  if (!isSupportedFile(file) || file.size <= 0 || file.size > 25 * 1024 * 1024 || !/^[a-f0-9]{64}$/.test(file.sha256) || !file.name || file.name.length > 150 || /[\\/:*?"<>|\u0000-\u001f\u007f]/u.test(file.name)) throw new AppError(400, 'INVALID_ATTACHMENT', 'El registro del adjunto no contiene un archivo válido de hasta 25 MiB con nombre seguro.');
   if (allowedFormats) assertFormatEnabled(attachmentFormat(file.name), allowedFormats);
 }
 function duplicateError(fields: string[]) {
@@ -55,19 +58,25 @@ export async function registerPublicationRoutes(app: FastifyInstance, prisma: Pr
     return reply.header('ETag', publicationEtag(dto)).send(dto);
   });
   const settingsPath = '/api/v1/parametros/publicaciones';
-  api.get(settingsPath, { preHandler: authenticate, schema: { querystring: publicationDetailQuerySchema, response: { 200: settingsSchema } } }, async () => {
+  api.get(settingsPath, { preHandler: authenticate, schema: { querystring: publicationDetailQuerySchema, response: { 200: settingsSchema } } }, async (_request, reply) => {
     const settings = await prisma.publicationSettings.findUniqueOrThrow({ where: { id: 1 } });
-    return settingsSchema.parse({ summaryWordLimit: settings.summaryWordLimit, allowedFormats: settings.allowedFormats });
+    const dto = settingsSchema.parse({ summaryWordLimit: settings.summaryWordLimit, allowedFormats: settings.allowedFormats, maxPdfSizeMb: settings.maxPdfSizeMb });
+    return reply.header('ETag', contentEtag(dto)).send(dto);
   });
-  api.patch(settingsPath, { preHandler: requireAdmin, schema: { body: settingsPatchSchema, querystring: publicationDetailQuerySchema, response: { 200: settingsSchema } } }, async request => prisma.$transaction(async tx => {
+  api.patch(settingsPath, { preHandler: requireAdmin, schema: { body: settingsPatchSchema, querystring: publicationDetailQuerySchema, response: { 200: settingsSchema } } }, async (request, reply) => {
+    const expected = requireIfMatch(request.headers['if-match']);
+    const result = await prisma.$transaction(async tx => {
     await lockedActor(tx, request, true);
     await tx.$queryRaw`SELECT id FROM parametros_publicaciones WHERE id = 1 FOR UPDATE`;
     const actor = await lockedActor(tx, request, true);
     const before = await tx.publicationSettings.findUniqueOrThrow({ where: { id: 1 } });
+    assertVersion(expected, settingsSchema.parse({ summaryWordLimit: before.summaryWordLimit, allowedFormats: before.allowedFormats, maxPdfSizeMb: before.maxPdfSizeMb }));
     const after = await tx.publicationSettings.update({ where: { id: 1 }, data: request.body });
-    await audit(tx, request, { operation: 'PARAMETROS_PUBLICACIONES_MODIFICADOS', resource: 'parametros_publicaciones', resourceId: '1', role: actor.role, status: 'EXITO', before: { summaryWordLimit: before.summaryWordLimit, allowedFormats: before.allowedFormats }, after: { summaryWordLimit: after.summaryWordLimit, allowedFormats: after.allowedFormats } });
-    return settingsSchema.parse({ summaryWordLimit: after.summaryWordLimit, allowedFormats: after.allowedFormats });
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }));
+    await audit(tx, request, { operation: 'PARAMETROS_PUBLICACIONES_MODIFICADOS', resource: 'parametros_publicaciones', resourceId: '1', role: actor.role, status: 'EXITO', before: { summaryWordLimit: before.summaryWordLimit, allowedFormats: before.allowedFormats, maxPdfSizeMb: before.maxPdfSizeMb }, after: { summaryWordLimit: after.summaryWordLimit, allowedFormats: after.allowedFormats, maxPdfSizeMb: after.maxPdfSizeMb } });
+    return settingsSchema.parse({ summaryWordLimit: after.summaryWordLimit, allowedFormats: after.allowedFormats, maxPdfSizeMb: after.maxPdfSizeMb });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+    return reply.header('ETag', contentEtag(result)).send(result);
+  });
 
   api.post('/api/v1/publicaciones', { preHandler: requireRoles('ADMINISTRADOR', 'DIGITADOR'), schema: { body: registrationSchema, response: { 201: publicationDtoSchema } } }, async (request, reply) => {
     const input = request.body;

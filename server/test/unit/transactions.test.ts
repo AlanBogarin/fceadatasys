@@ -42,6 +42,15 @@ test('P2034 persistente termina en tres intentos y conserva el error final', asy
   assert.equal(calls.length, 3);
 });
 
+for (const meta of [{code:'40001'}, {code:'40P01'}, {driverAdapterError:{cause:{originalCode:'40001',kind:'TransactionWriteConflict'}}}]) {
+  test('Conflictos SQL de FOR UPDATE se reintentan como P2034', async () => {
+    const { prisma, calls } = transactionStub();
+    const failure = new Prisma.PrismaClientKnownRequestError('SQL conflict', {code:'P2010',clientVersion:'test',meta});
+    const result = await withTransaction(prisma, async () => {if(calls.length===1)throw failure;return 'ok';});
+    assert.equal(result,'ok');assert.equal(calls.length,2);
+  });
+}
+
 for (const [label, failure] of [['unicidad P2002', prismaError('P2002')], ['conexión P1001', prismaError('P1001')], ['auditoría', new AppError(503, 'AUDIT_UNAVAILABLE', 'Auditoría no disponible.')], ['error genérico', new Error('Unexpected')], ['objeto que imita P2034', { code: 'P2034' }]] as const) {
   test(`No reintenta ${label} y propaga la misma excepción`, async () => {
     const { prisma, calls } = transactionStub();

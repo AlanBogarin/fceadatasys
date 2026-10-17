@@ -63,3 +63,9 @@ test('Errores de configuración identifican campos sin revelar valores secretos'
     for (const value of [secret, smtpSecret, 'SENSITIVE_JWT_SHORT']) assert.equal(error.message.includes(value), false);
   }
 });
+
+test('Recuperación exige HTTP/HTTPS sin credenciales; SMTP no ignora secretos huérfanos ni acepta 465 sin TLS', () => {
+  for (const RECOVERY_URL of ['ftp://catalogo.example.org/reset', 'javascript:alert(1)', 'https://user:secret@catalogo.example.org/reset']) assert.throws(() => loadConfig({ ...environment, RECOVERY_URL }));
+  for (const change of [{ SMTP_USER: 'sender' }, { SMTP_PASS: 'secret' }, { SMTP_FROM: 'sender@example.org' }, { SMTP_HOST: 'smtp.example.org', SMTP_FROM: 'sender@example.org', SMTP_PORT: '465' }, { SMTP_HOST: 'smtp://example.org', SMTP_FROM: 'sender@example.org' }]) assert.throws(() => loadConfig({ ...environment, ...change }));
+  assert.equal(loadConfig({ ...environment, RECOVERY_URL: 'http://localhost:5173/#reset' }).recoveryUrl, 'http://localhost:5173/#reset');
+});

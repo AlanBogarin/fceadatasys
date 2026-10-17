@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { PrismaClient, Role } from '@prisma/client';
 import type { InjectOptions } from 'fastify';
-import { createApp } from '../src/app.js';
+import { createApp } from './helpers/integration-app.js';
 import { createPrisma } from '../src/db.js';
 import type { AppConfig } from '../src/config.js';
 import { hashPassword, randomToken, tokenHash, verifyPassword } from '../src/security/crypto.js';
@@ -35,7 +35,7 @@ test('perfil HTTP con PostgreSQL: identidad, actualización, unicidad y recupera
   const login = async (username: string) => {
     const response = await send({ method: 'POST', url: '/api/v1/auth/login', headers: { origin }, payload: { username, password } });
     assert.equal(response.statusCode, 200, response.json().code);
-    return { headers: { authorization: `Bearer ${response.json().accessToken}` }, cookie: String(response.headers['set-cookie']).split(';')[0]! };
+    return { headers: { authorization: `Bearer ${response.json().accessToken}` }, cookie: [response.headers['set-cookie']].flat().map(String).find(value => value.startsWith('refresh_token='))!.split(';')[0]! };
   };
   const patch = (headers: Record<string, string>, payload: unknown) => send({ method: 'PATCH', url: '/api/v1/me', headers, payload });
   const recovery = async (userId: string) => {

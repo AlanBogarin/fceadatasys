@@ -29,6 +29,6 @@ export function installErrorHandler(app: FastifyInstance, prisma: PrismaClient) 
       problem = new AppError(503, 'AUDIT_UNAVAILABLE', 'No se pudo registrar la auditoría. La operación fue cancelada.');
     }
     if (problem.status >= 500) request.log.error({ code: problem.code, route: request.routeOptions.url }, 'Falló una operación de servidor');
-    return reply.code(problem.status).type('application/problem+json').send({ type: 'about:blank', status: problem.status, code: problem.code, title: problem.code === 'PRECONDITION_FAILED' ? 'La publicación fue modificada' : titles[problem.status] ?? 'Error de solicitud', detail: problem.detail, timestamp: new Date().toISOString(), path: request.routeOptions.url ?? request.url.split('?')[0], invalid_params: problem.invalidParams });
+    return reply.code(problem.status).type('application/problem+json').send({ type: 'about:blank', status: problem.status, code: problem.code, title: problem.code === 'RESOURCE_VERSION_CONFLICT' ? 'El registro fue modificado' : problem.code === 'PRECONDITION_FAILED' ? 'La publicación fue modificada' : titles[problem.status] ?? 'Error de solicitud', detail: problem.detail, timestamp: new Date().toISOString(), path: request.routeOptions.url ?? request.url.split('?')[0], invalid_params: problem.invalidParams });
   });
 }

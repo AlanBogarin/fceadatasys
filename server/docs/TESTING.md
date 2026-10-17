@@ -218,3 +218,25 @@ test/unit/publication-management.test.ts agrega cuatro casos de PATCH parcial/es
 Resultado de npm test con todas las URLs y ClamAV habilitado: **191 sin servicios + 120 PostgreSQL = 311 aprobadas**, cero fallos/omitidas. La suite de publicaciones suma 24 (23 subcasos y contenedor); resto: seguridad 31, usuarios 15, perfil 7, catálogos 12, consulta 10, adjuntos 9 y reportes 12. Build y tipos correctos. Siete verificaciones de permisos/persistencia e inmutabilidad correctas; scripts/publication-management-smoke.ts comprueba quinta migración/down/up con datos existentes, backfill y guardas de formatos/historia. Clúster aislado detenido con datos conservados, desarrollo/client sin cambios.
 
 El primer npm test detectó un cambio accidental del título 412 de usuarios; se corrigió conservando el contrato previo y se repitió el conjunto completo con éxito. Un smoke posterior falló por tipado ambiguo de un parámetro del fixture SQL; se corrigió el fixture y se repitieron únicamente smoke/permisos, con salida cero. No se afirma que esos runners fallidos pasaran. El smoke recibe ALLOW_DATABASE_TESTS=1 y PUBLICATIONS_TEST_OWNER_URL local de pruebas; crea y conserva su propia base desechable. No usarlo como procedimiento de rollback de producción. La advertencia pg de consultas encoladas persiste como en fases anteriores, sin fallo de pruebas.
+
+
+## Integración del cliente · 17/10/2026
+
+El contrato vigente de auditoría consultable/exportable, listado de adjuntos, confirmación por contraseña, ETags de catálogos/parámetros, tamaño configurable, filtros por nombres y sesión compartida de navegador está en [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md). Sustituye los pendientes históricos de esos módulos. El cliente conserva su simulación y no se conecta en este hito.
+
+
+Validación final del 17/10/2026: **329 pruebas aprobadas (200 sin servicios + 129 PostgreSQL)**, cero fallos, cero omitidas. La corrida completa usa las fuentes definitivas y ClamAV real habilitado. También pasaron build, test:typecheck, git diff --check, 7 comprobaciones de permisos/persistencia/inmutabilidad y scripts/connection-smoke.ts (aplicación/down/up con historia, guardas de reversión, límites y sesión única). El clúster aislado quedó detenido con datos conservados. client/ no tiene diferencias contra HEAD; no se modificaron credenciales ni se migró desarrollo.
+
+Las corridas iniciales detectaron fixtures que tomaban la primera cookie como refresh, expectativas previas de parámetros/versiones, un PDF de volumen idéntico entre ejecuciones y saturación de conexiones al ejecutar todos los archivos en paralelo. Se corrigieron y se repitió el conjunto completo. El runner integrado ahora ejecuta archivos secuencialmente; cada prueba de concurrencia mantiene sus solicitudes paralelas. Se amplió el reintento transaccional para conflictos SQL 40001/40P01 de FOR UPDATE representados por Prisma P2010; nunca reintenta validaciones, unicidad ni errores de auditoría. Las unitarias de dominio aíslan la confirmación con un stub explícito; las integradas envían contraseña real y ETags como un adaptador, y connection.integration.test.ts utiliza directamente la aplicación de producción para comprobar los rechazos y rollback.
+
+Límite conocido: persiste la advertencia de pg sobre consultas encoladas ya documentada en fases anteriores, sin fallos. SMTP/despliegue y conexión del cliente requieren la configuración operativa descrita en CLIENT-INTEGRATION.md.
+
+## Correo SMTP · 17/10/2026
+
+`test/unit/mailer.test.ts` agrega nueve casos sin servicios ni `.env`: ausencia de configuración; TLS/STARTTLS obligatorio y logs deshabilitados; verificaciones concurrentes/recuperación automática; mensaje texto/HTML con enlace escapado; protocolos/credenciales de URL rechazados; errores sin secretos ni reenvío ambiguo; destinatario rechazado sin caída global; resultado de verificación atrasado; cierre durante verificación. Se sustituye únicamente el transportador y la programación de comprobaciones.
+
+Configuración agrega rechazo de URL insegura, secretos sin host y puerto 465 sin TLS implícito. La suite real de seguridad PostgreSQL añade dos escenarios: rollback de token/contadores y ausencia de envío cuando falla `RECUPERACION_SOLICITADA`; cierre que espera el envío antes de liberar SMTP. La entrega externa se sustituye por Mailer, conservando el flujo transaccional real.
+
+Resultado final: **210 pruebas sin servicios + 131 PostgreSQL = 341 aprobadas**, cero fallos/omitidas. Build, test:typecheck y comprobación de secretos fuera de Git correctos; siete comprobaciones de permisos/persistencia e integración de migraciones aprobadas. ClamAV real habilitado, clúster temporal detenido y datos conservados. No se modificó el cliente.
+
+Además, `npm run mail:check` con configuración local verificó TLS/autenticación reales contra Gmail en el puerto 465. No envía mensajes, no consulta PostgreSQL ni expone credenciales. Esta prueba acredita disponibilidad de conexión/autenticación, no llegada al buzón. No se realizaron envíos reales ni pruebas del frontend; la cola en memoria conserva los límites descritos en [EMAIL.md](EMAIL.md).

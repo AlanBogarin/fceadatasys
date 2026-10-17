@@ -20,7 +20,7 @@ export function assertFormatEnabled(format: AttachmentFormat, allowed: string[])
   if (!allowed.includes(format)) throw new AppError(400, 'INVALID_ATTACHMENT', 'Este formato no está habilitado por el Administrador.', [{ name: 'file', reason: `Formatos admitidos: ${allowed.join(', ')}.` }]);
 }
 export function validateAttachment(bytes: Buffer, format: AttachmentFormat) {
-  if (!bytes.length || bytes.length > MAX_PDF_BYTES) throw new AppError(400, 'INVALID_ATTACHMENT', 'El archivo debe contener entre 1 byte y 10 MiB.');
+  if (!bytes.length || bytes.length > MAX_PDF_BYTES) throw new AppError(400, 'INVALID_ATTACHMENT', 'El archivo debe contener entre 1 byte y 25 MiB.');
   if (format === 'pdf') return validatePdf(bytes);
   let text: string;
   try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }

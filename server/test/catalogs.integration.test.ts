@@ -5,7 +5,7 @@ import { Client } from 'pg';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { PrismaClient } from '@prisma/client';
 import type { InjectOptions } from 'fastify';
-import { createApp } from '../src/app.js';
+import { createApp } from './helpers/integration-app.js';
 import { createPrisma } from '../src/db.js';
 import type { AppConfig } from '../src/config.js';
 import { hashPassword } from '../src/security/crypto.js';
@@ -220,10 +220,12 @@ test('catálogos PostgreSQL: contratos, permisos, unicidad, referencias y audito
       }
       assert.deepEqual((await send({ url: `${base('autores')}/${row.id}`, headers: headers.ADMINISTRADOR })).json(), row);
     });
-    await t.test('PATCH concurrentes preservan campos distintos', async () => {
+    await t.test('PATCH concurrentes detectan precarga vieja y permiten relectura sin perder campos', async () => {
       const row = await create('autores');
       const results = await Promise.all([patch('autores', row.id, { fields: { ci: String(ciBase + 50) } }), patch('autores', row.id, { fields: { email: `merged.${suffix}@example.org` } })]);
-      assert.ok(results.every(result => result.statusCode === 200), results.map(result => result.body).join('\n'));
+      assert.deepEqual(results.map(result => result.statusCode).sort(), [200,412]);
+      const retry = await patch('autores', row.id, { fields: results[0].statusCode===412 ? { ci: String(ciBase+50) } : { email: `merged.${suffix}@example.org` } });
+      assert.equal(retry.statusCode,200,retry.body);
       const detail = await send({ url: `${base('autores')}/${row.id}`, headers: headers.ADMINISTRADOR });
       assert.equal(detail.json().fields.ci, String(ciBase + 50));
       assert.equal(detail.json().fields.email, `merged.${suffix}@example.org`);

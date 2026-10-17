@@ -16,7 +16,7 @@ export function parseClamResult(code: number | null, output: string, errors: str
 /** No shell, no user arguments or filenames. Scan the exact bytes later persisted. */
 export function createClamScanner(config: ClamConfig): Scanner {
   return { scan: bytes => new Promise((resolve, reject) => {
-    const args = ['--stdout', '--scan-pdf=yes', '--alert-encrypted=yes', '--alert-exceeds-max=yes', '--max-filesize=10M', '--max-scansize=50M', '--max-files=1000', '--max-recursion=10', '--max-scantime=0', `--fail-if-cvd-older-than=${config.maxSignatureAgeDays}`, ...(config.database ? [`--database=${config.database}`] : []), '-'];
+    const args = ['--stdout', '--scan-pdf=yes', '--alert-encrypted=yes', '--alert-exceeds-max=yes', '--max-filesize=25M', '--max-scansize=50M', '--max-files=1000', '--max-recursion=10', '--max-scantime=0', `--fail-if-cvd-older-than=${config.maxSignatureAgeDays}`, ...(config.database ? [`--database=${config.database}`] : []), '-'];
     const child = spawn(config.command, args, { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     let output = '';
     let errors = '';

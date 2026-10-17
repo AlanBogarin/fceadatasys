@@ -5,7 +5,7 @@ import { performance } from 'node:perf_hooks';
 import { Client } from 'pg';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { InjectOptions } from 'fastify';
-import { createApp } from '../src/app.js';
+import { createApp } from './helpers/integration-app.js';
 import { createPrisma } from '../src/db.js';
 import type { AppConfig } from '../src/config.js';
 import { hashPassword } from '../src/security/crypto.js';

@@ -7,7 +7,7 @@ import { resolve, join } from 'node:path';
 import { Client } from 'pg';
 import type { PrismaClient } from '@prisma/client';
 import type { InjectOptions } from 'fastify';
-import { createApp } from '../src/app.js';
+import { createApp } from './helpers/integration-app.js';
 import { createPrisma } from '../src/db.js';
 import type { AppConfig } from '../src/config.js';
 import { hashPassword } from '../src/security/crypto.js';
@@ -119,14 +119,14 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
       const tooLong = await publish({ ...nextInput(), summary: summary + ' extra' });
       problem(tooLong, 400, 'VALIDATION_ERROR');
       assert.ok(tooLong.json().invalid_params.some((param: { name: string }) => param.name === 'body.summary'));
-      for (const actor of ['ADMINISTRADOR', 'DIGITADOR', 'PUBLICO']) assert.deepEqual((await send({ url: path, headers: headers[actor] })).json(), { summaryWordLimit: 300, allowedFormats: ['pdf'] });
-      for (const actor of ['DIGITADOR', 'PUBLICO']) problem(await send({ method: 'PATCH', url: path, headers: headers[actor], payload: { summaryWordLimit: 2 } }), 403, 'FORBIDDEN');
-      assert.equal((await send({ method: 'PATCH', url: path, headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 2 } })).statusCode, 200);
+      for (const actor of ['ADMINISTRADOR', 'DIGITADOR', 'PUBLICO']) assert.deepEqual((await send({ url: path, headers: headers[actor] })).json(), { summaryWordLimit: 300, maxPdfSizeMb: 10, allowedFormats: ['pdf'] });
+      for (const actor of ['DIGITADOR', 'PUBLICO']) problem(await send({ method: 'PATCH', url: path, headers: headers[actor], payload: { summaryWordLimit: 10 } }), 403, 'FORBIDDEN');
+      assert.equal((await send({ method: 'PATCH', url: path, headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 10 } })).statusCode, 200);
       assert.equal((await publish({ ...nextInput(), summary: `${suffix}${sequence} dos` })).statusCode, 201);
-      problem(await publish({ ...nextInput(), summary: `${suffix} tres palabras` }), 400, 'VALIDATION_ERROR');
+      problem(await publish({ ...nextInput(), summary: `${suffix} uno dos tres cuatro cinco seis siete ocho nueve diez` }), 400, 'VALIDATION_ERROR');
       const log = await prisma.auditLog.findFirstOrThrow({ where: { operation: 'PARAMETROS_PUBLICACIONES_MODIFICADOS', userId: actorIds.ADMINISTRADOR }, orderBy: { createdAt: 'desc' } });
-      assert.deepEqual(log.before, { summaryWordLimit: 300, allowedFormats: ['pdf'] });
-      assert.deepEqual(log.after, { summaryWordLimit: 2, allowedFormats: ['pdf'] });
+      assert.deepEqual(log.before, { summaryWordLimit: 300, maxPdfSizeMb: 10, allowedFormats: ['pdf'] });
+      assert.deepEqual(log.after, { summaryWordLimit: 10, maxPdfSizeMb: 10, allowedFormats: ['pdf'] });
       await send({ method: 'PATCH', url: path, headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 300 } });
     });
     await t.test('referencias inexistentes, inactivas, del tipo equivocado y arrays inválidos no generan publicaciones', async () => {
@@ -394,9 +394,9 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
       await owner.query('UPDATE autores SET activo = false WHERE id = $1', [refs.authors[0].id]);
       try { assert.equal((await edit({ keywords: 'Historia conservada' })).statusCode, 200); }
       finally { await owner.query('UPDATE autores SET activo = true WHERE id = $1', [refs.authors[0].id]); }
-      await send({ method: 'PATCH', url: '/api/v1/parametros/publicaciones', headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 2 } });
+      await send({ method: 'PATCH', url: '/api/v1/parametros/publicaciones', headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 10 } });
       try {
-        problem(await edit({ summary: `${suffix} tres palabras` }), 400, 'VALIDATION_ERROR');
+        problem(await edit({ summary: `${suffix} uno dos tres cuatro cinco seis siete ocho nueve diez` }), 400, 'VALIDATION_ERROR');
         assert.equal((await edit({ summary: `${suffix} exacto` })).statusCode, 200);
       } finally { await send({ method: 'PATCH', url: '/api/v1/parametros/publicaciones', headers: headers.ADMINISTRADOR, payload: { summaryWordLimit: 300 } }); }
       problem(await edit({ source: 'LOCAL', externalUrl: '', requiresLibraryCopy: true }), 400, 'VALIDATION_ERROR');
@@ -520,7 +520,7 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
         assert.equal(scans, 0);
         const enabled = await settings({ allowedFormats: ['txt', 'pdf'] });
         assert.equal(enabled.statusCode, 200, enabled.body);
-        assert.deepEqual(enabled.json(), { summaryWordLimit: 300, allowedFormats: ['pdf', 'txt'] });
+        assert.deepEqual(enabled.json(), { summaryWordLimit: 300, maxPdfSizeMb: 10, allowedFormats: ['pdf', 'txt'] });
         problem(await upload(Buffer.from([0xff])), 400, 'INVALID_ATTACHMENT');
         problem(await upload(Buffer.from('a\0b')), 400, 'INVALID_ATTACHMENT');
         problem(await upload(text(), 'falso.pdf', 'application/pdf'), 400, 'INVALID_ATTACHMENT');

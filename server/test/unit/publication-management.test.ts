@@ -27,7 +27,7 @@ test('Parámetros parciales solo habilitan formatos con validador y sin duplicad
 });
 test('TXT UTF-8 valida contenido, rechaza binarios, controles, tamaño y formatos no habilitados', () => {
   validateAttachment(Buffer.from('Resumen español\nAbstract English\t2026'), 'txt');
-  for (const bytes of [Buffer.alloc(0), Buffer.from(' \n'), Buffer.from([0xff, 0xfe, 0x61]), Buffer.from('a\0b'), Buffer.from('a\u0085b'), Buffer.alloc(10 * 1024 * 1024 + 1, 65)]) assert.throws(() => validateAttachment(bytes, 'txt'), { code: 'INVALID_ATTACHMENT' });
+  for (const bytes of [Buffer.alloc(0), Buffer.from(' \n'), Buffer.from([0xff, 0xfe, 0x61]), Buffer.from('a\0b'), Buffer.from('a\u0085b'), Buffer.alloc(25 * 1024 * 1024 + 1, 65)]) assert.throws(() => validateAttachment(bytes, 'txt'), { code: 'INVALID_ATTACHMENT' });
   assert.throws(() => validateAttachment(Buffer.from('texto'), 'pdf'), { code: 'INVALID_ATTACHMENT' });
   assert.throws(() => assertFormatEnabled('txt', ['pdf']), { code: 'INVALID_ATTACHMENT' });
   assertFormatEnabled('txt', ['pdf', 'txt']);

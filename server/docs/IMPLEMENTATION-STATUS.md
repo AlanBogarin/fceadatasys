@@ -211,3 +211,25 @@ Con autorización explícita del usuario se actualizó únicamente fceadatasys_d
 Prisma migrate deploy aplicó 20261016030000_publication_management y runtime-grants.sql se reaplicó a fceadatasys_dev_app. Confirmadas cinco migraciones, sin alterar las cuatro previas; backfill consistente. Verificados permisos de edición/estado, reemplazo de participantes, lectura/alta de reservas y modificación de parámetros; sin superusuario, membresía del propietario, modificación de código/creador, DELETE de publicaciones/adjuntos ni UPDATE/DELETE/TRUNCATE de auditoría/reservas.
 
 Lectura Prisma runtime confirmó summaryWordLimit=300 y allowedFormats=[pdf], más acceso a reservas; createApp/Fastify inject respondió 200 ready en /health/ready con PostgreSQL real. Conteos antes/después de usuarios, publicaciones, adjuntos, auditoría y sesiones idénticos, todos cero. No se crearon cuentas, datos demo ni puerto HTTP; client y otras bases intactos. La migración y grants de desarrollo ya no están pendientes. La API sigue requiriendo bootstrap del primer administrador cuando se decida habilitar usuarios.
+
+
+## Integración del cliente · 17/10/2026
+
+El contrato vigente de auditoría consultable/exportable, listado de adjuntos, confirmación por contraseña, ETags de catálogos/parámetros, tamaño configurable, filtros por nombres y sesión compartida de navegador está en [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md). Sustituye los pendientes históricos de esos módulos. El cliente conserva su simulación y no se conecta en este hito.
+
+
+Validación final del 17/10/2026: **329 pruebas aprobadas (200 sin servicios + 129 PostgreSQL)**, cero fallos, cero omitidas. La corrida completa usa las fuentes definitivas y ClamAV real habilitado. También pasaron build, test:typecheck, git diff --check, 7 comprobaciones de permisos/persistencia/inmutabilidad y scripts/connection-smoke.ts (aplicación/down/up con historia, guardas de reversión, límites y sesión única). El clúster aislado quedó detenido con datos conservados. client/ no tiene diferencias contra HEAD; no se modificaron credenciales ni se migró desarrollo.
+
+Las corridas iniciales detectaron fixtures que tomaban la primera cookie como refresh, expectativas previas de parámetros/versiones, un PDF de volumen idéntico entre ejecuciones y saturación de conexiones al ejecutar todos los archivos en paralelo. Se corrigieron y se repitió el conjunto completo. El runner integrado ahora ejecuta archivos secuencialmente; cada prueba de concurrencia mantiene sus solicitudes paralelas. Se amplió el reintento transaccional para conflictos SQL 40001/40P01 de FOR UPDATE representados por Prisma P2010; nunca reintenta validaciones, unicidad ni errores de auditoría. Las unitarias de dominio aíslan la confirmación con un stub explícito; las integradas envían contraseña real y ETags como un adaptador, y connection.integration.test.ts utiliza directamente la aplicación de producción para comprobar los rechazos y rollback.
+
+Límite conocido: persiste la advertencia de pg sobre consultas encoladas ya documentada en fases anteriores, sin fallos. SMTP/despliegue y conexión del cliente requieren la configuración operativa descrita en CLIENT-INTEGRATION.md.
+
+## Correo de recuperación · 17/10/2026
+
+Se configuró Gmail SMTP con TLS implícito en puerto 465 usando exclusivamente `server/.env`, ignorado por Git. `npm run mail:check` verificó conexión TLS y autenticación reales con resultado correcto; no se enviaron mensajes ni se configuró POP. Los secretos están ausentes de los archivos versionados/versionables.
+
+El transportador incorpora comprobación automática y compartida (cinco minutos disponible, un minuto caído), validación TLS/STARTTLS obligatoria, timeouts acotados, diagnóstico seguro, validación de destinatario aceptado y cierre después de drenar entregas. La plantilla en texto/HTML usa la misma constante de quince minutos que el token. Un destinatario rechazado no degrada SMTP para todos. Contrato público de recuperación/status sin cambios; no se conectó ni modificó el cliente. Operación y límites en [EMAIL.md](EMAIL.md).
+
+Validación: **341 pruebas aprobadas: 210 sin servicios y 131 PostgreSQL**, cero fallos/omitidas, con ClamAV real habilitado; build y test:typecheck correctos. Se añadieron nueve unitarias del transportador, una de configuración y dos integradas para impedir correos si falla auditoría y comprobar el cierre ordenado. Pasaron además las siete comprobaciones de persistencia/permisos y aplicación/down/up de migraciones. El clúster aislado quedó detenido. Se conserva el aviso conocido de pg sobre consultas encoladas.
+
+La verificación real acredita conexión/autenticación, no entrega en bandeja de entrada. Continúan pendientes la pantalla real del cliente y el despliegue institucional. La cola de correo permanece en memoria: un cierre abrupto puede perder entregas; no se reenvían mensajes de aceptación incierta ni se persisten tokens crudos.

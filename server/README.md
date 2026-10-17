@@ -29,7 +29,7 @@ npm run dev
 
 `HOST=127.0.0.1`, `PORT=3000` de forma predeterminada. `/health` comprueba proceso, `/health/ready` conexión PostgreSQL. CORS exige orígenes exactos separados por comas. Producción requiere HTTPS en orígenes/RECOVERY_URL y cookies Secure. `SECURE_COOKIES=false` solo para desarrollo HTTP explícito. El servicio no confía en encabezados de proxy por defecto.
 
-Variables SMTP opcionales: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE`. Sin SMTP verificado, la recuperación devuelve el mismo mensaje público y no entrega correos. SMTP caído no impide otros endpoints. Reiniciar para volver a verificar el transportador; todavía no existe un mecanismo de reintento/cola durable.
+Variables SMTP opcionales: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE`. Gmail usa `smtp.gmail.com:465`, `SMTP_SECURE=true` y una contraseña de aplicación en `.env`. Sin SMTP verificado, la recuperación devuelve el mismo mensaje público y no entrega correos; los otros endpoints continúan disponibles. El servicio comprueba SMTP al arrancar, cada cinco minutos mientras está disponible y cada minuto durante una caída. `npm run mail:check` comprueba conexión TLS/autenticación sin enviar correos ni acceder a PostgreSQL. Configuración, límites y diagnóstico en [docs/EMAIL.md](docs/EMAIL.md).
 
 ## Login y ciclo de sesión
 
@@ -45,7 +45,7 @@ ADMINISTRADOR puede crear, consultar, buscar/filtrar, editar y activar/inactivar
 
 Antes de editar o alternar estado, consultar `GET /api/v1/usuarios/:id` y conservar su encabezado `ETag`. `PATCH /api/v1/usuarios/:id` exige ese tag fuerte en `If-Match`: sin precarga responde 428, con formato inválido 400 y con datos cambiados desde la consulta 412. No repetir una modificación conflictiva sin revisión. La API expone ETag/Location mediante CORS para el adaptador futuro. El DTO no añade campos de versión ni credenciales; los cambios internos de autenticación no alteran el tag de metadatos. Detalles en [docs/API.md](docs/API.md).
 
-Nombre Público de solo lectura, protección de cuenta propia/último Admin, unicidad y cambios con auditoría se verifican en servidor. No existe DELETE de usuarios; las reglas sobre futuras referencias bibliográficas se incorporarán con esos modelos.
+Nombre Público de solo lectura, protección de cuenta propia/último Admin, unicidad y cambios con auditoría se verifican en servidor. DELETE de usuarios exige If-Match y conserva cuentas con referencias bibliográficas, sesiones o auditoría histórica.
 
 ## Perfil y contraseña
 
@@ -118,7 +118,7 @@ Pruebas de DB/roles, migración y recuperación del esquema se describen en DATA
 
 Prisma 7.10, Fastify 5, Zod 4/type provider 6, pg/adapter-pg, Argon2id y JWT. Lockfile versionado para `npm ci`. Se fijan overrides de `deepmerge-ts=8.0.2` y `mysql2=3.24.5` por vulnerabilidades transitivas de Prisma; `nodemailer=10.0.16` es una versión corregida elegible bajo la política temporal npm. Validar generación/migración/build/pruebas al actualizar Prisma u overrides.
 
-`GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes: integración frontend, edición/inactivación de publicaciones, parámetros de formatos, reportes, consulta/exportación de auditoría; retención de tokens/logs, backups operacionales y alertas/reintentos SMTP. Los siete catálogos, registro N:M/FKs, listado/consulta, búsqueda FTS y carga/descarga PDF con ClamAV están implementados. Adjuntos requiere su base exclusiva de pruebas y CLAMAV_TEST_ENABLED=1 para validar el motor real; la prueba positiva usa una firma propia inocua en una copia temporal de las firmas oficiales, sin modificar Defender ni generar EICAR.
+`GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes de operación: integración frontend, retención de tokens/logs, backups operacionales y alertas externas. La comprobación SMTP se recupera automáticamente; no existe entrega durable de correos (ver EMAIL.md). Los siete catálogos, registro N:M/FKs, listado/consulta, búsqueda FTS y carga/descarga PDF con ClamAV están implementados. Adjuntos requiere su base exclusiva de pruebas y CLAMAV_TEST_ENABLED=1 para validar el motor real; la prueba positiva usa una firma propia inocua en una copia temporal de las firmas oficiales, sin modificar Defender ni generar EICAR.
 
 ## Reportes PDF/Excel
 
@@ -131,3 +131,8 @@ ADMINISTRADOR consulta `/api/v1/reportes/publicaciones` y exporta `/api/v1/repor
 Admin/Digitador editan con `PATCH /api/v1/publicaciones/:id`; Admin inactiva con `PATCH /api/v1/publicaciones/:id/estado` y `{"active":false}`. Ambas rutas requieren el ETag del detalle en If-Match. Conservan historia, participantes y reservas de archivos retirados; rechazos y mutaciones tienen auditoría transaccional. `GET/PATCH /api/v1/parametros/publicaciones` admite límite de resumen y `allowedFormats`: PDF inicial, TXT UTF-8 opcional, ambos con ClamAV. No se aceptan formatos sin validador implementado. Contrato completo: [docs/PUBLICATION-MANAGEMENT.md](docs/PUBLICATION-MANAGEMENT.md).
 
 Aplicar `20261016030000_publication_management` con propietario, repetir runtime-grants.sql y regenerar/compilar. Reversión protegida en prisma/rollback-publication-management.sql. Consulta/exportación de auditoría pospuesta hasta su futura ventana en client; la escritura de logs continúa obligatoria.
+
+
+## Integración del cliente · 17/10/2026
+
+El contrato vigente de auditoría consultable/exportable, listado de adjuntos, confirmación por contraseña, ETags de catálogos/parámetros, tamaño configurable, filtros por nombres y sesión compartida de navegador está en [CLIENT-INTEGRATION.md](docs/CLIENT-INTEGRATION.md). Sustituye los pendientes históricos de esos módulos. El cliente conserva su simulación y no se conecta en este hito.

@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppConfig } from '../config.js';
 import { AppError } from '../errors.js';
+import { listAttachments, attachmentQuery } from './list.js';
 import { audit, requireRoles } from '../security/index.js';
 import { createClamScanner, type Scanner } from './scanner.js';
 import { createAttachmentStorage, MAX_PDF_BYTES, sha256, type AttachmentStorage } from './storage.js';
@@ -41,6 +42,7 @@ export async function registerAttachmentRoutes(app: FastifyInstance, prisma: Pri
   };
   const writers = requireRoles('ADMINISTRADOR', 'DIGITADOR');
 
+  app.get('/api/v1/adjuntos', { preHandler: writers }, async request => listAttachments(prisma, request.auth!, attachmentQuery.omit({id:true}).parse(request.query)));
   app.post('/api/v1/adjuntos', { preHandler: writers, bodyLimit: MAX_PDF_BYTES + 8192 }, async (request, reply) => {
     emptyQuery.parse(request.query);
     const release = acquire();
@@ -57,6 +59,8 @@ export async function registerAttachmentRoutes(app: FastifyInstance, prisma: Pri
         if (![formatMime[format], 'application/octet-stream'].includes(part.mimetype)) throw new AppError(400, 'INVALID_ATTACHMENT', 'El MIME declarado no corresponde al formato.');
         assertFormatEnabled(format, (await prisma.publicationSettings.findUniqueOrThrow({ where: { id: 1 } })).allowedFormats);
         bytes = await part.toBuffer();
+        const limits = await prisma.publicationSettings.findUniqueOrThrow({ where: { id: 1 } });
+        if (bytes.length > limits.maxPdfSizeMb * 1024 * 1024) throw new AppError(400, 'INVALID_ATTACHMENT', 'El archivo supera el tamaño configurado.');
       }
       if (!bytes) throw new AppError(400, 'INVALID_ATTACHMENT', 'Falta el archivo.');
       const format = attachmentFormat(name);
@@ -87,7 +91,9 @@ export async function registerAttachmentRoutes(app: FastifyInstance, prisma: Pri
       const file = await prisma.$transaction(async tx => {
         await actorInTransaction(tx, request);
         await tx.$queryRaw`SELECT id FROM parametros_publicaciones WHERE id = 1 FOR SHARE`;
-        assertFormatEnabled(format, (await tx.publicationSettings.findUniqueOrThrow({ where: { id: 1 } })).allowedFormats);
+        const limits = await tx.publicationSettings.findUniqueOrThrow({ where: { id: 1 } });
+        assertFormatEnabled(format, limits.allowedFormats);
+        if (bytes!.length > limits.maxPdfSizeMb * 1024 * 1024) throw new AppError(400, 'INVALID_ATTACHMENT', 'El tamaño permitido cambió durante el análisis.');
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${hash}, 0))`;
         if (await tx.storedAttachment.findUnique({ where: { sha256: hash } })) throw new AppError(409, 'DUPLICATE_ATTACHMENT', 'El mismo archivo ya fue registrado.');
         const actor = await actorInTransaction(tx, request);
@@ -114,9 +120,11 @@ export async function registerAttachmentRoutes(app: FastifyInstance, prisma: Pri
     emptyQuery.parse(request.query);
     const file = await prisma.storedAttachment.findUnique({ where: { id } });
     if (!file) throw new AppError(404, 'NOT_FOUND', 'El adjunto no existe.');
-    if (request.auth!.role !== 'ADMINISTRADOR' && file.createdById !== request.auth!.userId) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para consultar este adjunto.');
+    const visibleLink = request.auth!.role === 'ADMINISTRADOR' || file.createdById === request.auth!.userId || await prisma.publication.findFirst({ where: { attachmentId: id, active: true } });
+    if (!visibleLink) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para consultar este adjunto.');
     if (file.state !== 'CLEAN' || !file.contentVerified || !file.scannedAt) throw new AppError(409, 'ATTACHMENT_NOT_READY', 'El adjunto no está habilitado.');
-    return dto(file);
+    const creator = await prisma.user.findUniqueOrThrow({ where: { id: file.createdById }, select: { id: true, name: true } });
+    return { ...dto(file), createdAt: file.createdAt.toISOString(), createdBy: creator };
   });
 
   app.get('/api/v1/publicaciones/:id/adjunto', { preHandler: writers, exposeHeadRoute: false }, async (request, reply) => {
