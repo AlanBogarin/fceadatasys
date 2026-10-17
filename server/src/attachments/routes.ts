@@ -5,7 +5,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppConfig } from '../config.js';
 import { AppError } from '../errors.js';
-import { listAttachments, attachmentQuery } from './list.js';
+import { listAttachments, attachmentQuery, visibleReservation } from './list.js';
 import { audit, requireRoles } from '../security/index.js';
 import { createClamScanner, type Scanner } from './scanner.js';
 import { createAttachmentStorage, MAX_PDF_BYTES, sha256, type AttachmentStorage } from './storage.js';
@@ -118,13 +118,13 @@ export async function registerAttachmentRoutes(app: FastifyInstance, prisma: Pri
   app.get('/api/v1/adjuntos/:id', { preHandler: writers }, async request => {
     const { id } = idParams.parse(request.params);
     emptyQuery.parse(request.query);
-    const file = await prisma.storedAttachment.findUnique({ where: { id } });
+    const file = await prisma.storedAttachment.findUnique({ where: { id }, include: { assignment: { select: { publicationId: true, publication: { select: { active: true } } } } } });
     if (!file) throw new AppError(404, 'NOT_FOUND', 'El adjunto no existe.');
     const visibleLink = request.auth!.role === 'ADMINISTRADOR' || file.createdById === request.auth!.userId || await prisma.publication.findFirst({ where: { attachmentId: id, active: true } });
     if (!visibleLink) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para consultar este adjunto.');
     if (file.state !== 'CLEAN' || !file.contentVerified || !file.scannedAt) throw new AppError(409, 'ATTACHMENT_NOT_READY', 'El adjunto no está habilitado.');
     const creator = await prisma.user.findUniqueOrThrow({ where: { id: file.createdById }, select: { id: true, name: true } });
-    return { ...dto(file), createdAt: file.createdAt.toISOString(), createdBy: creator };
+    return { ...dto(file), createdAt: file.createdAt.toISOString(), createdBy: creator, reservedPublicationId: visibleReservation(file.assignment, request.auth!.role) };
   });
 
   app.get('/api/v1/publicaciones/:id/adjunto', { preHandler: writers, exposeHeadRoute: false }, async (request, reply) => {

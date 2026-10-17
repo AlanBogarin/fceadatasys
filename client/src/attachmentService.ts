@@ -1,5 +1,6 @@
 import type { State, User } from "./model";
 import type { ViewState } from "./data/view";
+import type { AttachmentDto } from "./data/contracts";
 import { settingsOf } from "./settings";
 import {
   publicationActor,
@@ -32,6 +33,25 @@ export type AttachmentAudit = {
 export type AttachmentRecord = UploadedAttachment & {
   publication?: Publication;
 };
+
+// Preserve server-provided reservations when rebuilding the read model after a reload.
+export function uploadedAttachmentFromDto(
+  dto: AttachmentDto,
+): UploadedAttachment {
+  return {
+    attachment: {
+      id: dto.id,
+      name: dto.name,
+      size: dto.size,
+      mime: dto.mime,
+      sha256: dto.sha256,
+    },
+    createdAt: dto.createdAt,
+    createdBy: { ...dto.createdBy },
+    status: dto.status,
+    reservedPublicationId: dto.reservedPublicationId ?? undefined,
+  };
+}
 
 // Metadatos locales: no representan un veredicto CLEAN ni un análisis antivirus.
 export function attachmentRecords(
@@ -113,6 +133,24 @@ export function availableAttachments(
       record.status === "DISPONIBLE" &&
       !record.publication &&
       !record.reservedPublicationId,
+  );
+}
+
+export function selectableAttachments(
+  state: ViewState,
+  actorId: string,
+  publicationId?: string,
+): UploadedAttachment[] {
+  const actor = publicationActor(state, actorId);
+  return attachmentRecords(state, actorId).filter(
+    (record) =>
+      (record.status === "DISPONIBLE" &&
+        !record.publication &&
+        !record.reservedPublicationId) ||
+      (!!publicationId &&
+        record.status === "RESERVADO" &&
+        record.reservedPublicationId === publicationId &&
+        (actor.role === "ADMINISTRADOR" || record.createdBy.id === actorId)),
   );
 }
 

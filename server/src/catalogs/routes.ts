@@ -7,7 +7,7 @@ import { assertConfirmationCurrent } from '../security/confirmation.js';
 import { contentEtag, requireIfMatch, assertVersion } from '../concurrency.js';
 import { audit, authenticate } from '../security/index.js';
 import { canManageCatalog, catalogDtoSchema, catalogIdParams, catalogParams, catalogQuerySchema, createCatalogSchema, patchCatalogSchema, validateCatalogInput, type CatalogKey } from './schemas.js';
-import { assertCatalogUnreferenced, createCatalog, deleteCatalog, getCatalog, listCatalog, lockCatalog, updateCatalog } from './store.js';
+import { assertCatalogCanDeactivate, assertCatalogUnreferenced, createCatalog, deleteCatalog, getCatalog, listCatalog, lockCatalog, updateCatalog } from './store.js';
 
 function authorize(request: FastifyRequest, key: CatalogKey, deleting = false) {
   if (!request.auth || (deleting ? request.auth.role !== 'ADMINISTRADOR' : !canManageCatalog(request.auth.role, key))) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para modificar este catálogo.');
@@ -79,7 +79,7 @@ export async function registerCatalogRoutes(app: FastifyInstance, prisma: Prisma
       if (!before) throw new AppError(404, 'NOT_FOUND', 'El registro del catálogo no existe.');
       assertVersion(expected, before);
       const input = validateCatalogInput(catalog, { name: request.body.name ?? before.name, fields: { ...before.fields, ...request.body.fields } });
-      if (before.active && request.body.active === false) await assertCatalogUnreferenced(tx, catalog, id);
+      if (before.active && request.body.active === false) await assertCatalogCanDeactivate(tx, catalog, id);
       const after = await updateCatalog(tx, catalog, id, input, request.body.active ?? before.active);
       await audit(tx, request, { operation: before.active !== after.active ? after.active ? 'CATALOGO_ACTIVADO' : 'CATALOGO_INACTIVADO' : 'CATALOGO_MODIFICADO', resource: catalog, resourceId: id, role: actor.role, status: 'EXITO', before, after });
       return after;

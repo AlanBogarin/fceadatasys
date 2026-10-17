@@ -240,3 +240,15 @@ Configuración agrega rechazo de URL insegura, secretos sin host y puerto 465 si
 Resultado final: **210 pruebas sin servicios + 131 PostgreSQL = 341 aprobadas**, cero fallos/omitidas. Build, test:typecheck y comprobación de secretos fuera de Git correctos; siete comprobaciones de permisos/persistencia e integración de migraciones aprobadas. ClamAV real habilitado, clúster temporal detenido y datos conservados. No se modificó el cliente.
 
 Además, `npm run mail:check` con configuración local verificó TLS/autenticación reales contra Gmail en el puerto 465. No envía mensajes, no consulta PostgreSQL ni expone credenciales. Esta prueba acredita disponibilidad de conexión/autenticación, no llegada al buzón. No se realizaron envíos reales ni pruebas del frontend; la cola en memoria conserva los límites descritos en [EMAIL.md](EMAIL.md).
+
+## Correcciones H1–H3 — 17/10/2026
+
+Resultado final de `npm test`: **348 aprobadas: 212 sin servicios y 136 PostgreSQL**, cero fallos y cero omitidas, con ClamAV real habilitado. Build y `test:typecheck` correctos. Cliente: 87 aprobadas y build correcto. La [nota de implementación](../../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md) documenta archivos, contratos y límites.
+
+`publications.integration.test.ts` agrega dos casos de H1: inactivación permitida con publicaciones únicamente inactivas para autores/tutores/clasificaciones, conservación de relaciones y veto de DELETE histórico; y una publicación que confirma mientras la inactivación espera el catálogo. El caso de reemplazo de archivos incorpora listado/detalle con `reservedPublicationId`, restauración por Digitador, rechazo para otra publicación/otro actor y omisión del ID de una publicación inactiva para Digitador.
+
+`users.integration.test.ts` agrega tres casos de H2: adjuntos y participantes históricos de catálogos, accesos/rechazos sin veto, eliminación del catálogo, rollback de participación al fallar su auditoría y concurrencia real entre modificación e inactivación. La primera corrida detectó una instantánea Serializable anterior a la espera que omitía la participación recién confirmada; se cambió PATCH a ReadCommitted bajo sus locks y mutex administrativo y se repitió **todo el conjunto** con éxito. No se afirma que esa primera corrida hubiera aprobado.
+
+`test/unit/readiness.test.ts` cubre fallo cerrado de la consulta de vínculos y visibilidad de reservas de publicaciones inactivas. La prueba ampliada del cliente reconstruye el modelo desde un DTO serializado sin historial local y conserva la selección de la reserva exclusivamente para su publicación original; los archivos rechazados/pendientes siguen excluidos.
+
+También pasaron las siete verificaciones de persistencia/permisos y `scripts/connection-smoke.ts` sobre migraciones existentes. H1–H3 no introducen migraciones ni grants nuevos. El clúster aislado quedó detenido con fixtures/auditoría conservados; no se migró desarrollo ni se enviaron correos reales. Se mantienen las advertencias conocidas de `pg` y del chunk de ExcelJS; no hubo fallos. La validación del cliente usa servicios/modelos, sin nueva inspección visual del navegador ni conexión real a la API.

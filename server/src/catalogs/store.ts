@@ -67,11 +67,10 @@ export async function lockCatalog(tx: Tx, key: CatalogKey, id: string) {
   await tx.$queryRaw(Prisma.sql`SELECT id FROM ${table} WHERE id = ${id}::uuid FOR UPDATE`);
 }
 
-/** Check real incoming FKs, including composite keys, without inventing publication tables.
- * Conservatively retain referenced records, including historical references, as the local client does.
- * Caller holds FOR UPDATE on the target; FK inserts cannot race the check/delete.
+/** Caller holds FOR UPDATE on the target. Unknown incoming dependencies stay conservative.
+ * Inactivation ignores only references from inactive publications; DELETE retains every FK.
  */
-export async function assertCatalogUnreferenced(tx: Tx, key: CatalogKey, id: string) {
+async function assertCatalogReferences(tx: Tx, key: CatalogKey, id: string, inactivating: boolean) {
   const targetTable = key === 'autores' ? 'autores' : key === 'tutores' ? 'tutores' : 'catalogos';
   const references = await tx.$queryRaw<{ schema: string; table: string; sourceColumns: string[]; targetColumns: string[] }[]>(Prisma.sql`
     SELECT ns.nspname AS schema, source.relname AS table,
@@ -88,10 +87,20 @@ export async function assertCatalogUnreferenced(tx: Tx, key: CatalogKey, id: str
   const identifier = (value: string) => Prisma.raw('"' + value.replace(/"/g, '""') + '"');
   for (const reference of references) {
     const joins = reference.sourceColumns.map((column, index) => Prisma.sql`r.${identifier(column)} = c.${identifier(reference.targetColumns[index])}`);
+    let activePublication = Prisma.empty;
+    if (inactivating && reference.schema === 'public') {
+      if (reference.table === 'publicaciones') activePublication = Prisma.sql`AND r.activo = true`;
+      else if (reference.table === 'publicacion_autores' || reference.table === 'publicacion_tutores') {
+        activePublication = Prisma.sql`AND EXISTS (SELECT 1 FROM public.publicaciones p WHERE p.id = r.publicacion_id AND p.activo = true)`;
+      }
+    }
     const [result] = await tx.$queryRaw<{ used: boolean }[]>(Prisma.sql`
       SELECT EXISTS(SELECT 1 FROM ${identifier(reference.schema)}.${identifier(reference.table)} r
         JOIN public.${identifier(targetTable)} c ON ${Prisma.join(joins, ' AND ')}
-        WHERE c.id = ${id}::uuid) AS used`);
+        WHERE c.id = ${id}::uuid ${activePublication}) AS used`);
     if (result.used) throw new AppError(409, 'CATALOG_IN_USE', 'El registro tiene referencias y debe conservarse.');
   }
 }
+
+export const assertCatalogUnreferenced = (tx: Tx, key: CatalogKey, id: string) => assertCatalogReferences(tx, key, id, false);
+export const assertCatalogCanDeactivate = (tx: Tx, key: CatalogKey, id: string) => assertCatalogReferences(tx, key, id, true);

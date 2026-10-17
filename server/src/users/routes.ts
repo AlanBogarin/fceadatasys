@@ -9,6 +9,7 @@ import { audit, authenticate, hashPassword, requireAdmin, revokeUserSessions } f
 import { userDto } from './dto.js';
 import { requireUserIfMatch, userEtag } from './concurrency.js';
 import { assertUserUnreferenced, enforceUserDeletionRules } from './deletion.js';
+import { assertUserCanDeactivate } from './dependencies.js';
 import { createUserSchema, idParamsSchema, normalizeIdentity, profileSchema, updateUserSchema, userDtoSchema, userQuerySchema, type UserInput } from './schemas.js';
 
 /** Locks the same account/session used by auth, then rechecks after entering mutation transaction. */
@@ -75,7 +76,7 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
       const input: UserInput = { name: before.name, ci: before.ci, email: before.email, username: before.username, role: before.role, active: before.active, ...request.body };
       const adminCount = await tx.user.count({ where: { role: 'ADMINISTRADOR', active: true } });
       enforceUserRules(before, input, request.auth!.userId, adminCount);
-      if (before.active && !input.active && await tx.publication.count({ where: { createdById: before.id } }) > 0) throw new AppError(409, 'USER_IN_USE', 'No se puede inactivar el usuario: tiene publicaciones registradas.');
+      if (before.active && !input.active) await assertUserCanDeactivate(tx, before.id);
       const user = await tx.user.update({ where: { id: before.id }, data: normalizedFields(input) });
       const roleOrStateChanged = before.role !== user.role || before.active !== user.active;
       if (roleOrStateChanged || before.emailKey !== user.emailKey) {
@@ -86,7 +87,11 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
       await audit(tx, request, { operation: before.active && !user.active ? 'USUARIO_INACTIVADO' : 'USUARIO_MODIFICADO', resource: 'usuarios', resourceId: user.id, status: 'EXITO', before: userDto(before), after: userDto(user) });
       if (before.role !== user.role) await audit(tx, request, { operation: 'ROL_ASIGNADO', resource: 'usuarios', resourceId: user.id, status: 'EXITO', before: { role: before.role }, after: { role: user.role } });
       return user;
-    });
+    // A catalog writer locks the actor but need not UPDATE its user tuple. A fixed
+    // Serializable snapshot could miss its new audit event after waiting for that lock.
+    // The administrative advisory lock + destination row lock serialize user edits;
+    // ReadCommitted makes the dependency check see the writer's committed event.
+    }, Prisma.TransactionIsolationLevel.ReadCommitted);
     return reply.header('ETag', userEtag(updated)).send(userDto(updated));
   });
   api.delete('/api/v1/usuarios/:id', { preHandler: requireAdmin, schema: { params: idParamsSchema, querystring: z.object({}).strict(), body: z.object({}).strict().nullish() } }, async (request, reply) => {

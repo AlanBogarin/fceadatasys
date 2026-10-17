@@ -51,9 +51,15 @@ La carga comprueba el límite vigente antes del análisis y nuevamente bajo lock
 
 `GET /api/v1/adjuntos`, solo Admin/Digitador. Query estricta: `page` (1 inicial), `pageSize` (20 inicial, máximo 100), `search` (hasta 300), `status=DISPONIBLE|VINCULADO|RESERVADO|RECHAZADO|PENDIENTE` opcional. Respuesta `{data,pagination:{page,pageSize,total,totalPages}}`.
 
-Cada fila contiene `{id,name,size,mime,sha256,createdAt,createdBy:{id,name},status,publication}`. La publicación visible contiene `{id,code,title,active}`; en otro caso es null. Nunca incluye storageKey, paths ni credenciales.
+Cada fila contiene `{id,name,size,mime,sha256,createdAt,createdBy:{id,name},status,publication,reservedPublicationId}`. La publicación vinculada visible contiene `{id,code,title,active}`; en otro caso es null. `reservedPublicationId` contiene el UUID de la publicación original de una reserva histórica visible, también cuando ya no está vinculada; sin reserva o sin permiso para ver esa publicación, es null. Administrador puede ver la reserva histórica de una publicación inactiva; Digitador solo recibe el identificador si la publicación está activa. Nunca incluye storageKey, paths ni credenciales.
 
-Administrador ve todos. Digitador ve sus propias cargas y los adjuntos vinculados a publicaciones activas consultables. Un archivo reservado a una publicación anterior no se ofrece como disponible. Rechazados y pendientes de verificación no se descargan ni vinculan. Buscar nombre/título/código ignora acentos y mayúsculas; no se interpretan comodines del usuario. `GET /adjuntos/:id` agrega fecha/responsable y permite consultar un adjunto propio o de una publicación activa visible. El flujo sigue siendo subir, guardar ID y luego registrar publicación con `attachmentId`.
+Administrador ve todos. Digitador ve sus propias cargas y los adjuntos vinculados a publicaciones activas consultables. Un archivo reservado no se ofrece como disponible para una publicación nueva. Puede seleccionarse nuevamente al editar su publicación original, conservando propiedad/rol, estado de seguridad y formato habilitado; el servidor revalida las condiciones al guardar. Rechazados y pendientes de verificación no se descargan ni vinculan. Buscar nombre/título/código ignora acentos y mayúsculas; no se interpretan comodines del usuario. `GET /adjuntos/:id` agrega fecha/responsable y `reservedPublicationId`, con la misma omisión por visibilidad, y permite consultar un adjunto propio o de una publicación activa visible. El POST sigue devolviendo metadatos básicos sin reserva: completar la fila mediante detalle/listado. El flujo sigue siendo subir, guardar ID y luego registrar publicación con `attachmentId`.
+
+## Reglas de inactivación corregidas — H1 y H2
+
+Inactivar un catálogo con referencias de publicaciones únicamente inactivas está permitido, conservando dichas relaciones; las publicaciones activas y otras dependencias bloqueantes producen `409 CATALOG_IN_USE`. DELETE de catálogos sigue rechazando cualquier FK histórica. Ver [CATALOGS.md](CATALOGS.md).
+
+La inactivación de usuarios comprueba publicaciones creadas, adjuntos propios en cualquier estado y participación histórica en catálogos existentes mediante eventos exitosos de auditoría inmutable. Los registros de acceso/sesiones y los rechazos no bloquean por sí solos una inactivación. Ver RN-02 en [API.md](API.md). No se crean tablas ni se requieren migraciones o grants adicionales para H1–H3.
 
 ## Búsqueda por nombres
 

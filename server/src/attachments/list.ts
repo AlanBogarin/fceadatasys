@@ -25,8 +25,16 @@ const selected = {
   publication: {
     select: { id: true, number: true, title: true, active: true },
   },
-  assignment: { select: { publicationId: true } },
+  assignment: { select: { publicationId: true, publication: { select: { active: true } } } },
 } satisfies Prisma.StoredAttachmentSelect;
+export function visibleReservation(
+  assignment: { publicationId: string; publication: { active: boolean } } | null,
+  role: Role,
+) {
+  return assignment && (role === "ADMINISTRADOR" || assignment.publication.active)
+    ? assignment.publicationId
+    : null;
+}
 export async function listAttachments(
   prisma: PrismaClient,
   actor: { userId: string; role: Role },
@@ -69,6 +77,7 @@ export async function listAttachments(
         sha256: row.sha256,
         createdAt: row.createdAt.toISOString(),
         createdBy: row.createdBy,
+        reservedPublicationId: visibleReservation(row.assignment, actor.role),
         status:
           row.state !== "CLEAN"
             ? row.state === "PENDING"

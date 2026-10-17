@@ -64,6 +64,7 @@ export type AttachmentDto = {
   createdAt: string;
   createdBy: { id: string; name: string };
   status: AttachmentStatus;
+  reservedPublicationId: string | null;
   publication: {
     id: string;
     code: string;

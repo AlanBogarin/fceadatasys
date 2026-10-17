@@ -1,5 +1,7 @@
 # Servidor FCEA Datasys
 
+La [revisión conjunta de preparación para la integración — 17/10/2026](../docs/REVISION-PREPARACION-INTEGRACION-2026-10-17.md) distingue cobertura funcional y trabajo futuro de conexión. Sus tres diferencias de reglas/DTO se corrigieron en la [implementación de H1–H3](../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md), sin migraciones ni nuevos grants.
+
 Servidor Fastify/TypeScript, PostgreSQL/Prisma, autenticación, usuarios/perfil, siete catálogos, registro/listado/consulta/edición/inactivación de publicaciones con búsqueda FTS, formatos administrables PDF/TXT con ClamAV y reportes bibliográficos PDF/Excel generados en servidor. El frontend permanece intacto y todavía no consume estos endpoints. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
 
 ## Preparación

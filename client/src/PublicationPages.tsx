@@ -10,11 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { attachmentAccept } from "./attachments";
-import {
-  attachmentRecords,
-  attachmentSize,
-  availableAttachments,
-} from "./attachmentService";
+import { attachmentSize, selectableAttachments } from "./attachmentService";
 import type { AuditIntent } from "./audit";
 import { auditFailure } from "./auditSignals";
 import { bibliographicRecord, emptyBibliographicFilters } from "./bibliography";
@@ -412,16 +408,7 @@ export function PublicationsPage({
   const [attachmentId, setAttachmentId] = useState(initialAttachmentId);
   const [attachmentQuery, setAttachmentQuery] = useState("");
   const [requiresLibraryCopy, setRequiresLibraryCopy] = useState(true);
-  const uploads = [
-    ...availableAttachments(state, user.id),
-    ...attachmentRecords(state, user.id).filter(
-      (record) =>
-        editing &&
-        record.status === "RESERVADO" &&
-        record.reservedPublicationId === editing.id &&
-        (user.role === "ADMINISTRADOR" || record.createdBy.id === user.id),
-    ),
-  ];
+  const uploads = selectableAttachments(state, user.id, editing?.id);
   const attachmentTerm = normalizeCatalog(attachmentQuery);
   const matchingUploads = uploads.filter((entry) =>
     normalizeCatalog(entry.attachment.name).includes(attachmentTerm),

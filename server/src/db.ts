@@ -14,10 +14,10 @@ export function isTransactionConflict(error: unknown): boolean {
 }
 
 /** Reintenta únicamente conflictos de serialización; los callbacks no tienen efectos externos. */
-export async function withTransaction<T>(prisma: PrismaClient, callback: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+export async function withTransaction<T>(prisma: PrismaClient, callback: (tx: Prisma.TransactionClient) => Promise<T>, isolationLevel: Prisma.TransactionIsolationLevel = Prisma.TransactionIsolationLevel.Serializable): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await prisma.$transaction(callback, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return await prisma.$transaction(callback, { isolationLevel });
     } catch (error) {
       if (!isTransactionConflict(error) || attempt >= 2) throw error;
     }

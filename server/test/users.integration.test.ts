@@ -378,6 +378,92 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
       assert.equal(await prisma.auditLog.count({ where: { operation: 'USUARIO_ELIMINADO', resourceId: target.id } }), 1);
     });
 
+    await scenario('H2: adjuntos y participación histórica impiden inactivar; accesos y rechazos no', async () => {
+      const fileOwner = await create({ role: 'DIGITADOR' });
+      const fileId = randomUUID();
+      await prisma.storedAttachment.create({ data: {
+        id: fileId, name: 'rechazado.pdf', size: 16, mime: 'application/pdf', sha256: tokenHash(fileId),
+        storageKey: `${fileId}.pdf`, state: 'REJECTED', createdById: fileOwner.id,
+      } });
+      problem(await patch(fileOwner.id, { active: false }), 409, 'USER_IN_USE');
+      assert.equal((await detail(fileOwner.id)).json().active, true);
+
+      const creator = await create({ role: 'DIGITADOR' });
+      const creatorHeaders = await login(creator.username);
+      const author = await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers: creatorHeaders, payload: { name: `Autor H2 ${suffix}` } });
+      assert.equal(author.statusCode, 201, author.body);
+      const path = `/api/v1/catalogos/autores/${author.json().id}`;
+      const editor = await create({ role: 'DIGITADOR' });
+      const editorHeaders = await login(editor.username);
+      assert.equal((await send({ method: 'PATCH', url: path, headers: editorHeaders, payload: { name: `Autor editado H2 ${suffix}` } })).statusCode, 200);
+      for (const user of [creator, editor]) problem(await patch(user.id, { active: false }), 409, 'USER_IN_USE');
+      assert.equal((await send({ method: 'PATCH', url: path, headers, payload: { active: false } })).statusCode, 200);
+      for (const user of [creator, editor]) problem(await patch(user.id, { active: false }), 409, 'USER_IN_USE');
+
+      const observer = await create({ role: 'PUBLICO' });
+      const observerHeaders = await login(observer.username);
+      const profile = await send({ method: 'PATCH', url: '/api/v1/me', headers: observerHeaders, payload: { email: `observador.${suffix}@example.org` } });
+      assert.equal(profile.statusCode, 200, profile.body);
+      problem(await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers: observerHeaders, payload: { name: 'Prohibido' } }), 403, 'FORBIDDEN');
+      assert.equal((await patch(observer.id, { active: false })).statusCode, 200, 'Sesiones, cambios de perfil y rechazos no bloquean inactivación.');
+      assert.equal((await send({ method: 'DELETE', url: path, headers })).statusCode, 204);
+      for (const user of [creator, editor]) assert.equal((await patch(user.id, { active: false })).statusCode, 200);
+      assert.ok(await prisma.auditLog.count({ where: { userId: creator.id, operation: 'CATALOGO_CREADO', status: 'EXITO' } }));
+    });
+
+    await scenario('H2: un catálogo que falla auditoría no crea participación para su actor', async () => {
+      const editor = await create({ role: 'DIGITADOR' });
+      const editorHeaders = await login(editor.username);
+      const author = await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers, payload: { name: `Rollback H2 ${suffix}` } });
+      assert.equal(author.statusCode, 201, author.body);
+      const path = `/api/v1/catalogos/autores/${author.json().id}`;
+      const faulty = prisma.$extends({ query: { auditLog: { create: async ({ args, query }) => {
+        if (args.data.operation === 'CATALOGO_MODIFICADO') throw Error('Simulated audit outage');
+        return query(args);
+      } } } }) as unknown as PrismaClient;
+      const failing = await createApp(config, faulty, { logger: false, security: { now: () => new Date(clock) } });
+      try {
+        problem(await failing.inject({ method: 'PATCH', url: path, headers: editorHeaders, payload: { name: `No confirmado H2 ${suffix}` } }), 503, 'AUDIT_UNAVAILABLE');
+        assert.equal((await send({ url: path, headers })).json().name, author.json().name);
+        assert.equal((await patch(editor.id, { active: false })).statusCode, 200);
+      } finally { await failing.close(); }
+    });
+
+    await scenario('H2: participación que confirma durante la espera impide inactivar al actor', async () => {
+      const editor = await create({ role: 'DIGITADOR' });
+      const editorHeaders = await login(editor.username);
+      const author = await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers, payload: { name: `Concurrente H2 ${suffix}` } });
+      assert.equal(author.statusCode, 201, author.body);
+      let enter!: () => void;
+      let release!: () => void;
+      const entered = new Promise<void>(resolve => { enter = resolve; });
+      const released = new Promise<void>(resolve => { release = resolve; });
+      const held = prisma.$extends({ query: { auditLog: { create: async ({ args, query }) => {
+        if (args.data.operation === 'CATALOGO_MODIFICADO') { enter(); await released; }
+        return query(args);
+      } } } }) as unknown as PrismaClient;
+      const heldApp = await createApp(config, held, { logger: false, security: { now: () => new Date(clock) } });
+      const observer = new Client({ connectionString: process.env.USERS_TEST_OWNER_URL });
+      await observer.connect();
+      const pending = heldApp.inject({ method: 'PATCH', url: `/api/v1/catalogos/autores/${author.json().id}`, headers: editorHeaders, payload: { name: `Confirmado H2 ${suffix}` } });
+      let disabling: ReturnType<typeof patch> | undefined;
+      try {
+        await Promise.race([entered, delay(3000).then(() => { throw Error('No se alcanzó la mutación concurrente.'); })]);
+        disabling = patch(editor.id, { active: false });
+        let waited = false;
+        for (let attempt = 0; attempt < 150; attempt++) {
+          await observer.query('SELECT pg_stat_clear_snapshot()');
+          if ((await observer.query("SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%usuarios%FOR UPDATE%'" )).rowCount) { waited = true; break; }
+          await delay(10);
+        }
+        assert.equal(waited, true, 'La baja debe esperar al escritor de participación.');
+        release();
+        assert.equal((await pending).statusCode, 200);
+        problem(await disabling, 409, 'USER_IN_USE');
+        assert.equal((await detail(editor.id)).json().active, true);
+      } finally { release(); await pending; if (disabling) await disabling; await observer.end(); await heldApp.close(); }
+    });
+
     const secondHeaders = await login(admins[1].username);
     const adminVersions = await Promise.all(admins.map(admin => version(admin.id)));
     const changes = await Promise.all([

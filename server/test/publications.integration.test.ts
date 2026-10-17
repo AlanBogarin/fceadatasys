@@ -403,22 +403,82 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
       assert.equal((await edit({ source: 'LOCAL', externalUrl: '', requiresLibraryCopy: false })).statusCode, 200);
       assert.equal((await edit({ source: 'EXTERNA', externalUrl: 'https://example.org/updated' })).statusCode, 200);
     });
+    await t.test('H1: catálogos con historia inactiva permiten inactivación, pero conservan FKs al eliminar', async () => {
+      const own = await catalogSet();
+      const id = await createdPublication(nextInput(own));
+      const targets: [CatalogKey, string][] = [
+        ['autores', own.authors[0].id], ['tutores', own.tutors[0].id],
+        ['carreras', own.career.id], ['niveles', own.level.id], ['tipos', own.type.id], ['filiales', own.branch.id],
+      ];
+      for (const [key, target] of targets) problem(await patchCatalog(key, target, { active: false }), 409, 'CATALOG_IN_USE');
+      const before = await detail(id);
+      assert.equal((await change(id, String(before.headers.etag), { active: false }, 'ADMINISTRADOR', true)).statusCode, 200);
+      for (const [key, target] of targets) {
+        const disabled = await patchCatalog(key, target, { active: false });
+        assert.equal(disabled.statusCode, 200, disabled.body);
+        assert.equal(disabled.json().active, false);
+        problem(await send({ method: 'DELETE', url: `/api/v1/catalogos/${key}/${target}`, headers: headers.ADMINISTRADOR }), 409, 'CATALOG_IN_USE');
+      }
+      const after = (await detail(id)).json();
+      assert.deepEqual(after.authors, before.json().authors);
+      assert.deepEqual(after.tutors, before.json().tutors);
+      assert.deepEqual(after.career, before.json().career);
+      problem(await publish(nextInput(own)), 400, 'INVALID_PUBLICATION_REFERENCE');
+    });
+    await t.test('H1: una publicación que confirma mientras inactivación espera conserva el catálogo activo', async () => {
+      const own = await catalogSet();
+      let enter!: () => void;
+      let release!: () => void;
+      const entered = new Promise<void>(resolve => { enter = resolve; });
+      const released = new Promise<void>(resolve => { release = resolve; });
+      const held = prisma.$extends({ query: { auditLog: { create: async ({ args, query }) => {
+        if (args.data.operation === 'REGISTRAR_INVESTIGACION') { enter(); await released; }
+        return query(args);
+      } } } }) as unknown as PrismaClient;
+      const heldApp = await createApp(config, held, { logger: false, security: { now: () => new Date(clock) } });
+      const pending = heldApp.inject({ method: 'POST', url: '/api/v1/publicaciones', headers: headers.DIGITADOR, payload: nextInput(own) });
+      let disabling: ReturnType<typeof patchCatalog> | undefined;
+      try {
+        await Promise.race([entered, delay(3000).then(() => { throw Error('No se alcanzó el punto de concurrencia.'); })]);
+        disabling = patchCatalog('autores', own.authors[0].id, { active: false });
+        await waitForLock('autores');
+        release();
+        assert.equal((await pending).statusCode, 201);
+        problem(await disabling, 409, 'CATALOG_IN_USE');
+      } finally { release(); await pending; if (disabling) await disabling; await heldApp.close(); }
+    });
     await t.test('reemplazo de adjunto conserva reserva histórica y evita reutilización en otra publicación', async () => {
       const first = await attachment();
+      await owner.query('UPDATE adjuntos SET nombre=$1 WHERE id=$2', [`${first.id}.pdf`, first.id]);
       const second = await attachment();
       const id = await createdPublication({ ...nextInput(), source: 'LOCAL', externalUrl: '', attachmentId: first.id });
       const current = await detail(id);
       const edited = await change(id, String(current.headers.etag), { attachmentId: second.id });
       assert.equal(edited.statusCode, 200, edited.body);
       assert.equal(edited.json().attachment.id, second.id);
+      for (const role of ['ADMINISTRADOR', 'DIGITADOR']) {
+        const listing = await send({ url: `/api/v1/adjuntos?status=RESERVADO&search=${first.id}`, headers: headers[role] });
+        const reserved = listing.json().data.find((row: { id: string }) => row.id === first.id);
+        assert.equal(reserved?.reservedPublicationId, id, listing.body);
+        assert.equal(reserved.publication, null);
+        const metadata = await send({ url: `/api/v1/adjuntos/${first.id}`, headers: headers[role] });
+        assert.equal(metadata.json().reservedPublicationId, id);
+      }
+      problem(await send({ url: `/api/v1/adjuntos/${first.id}`, headers: headers.DIGITADOR_2 }), 403, 'FORBIDDEN');
+      problem(await send({ url: '/api/v1/adjuntos', headers: headers.PUBLICO }), 403, 'FORBIDDEN');
+      const restored = await change(id, String(edited.headers.etag), { attachmentId: first.id }, 'DIGITADOR');
+      assert.equal(restored.statusCode, 200, restored.body);
+      assert.equal(restored.json().attachment.id, first.id);
+      const replacedAgain = await change(id, String(restored.headers.etag), { attachmentId: second.id }, 'DIGITADOR');
+      assert.equal(replacedAgain.statusCode, 200, replacedAgain.body);
       assert.equal((await prisma.attachmentAssignment.findUniqueOrThrow({ where: { attachmentId: first.id } })).publicationId, id);
       assert.equal((await prisma.attachmentAssignment.findUniqueOrThrow({ where: { attachmentId: second.id } })).publicationId, id);
       problem(await publish({ ...nextInput(), source: 'LOCAL', externalUrl: '', attachmentId: first.id }), 409, 'DUPLICATE_PUBLICATION');
       const foreign = await attachment('CLEAN', actorIds.DIGITADOR_2);
-      problem(await change(id, String(edited.headers.etag), { attachmentId: foreign.id }, 'DIGITADOR'), 403, 'FORBIDDEN');
+      problem(await change(id, String(replacedAgain.headers.etag), { attachmentId: foreign.id }, 'DIGITADOR'), 403, 'FORBIDDEN');
       const pending = await attachment('PENDING');
-      problem(await change(id, String(edited.headers.etag), { attachmentId: pending.id }), 409, 'ATTACHMENT_NOT_READY');
-      const external = await change(id, String(edited.headers.etag), { source: 'EXTERNA', externalUrl: 'https://example.org/historic', requiresLibraryCopy: false, attachmentId: null });
+      problem(await change(id, String(replacedAgain.headers.etag), { attachmentId: pending.id }), 409, 'ATTACHMENT_NOT_READY');
+      const external = await change(id, String(replacedAgain.headers.etag), { source: 'EXTERNA', externalUrl: 'https://example.org/historic', requiresLibraryCopy: false, attachmentId: null });
       assert.equal(external.statusCode, 200, external.body);
       assert.equal(external.json().hasAttachment, false);
       assert.equal(await prisma.attachmentAssignment.count({ where: { publicationId: id } }), 2);
@@ -426,6 +486,15 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
       const other = await createdPublication({ ...nextInput(), source: 'LOCAL', externalUrl: '', requiresLibraryCopy: false });
       await assert.rejects(owner.query('UPDATE publicaciones SET adjunto_id=$1,adjunto_hash=$2 WHERE id=$3', [first.id, first.sha256, other]), { code: '23505' });
       assert.equal((await prisma.publication.findUniqueOrThrow({ where: { id: other } })).attachmentId, null);
+      const disabled = await change(id, String(external.headers.etag), { active: false }, 'ADMINISTRADOR', true);
+      assert.equal(disabled.statusCode, 200, disabled.body);
+      const visible = await send({ url: `/api/v1/adjuntos/${first.id}`, headers: headers.ADMINISTRADOR });
+      assert.equal(visible.json().reservedPublicationId, id);
+      const hidden = await send({ url: `/api/v1/adjuntos/${first.id}`, headers: headers.DIGITADOR });
+      assert.equal(hidden.statusCode, 200, hidden.body);
+      assert.equal(hidden.json().reservedPublicationId, null);
+      const hiddenList = await send({ url: `/api/v1/adjuntos?status=RESERVADO&search=${first.id}`, headers: headers.DIGITADOR });
+      assert.equal(hiddenList.json().data.find((row: { id: string }) => row.id === first.id)?.reservedPublicationId, null);
     });
     await t.test('inactivación conserva datos, reserva y acceso histórico exclusivo de Admin', async () => {
       const file = await attachment();

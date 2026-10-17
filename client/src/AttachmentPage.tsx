@@ -8,7 +8,11 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { AttachmentDownload } from "./PublicationPages";
-import { attachmentSize, type UploadedAttachment } from "./attachmentService";
+import {
+  attachmentSize,
+  uploadedAttachmentFromDto,
+  type UploadedAttachment,
+} from "./attachmentService";
 import { attachmentAccept } from "./attachments";
 import "./attachments.css";
 import { useDataClient } from "./data/context";
@@ -104,12 +108,7 @@ export function AttachmentPage({
         setStage(stage);
       });
       if (!mounted.current) return;
-      setUploaded({
-        attachment: result,
-        createdAt: result.createdAt,
-        createdBy: result.createdBy,
-        status: result.status,
-      });
+      setUploaded(uploadedAttachmentFromDto(result));
       setFile(undefined);
       if (input.current) input.current.value = "";
       setFilter("DISPONIBLE");

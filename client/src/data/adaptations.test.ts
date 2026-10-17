@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { prepareAttachment } from "../attachments";
-import { availableAttachments } from "../attachmentService";
+import {
+  availableAttachments,
+  selectableAttachments,
+  uploadedAttachmentFromDto,
+} from "../attachmentService";
 import { appendAudit, auditMutation, emptyAuditFilters } from "../audit";
 import { emptyBibliographicFilters } from "../bibliography";
 import { buildDemoData } from "../demoData";
@@ -651,11 +655,31 @@ test("Adjuntos: carga por ID, uso histórico reservado y estados rechazado/pendi
     },
     { ifMatch: current.etag },
   );
+  const reserved = (
+    await f.client.attachments.list({ status: "RESERVADO" })
+  ).data.find((row) => row.id === file.id)!;
+  assert.equal(reserved.reservedPublicationId, created.id);
+  // Rebuild the read model using only API metadata, without the local attachment history.
+  const reloaded = JSON.parse(JSON.stringify(f.state)) as State;
+  reloaded.publications = reloaded.publications!.map((publication) => ({
+    ...publication,
+    attachmentHistory: undefined,
+  }));
+  reloaded.uploadedAttachments = [uploadedAttachmentFromDto(reserved)];
+  f.setState(reloaded);
   assert.equal(
-    (await f.client.attachments.list({ status: "RESERVADO" })).data.some(
-      (row) => row.id === file.id,
+    selectableAttachments(f.state, f.state.users[0].id, created.id).some(
+      (row) => row.attachment.id === file.id,
     ),
     true,
+  );
+  assert.equal(
+    selectableAttachments(
+      f.state,
+      f.state.users[0].id,
+      "another-publication",
+    ).some((row) => row.attachment.id === file.id),
+    false,
   );
   assert.equal(
     availableAttachments(f.state, f.state.users[0].id).some(
@@ -673,6 +697,18 @@ test("Adjuntos: carga por ID, uso histórico reservado y estados rechazado/pendi
     }),
     isProblem(409),
   );
+  const latest = await f.client.publications.get(created.id);
+  const restored = await f.client.publications.update(
+    created.id,
+    {
+      source: "LOCAL",
+      externalUrl: "",
+      requiresLibraryCopy: true,
+      attachmentId: file.id,
+    },
+    { ifMatch: latest.etag },
+  );
+  assert.equal(restored.attachment?.id, file.id);
   for (const status of ["RECHAZADO", "PENDIENTE"] as const) {
     f.setState({
       ...f.state,
@@ -680,6 +716,12 @@ test("Adjuntos: carga por ID, uso histórico reservado y estados rechazado/pendi
         upload.attachment.id === file.id ? { ...upload, status } : upload,
       ),
     });
+    assert.equal(
+      selectableAttachments(f.state, f.state.users[0].id, created.id).some(
+        (row) => row.attachment.id === file.id,
+      ),
+      false,
+    );
     await assert.rejects(
       f.client.attachments.download(file.id),
       isProblem(404),

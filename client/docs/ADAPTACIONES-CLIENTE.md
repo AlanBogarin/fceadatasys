@@ -30,6 +30,8 @@ Implementación de la tabla del análisis de integración y de los pendientes fu
 
 El nombre de Digitador/Público permanece de solo lectura en Mi perfil, según la decisión previa para ese módulo. Las validaciones del simulador conservan esa regla.
 
+La corrección H3 incorpora `reservedPublicationId: string | null` al DTO de adjuntos. `uploadedAttachmentFromDto` conserva esa reserva al reconstruir el modelo de lectura y `selectableAttachments` ofrece los disponibles y los reservados de la publicación editada con el permiso correspondiente. El formulario y la pantalla de carga usan estos helpers. La regresión reconstruye el estado desde el DTO sin `attachmentHistory`, recupera el archivo para su publicación original e impide seleccionarlo para otra; los rechazados/pendientes siguen excluidos. Las reglas H1/H2 del servidor ahora se documentan en [CLIENT-INTEGRATION.md](../../server/docs/CLIENT-INTEGRATION.md).
+
 ## Contratos y límites del simulador
 
 `src/data/contracts.ts` define DTO y errores; `mockClient.ts` implementa operaciones; `context.tsx` inyecta servicios; `view.ts` construye el modelo de lectura. `App.tsx`, almacenamiento y confirmación componen el adaptador local. Las pantallas ya no reciben una función para escribir el `State` privado.

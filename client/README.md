@@ -2,6 +2,8 @@
 
 Cliente React + TypeScript + Vite del catálogo bibliográfico FCEA/UNC. **Continúa con backend simulado, sin conexión a server/**.
 
+La [revisión conjunta de preparación para la integración](../docs/REVISION-PREPARACION-INTEGRACION-2026-10-17.md) contrasta las pantallas con los endpoints existentes. Las tres diferencias detectadas se corrigieron en la [implementación de H1–H3](../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md), separada del trabajo de conexión futura.
+
 Las adaptaciones para la integración futura están implementadas en servicios asíncronos: DTO seguros, sesión única entre pestañas, plazos y actividad, confirmación de cambios, versiones de registros, errores por campo, consultas paginadas, carga por identificador y exportaciones con snapshot. Incluye edición e inactivación de publicaciones, formatos PDF/TXT configurables y campos opcionales acordes al contrato maestro.
 
 El detalle de la tabla, archivos, contratos, validaciones y límites está en [Adaptaciones del cliente](docs/ADAPTACIONES-CLIENTE.md). Esa guía describe el estado vigente; los documentos anteriores son antecedentes fechados.

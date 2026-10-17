@@ -702,7 +702,10 @@ export function createMockClient(context: Context) {
         pageSize?: number;
       } = {},
     ) {
-      const rows = attachmentRecords(read(), actor());
+      const state = read();
+      const administrator =
+        bibliographicActor(state, actor()).role === "ADMINISTRADOR";
+      const rows = attachmentRecords(state, actor());
       const data: AttachmentDto[] = rows
         .filter(
           (row) =>
@@ -724,6 +727,16 @@ export function createMockClient(context: Context) {
           createdAt: row.createdAt,
           createdBy: { ...row.createdBy },
           status: row.status ?? "DISPONIBLE",
+          reservedPublicationId:
+            row.reservedPublicationId &&
+            (administrator ||
+              state.publications?.some(
+                (publication) =>
+                  publication.id === row.reservedPublicationId &&
+                  publication.active !== false,
+              ))
+              ? row.reservedPublicationId
+              : null,
           publication: row.publication
             ? {
                 id: row.publication.id,
@@ -770,6 +783,7 @@ export function createMockClient(context: Context) {
         createdAt: upload.createdAt,
         createdBy: upload.createdBy,
         status: "DISPONIBLE" as const,
+        reservedPublicationId: null,
         publication: null,
       };
     },

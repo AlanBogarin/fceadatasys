@@ -43,7 +43,7 @@ Búsqueda por subcadena sobre nombre y todos los campos, con la normalización d
 
 Unicidad normalizada por catálogo, incluso en registros inactivos: nombre; además CI/email/ORCID en autores, CI/email en tutores, código en carreras y sigla en facultades. Campos opcionales vacíos se almacenan como NULL y no colisionan. Un mismo identificador puede existir en autor y tutor, entidades independientes. PostgreSQL arbitra duplicados concurrentes mediante UNIQUE; no basta comprobar en memoria.
 
-Inactivación conserva el registro. Inactivar o eliminar un registro con referencias FK reales responde 409; por compatibilidad con el client se conserva también cuando las referencias son históricas. La comprobación inspecciona FKs entrantes bajo bloqueo, incluidas las relaciones N:M y las claves compuestas ID/tipo incorporadas por el registro de publicaciones. Una referencia que confirma mientras la operación espera el bloqueo se vuelve a consultar antes de modificar. El registro usa FKs RESTRICT y bloquea/revalida que el catálogo esté activo antes de asociarlo. Otros modelos bibliográficos deberán conservar ese protocolo. No admite referencias guardadas solo como JSON o IDs sueltos sin FK.
+Inactivación conserva el registro y sus referencias históricas. Desde la corrección H1 del 17/10/2026, las referencias de publicaciones solo bloquean la inactivación cuando la publicación está activa; se contemplan autores/tutores N:M y las claves compuestas ID/tipo de clasificaciones. DELETE sigue rechazando cualquier referencia, aunque sea histórica. Las FKs de otros dominios conservan el veto preventivo hasta contar con una regla específica. La comprobación inspecciona FKs entrantes bajo bloqueo; una referencia que confirma mientras la operación espera se vuelve a consultar antes de modificar. El registro usa FKs RESTRICT y bloquea/revalida que el catálogo esté activo antes de asociarlo. Otros modelos bibliográficos deberán conservar ese protocolo. No admite referencias guardadas solo como JSON o IDs sueltos sin FK.
 
 Operaciones de auditoría: `CATALOGO_CREADO`, `CATALOGO_MODIFICADO`, `CATALOGO_ACTIVADO`, `CATALOGO_INACTIVADO`, `CATALOGO_ELIMINADO`; recurso = clave de catálogo, recurso ID = UUID. Conserva DTO antes/después según corresponda, actor/rol revalidados, sesión, IP y User-Agent. Mutación y auditoría confirman juntas; fallo de auditoría revierte incluso DELETE. Los rechazos usan `OPERACION_RECHAZADA` separado del rollback. No existen endpoints para modificar auditoría.
 
@@ -52,6 +52,6 @@ Operaciones de auditoría: `CATALOGO_CREADO`, `CATALOGO_MODIFICADO`, `CATALOGO_A
 | HTTP | code | Significado |
 | --- | --- | --- |
 | 409 | DUPLICATE_CATALOG | Nombre o identificador normalizado duplicado en su catálogo |
-| 409 | CATALOG_IN_USE | Registro referenciado; no se permite inactivación/eliminación |
+| 409 | CATALOG_IN_USE | Inactivación con publicaciones activas u otra dependencia bloqueante; eliminación con cualquier referencia |
 
 Reutiliza 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `FORBIDDEN`, 404 `NOT_FOUND` y 503 `AUDIT_UNAVAILABLE` de API.md. Catálogo fuera del enum/UUID inválido es 400; UUID válido inexistente o de otro catálogo es 404. Las validaciones de campos identifican `body.name` o `body.fields.<campo>` en `invalid_params`.
