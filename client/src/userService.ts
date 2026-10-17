@@ -192,7 +192,15 @@ export function editProfile(
     return {
       exito: true,
       mensaje: "Tu perfil fue actualizado.",
-      datos: { ...state, users },
+      datos: {
+        ...state,
+        users,
+        recovery:
+          currentUser.email.trim().normalize("NFKC").toLocaleLowerCase("es") !==
+          validated.email
+            ? state.recovery.filter((entry) => entry.userId !== actorId)
+            : state.recovery,
+      },
     };
   } catch (error) {
     return { exito: false, mensaje: failureMessage(error) };

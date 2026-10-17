@@ -415,6 +415,7 @@ test("Parámetros: valores iniciales compatibles, rangos estrictos, permisos y v
   assert.deepEqual(settingsOf(initial), {
     summaryWordLimit: 300,
     maxPdfSizeMb: 10,
+    allowedFormats: ["pdf"],
   });
   for (const account of initial.users.slice(1))
     assert.throws(
@@ -465,7 +466,7 @@ test("Parámetros: PDF respeta el tamaño configurado y los archivos anteriores 
     "limite.pdf",
     { type: "application/pdf" },
   );
-  await assert.rejects(() => preparePdf(file, 1024 * 1024), /1 MB/);
+  await assert.rejects(() => preparePdf(file, 1024 * 1024), /1 MiB/);
   const attachment = await preparePdf(file, 2 * 1024 * 1024);
   assert.equal(attachment.size, file.size);
   assert.doesNotThrow(() => validateAttachmentMetadata(attachment));

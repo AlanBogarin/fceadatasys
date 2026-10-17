@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ShieldCheck, X } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { businessStateKey } from "./audit";
+import { ClientProblem, confirmationHeaders, problem } from "./data/problems";
 import type { State } from "./model";
-import { Alert, errorText, Field, Password } from "./ui";
 import {
   existingChanges,
   newBusinessRecords,
-  verifyConfirmationPassword,
+  verifyConfirmationHeader,
 } from "./mutationPolicy";
-import { businessStateKey } from "./audit";
-import { auditFailure } from "./auditSignals";
+import { Alert, errorText, Field, Password } from "./ui";
 
 type PendingMutation = {
   before: State;
@@ -24,18 +24,22 @@ export function useMutationConfirmation({
   assertActive,
   persist,
   logout,
+  recordConfirmation,
   contextKey,
 }: {
   getState: () => State | undefined;
   actorId: string | null;
   assertActive: () => void;
-  persist: (after: State, before: State) => void;
+  persist: (after: State, before: State) => void | Promise<void>;
   logout: () => void;
+  recordConfirmation: (
+    valid: boolean,
+    persist?: () => void | Promise<void>,
+  ) => Promise<number>;
   contextKey: string;
 }) {
   const [pending, setPending] = useState<PendingMutation>();
   const current = useRef<PendingMutation | undefined>(undefined);
-  const failures = useRef(new Map<string, number>());
   const busy = useRef(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
@@ -74,7 +78,7 @@ export function useMutationConfirmation({
     const modifications = existingChanges(before, after);
     const additions = newBusinessRecords(before, after);
     if (!modifications.length && !additions.length) {
-      persist(after, before);
+      await persist(after, before);
       return;
     }
     // Paso 3: mantener la operación en memoria hasta verificar la contraseña actual.
@@ -108,18 +112,32 @@ export function useMutationConfirmation({
     try {
       assertActive();
       if (
+        !request.creation &&
+        getState()?.users.find((user) => user.id === request.actorId)
+          ?.passwordHash !==
+          request.before.users.find((user) => user.id === request.actorId)
+            ?.passwordHash
+      )
+        throw problem(
+          401,
+          "CONFIRMATION_EXPIRED",
+          "Tu contraseña cambió. Cancelá la confirmación y volvé a confirmar con tu contraseña actual.",
+        );
+      if (
         !getState() ||
         businessStateKey(getState()!) !== businessStateKey(request.before)
       )
-        throw Error(
-          "Los datos cambiaron. Cancelá y revisá el registro antes de guardar.",
+        throw problem(
+          412,
+          "RESOURCE_VERSION_CONFLICT",
+          "Los datos cambiaron. Revisá el registro antes de volver a guardar.",
         );
       const valid =
         request.creation ||
-        (await verifyConfirmationPassword(
+        (await verifyConfirmationHeader(
           request.before,
           request.actorId,
-          password,
+          confirmationHeaders(password)["X-Confirmation-Password"],
         ));
       if (current.current !== request) return;
       assertActive();
@@ -127,24 +145,17 @@ export function useMutationConfirmation({
         !getState() ||
         businessStateKey(getState()!) !== businessStateKey(request.before)
       )
-        throw Error(
+        throw problem(
+          412,
+          "RESOURCE_VERSION_CONFLICT",
           "Los datos cambiaron durante la verificación. No se guardaron cambios.",
         );
       if (!valid) {
-        auditFailure(
-          "Seguridad",
-          "Confirmar modificación",
-          Error(
-            "Contraseña de confirmación incorrecta. No se aplicaron cambios.",
-          ),
-        );
-        const count = (failures.current.get(request.actorId) ?? 0) + 1;
-        failures.current.set(request.actorId, count);
+        const count = await recordConfirmation(false);
         if (count >= 3) {
           cancel(
             "Tres contraseñas incorrectas. Se cerró la sesión por seguridad.",
           );
-          logout();
           return;
         }
         setError(
@@ -153,13 +164,23 @@ export function useMutationConfirmation({
         return;
       }
       const latest = getState()!;
-      persist({ ...request.after, auditEvents: latest.auditEvents }, latest);
-      failures.current.delete(request.actorId);
+      const save = () =>
+        persist({ ...request.after, auditEvents: latest.auditEvents }, latest);
+      if (request.creation) await save();
+      else await recordConfirmation(true, save);
       current.current = undefined;
       setPending(undefined);
       request.resolve();
     } catch (caught) {
-      if (current.current === request) setError(errorText(caught));
+      if (
+        current.current === request &&
+        caught instanceof ClientProblem &&
+        (caught.status === 412 || caught.code === "CONFIRMATION_EXPIRED")
+      ) {
+        current.current = undefined;
+        setPending(undefined);
+        request.reject(caught);
+      } else if (current.current === request) setError(errorText(caught));
     } finally {
       busy.current = false;
       setWorking(false);

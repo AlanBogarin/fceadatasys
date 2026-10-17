@@ -10,7 +10,8 @@ import {
   SlidersHorizontal,
   Users,
 } from "lucide-react";
-import type { State, User } from "./model";
+import type { ViewState as State } from "./data/view";
+import type { UserDto as User } from "./data/contracts";
 import { Alert, Field, errorText } from "./ui";
 import { AttachmentDownload } from "./PublicationPages";
 import { registrationDate } from "./publications";
@@ -22,20 +23,20 @@ import {
   type BibliographicFilters,
 } from "./bibliography";
 import "./bibliography.css";
+import { useDataClient } from "./data/context";
+import { useQuery } from "./data/useQuery";
 
 export function BibliographicPage({
   state,
   user,
   advanced,
   navigate,
-  commit,
   assertActive,
 }: {
   state: State;
   user: User;
   advanced: boolean;
   navigate: (page: string) => void;
-  commit: (state: State) => Promise<void>;
   assertActive: () => void;
 }) {
   const [draft, setDraft] = useState({ ...emptyBibliographicFilters });
@@ -44,13 +45,20 @@ export function BibliographicPage({
   const [pageSize, setPageSize] = useState(6);
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");
-  let result: ReturnType<typeof queryBibliography> | undefined;
-  let queryError = "";
-  try {
-    result = queryBibliography(state, user.id, filters, page, pageSize);
-  } catch (caught) {
-    queryError = errorText(caught);
-  }
+  const client = useDataClient();
+  const request = useQuery(
+    () => client.publications.list(filters, page, pageSize),
+    [state, filters, page, pageSize],
+  );
+  const result = request.data
+    ? {
+        records: request.data.data,
+        total: request.data.pagination.total,
+        totalPages: request.data.pagination.totalPages,
+        page: request.data.pagination.page,
+      }
+    : undefined;
+  const queryError = request.error ? errorText(request.error) : "";
 
   function update(field: keyof BibliographicFilters, value: string) {
     setDraft((previous) => ({ ...previous, [field]: value }));
@@ -148,7 +156,6 @@ export function BibliographicPage({
                 publication={record}
                 state={state}
                 user={user}
-                commit={commit}
                 assertActive={assertActive}
               />
             )}
@@ -296,7 +303,8 @@ export function BibliographicPage({
       <Alert text={error || queryError} />
       <div className="bibliography-result-heading">
         <h2>
-          Resultados <span>{result?.total ?? 0}</span>
+          Resultados{" "}
+          <span>{request.loading ? "Buscando…" : (result?.total ?? 0)}</span>
         </h2>
         <Field label="Resultados por página">
           <select

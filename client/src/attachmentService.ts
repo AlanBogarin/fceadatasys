@@ -1,4 +1,5 @@
 import type { State, User } from "./model";
+import type { ViewState } from "./data/view";
 import { settingsOf } from "./settings";
 import {
   publicationActor,
@@ -7,7 +8,7 @@ import {
 } from "./publications";
 import {
   commitWithAttachment,
-  preparePdf,
+  prepareAttachment,
   type PublicationAttachment,
 } from "./attachments";
 
@@ -15,6 +16,8 @@ export type UploadedAttachment = {
   attachment: PublicationAttachment;
   createdAt: string;
   createdBy: Reference;
+  status?: "DISPONIBLE" | "VINCULADO" | "RESERVADO" | "RECHAZADO" | "PENDIENTE";
+  reservedPublicationId?: string;
 };
 export type AttachmentAudit = {
   id: string;
@@ -32,18 +35,50 @@ export type AttachmentRecord = UploadedAttachment & {
 
 // Metadatos locales: no representan un veredicto CLEAN ni un análisis antivirus.
 export function attachmentRecords(
-  state: State,
+  state: ViewState,
   actorId: string,
 ): AttachmentRecord[] {
   const actor = publicationActor(state, actorId);
   const records = new Map<string, AttachmentRecord>();
   for (const upload of state.uploadedAttachments ?? []) {
     if (actor.role === "ADMINISTRADOR" || upload.createdBy.id === actor.id) {
-      records.set(upload.attachment.id, { ...upload });
+      const used = state.publications?.find(
+        (publication) =>
+          publication.attachment?.id === upload.attachment.id ||
+          publication.attachmentHistory?.some(
+            (file) => file.id === upload.attachment.id,
+          ),
+      );
+      records.set(upload.attachment.id, {
+        ...upload,
+        reservedPublicationId: upload.reservedPublicationId ?? used?.id,
+        status: ["RECHAZADO", "PENDIENTE"].includes(upload.status ?? "")
+          ? upload.status
+          : used || upload.reservedPublicationId
+            ? "RESERVADO"
+            : (upload.status ?? "DISPONIBLE"),
+      });
     }
   }
   for (const publication of state.publications ?? []) {
+    for (const file of publication.attachmentHistory ?? []) {
+      if (file.id === publication.attachment?.id || records.has(file.id))
+        continue;
+      if (
+        actor.role === "ADMINISTRADOR" ||
+        publication.createdBy.id === actor.id
+      )
+        records.set(file.id, {
+          attachment: file,
+          createdAt: publication.createdAt,
+          createdBy: publication.createdBy,
+          reservedPublicationId: publication.id,
+          status: "RESERVADO",
+        });
+    }
     if (!publication.attachment) continue;
+    if (publication.active === false && actor.role !== "ADMINISTRADOR")
+      continue;
     records.set(publication.attachment.id, {
       ...(state.uploadedAttachments?.find(
         (entry) => entry.attachment.id === publication.attachment!.id,
@@ -53,19 +88,31 @@ export function attachmentRecords(
         createdBy: publication.createdBy,
       }),
       publication,
+      reservedPublicationId: publication.id,
+      status: ["RECHAZADO", "PENDIENTE"].includes(
+        records.get(publication.attachment.id)?.status ?? "",
+      )
+        ? records.get(publication.attachment.id)!.status
+        : "VINCULADO",
     });
   }
-  return [...records.values()].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
-  );
+  return [...records.values()]
+    .map((record) => ({
+      ...record,
+      status: record.status ?? ("DISPONIBLE" as const),
+    }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export function availableAttachments(
-  state: State,
+  state: ViewState,
   actorId: string,
 ): UploadedAttachment[] {
   return attachmentRecords(state, actorId).filter(
-    (record) => !record.publication,
+    (record) =>
+      record.status === "DISPONIBLE" &&
+      !record.publication &&
+      !record.reservedPublicationId,
   );
 }
 
@@ -105,9 +152,10 @@ export async function uploadAttachment({
   let attachment: PublicationAttachment;
   try {
     onStage?.("validating");
-    attachment = await preparePdf(
+    attachment = await prepareAttachment(
       file,
       settingsOf(state).maxPdfSizeMb * 1024 * 1024,
+      settingsOf(state).allowedFormats,
     );
     const hashes = [
       ...(state.uploadedAttachments ?? []).map(
@@ -119,7 +167,7 @@ export async function uploadAttachment({
     ];
     if (hashes.includes(attachment.sha256)) {
       throw Error(
-        "Archivo duplicado: este PDF ya fue cargado, aunque tenga otro nombre.",
+        "Archivo duplicado: este documento ya fue cargado, aunque tenga otro nombre.",
       );
     }
   } catch (error) {
@@ -143,6 +191,7 @@ export async function uploadAttachment({
     attachment,
     createdAt: new Date().toISOString(),
     createdBy: { id: actor.id, name: actor.name },
+    status: "DISPONIBLE",
   };
   await commitWithAttachment(
     attachment,

@@ -48,7 +48,10 @@ export function describeFilters(state: State, filters: ReportFilters): string {
   const record =
     publications.find((entry) => entry.id === filters.publicationId)?.code ??
     "Todas";
-  return `Fecha de registro: ${filters.from || "Sin inicio"} a ${filters.to || "Sin fin"}. Carrera: ${career}. Nivel: ${level}. Investigación: ${record}.`;
+  const type =
+    publications.find((entry) => entry.type.id === filters.typeId)?.type.name ??
+    "Todos";
+  return `Fecha de registro: ${filters.from || "Sin inicio"} a ${filters.to || "Sin fin"}. Carrera: ${career}. Nivel: ${level}. Tipo: ${type}. Año: ${filters.year || "Todos"}. Autor: ${filters.author || "Todos"}. Tutor: ${filters.tutor || "Todos"}. Estado: ${filters.active === "true" ? "Activas" : filters.active === "false" ? "Inactivas" : "Todas"}. Investigación: ${record}.`;
 }
 
 export async function buildPublicationReport(

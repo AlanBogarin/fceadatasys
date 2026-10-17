@@ -1,3 +1,4 @@
+import type { AttachmentFormat } from "./settings";
 export const MAX_PDF_BYTES = 10 * 1024 * 1024;
 export const MAX_SUPPORTED_PDF_BYTES = 25 * 1024 * 1024;
 
@@ -5,7 +6,7 @@ export type PublicationAttachment = {
   id: string;
   name: string;
   size: number;
-  mime: "application/pdf";
+  mime: "application/pdf" | "text/plain";
   sha256: string;
 };
 
@@ -14,17 +15,21 @@ export function validateAttachmentMetadata(attachment: PublicationAttachment) {
   if (
     !/^[\da-f-]{36}$/i.test(attachment.id) ||
     !/^[\da-f]{64}$/i.test(attachment.sha256) ||
-    attachment.mime !== "application/pdf" ||
+    !(
+      (attachment.mime === "application/pdf" &&
+        /\.pdf$/i.test(attachment.name)) ||
+      (attachment.mime === "text/plain" && /\.txt$/i.test(attachment.name))
+    ) ||
     !Number.isInteger(attachment.size) ||
     attachment.size <= 0 ||
     attachment.size > MAX_SUPPORTED_PDF_BYTES ||
     !attachment.name ||
     attachment.name.length > 144 ||
     /[\\/:*?"<>|\p{Cc}\p{Cf}]/u.test(attachment.name) ||
-    !attachment.name.toLowerCase().endsWith(".pdf")
+    !/\.(pdf|txt)$/i.test(attachment.name)
   ) {
     throw Error(
-      "El adjunto no es un PDF válido de hasta 25 MB. Volvé a seleccionarlo.",
+      "El adjunto no es un PDF o TXT válido de hasta 25 MiB. Volvé a seleccionarlo.",
     );
   }
 }
@@ -32,6 +37,22 @@ export function validateAttachmentMetadata(attachment: PublicationAttachment) {
 export async function preparePdf(
   file: File,
   maximumBytes = MAX_PDF_BYTES,
+): Promise<PublicationAttachment> {
+  return prepareAttachment(file, maximumBytes, ["pdf"]);
+}
+
+export function attachmentAccept(formats: AttachmentFormat[]) {
+  return formats
+    .map((format) =>
+      format === "pdf" ? ".pdf,application/pdf" : ".txt,text/plain",
+    )
+    .join(",");
+}
+
+export async function prepareAttachment(
+  file: File,
+  maximumBytes = MAX_PDF_BYTES,
+  allowedFormats: AttachmentFormat[] = ["pdf"],
 ): Promise<PublicationAttachment> {
   // Paso 1: comprobar tamaño y extensión antes de leer el archivo.
   if (
@@ -41,16 +62,26 @@ export async function preparePdf(
   ) {
     throw Error("El límite de archivos configurado no es válido.");
   }
-  if (!file.size || file.size > maximumBytes || !/\.pdf$/i.test(file.name)) {
+  const format = file.name.split(".").at(-1)?.toLowerCase() as AttachmentFormat;
+  if (!allowedFormats.includes(format) || !["pdf", "txt"].includes(format))
     throw Error(
-      `Seleccioná un archivo PDF de hasta ${maximumBytes / 1024 / 1024} MB.`,
+      `Formato no habilitado. Formatos admitidos: ${allowedFormats.join(", ").toUpperCase()}.`,
+    );
+  if (!file.size || file.size > maximumBytes) {
+    throw Error(
+      `Seleccioná un archivo ${allowedFormats.join(" o ").toUpperCase()} de hasta ${maximumBytes / 1024 / 1024} MiB.`,
     );
   }
   if (
     file.type &&
-    !["application/pdf", "application/octet-stream"].includes(file.type)
+    ![
+      format === "pdf" ? "application/pdf" : "text/plain",
+      "application/octet-stream",
+    ].includes(file.type)
   ) {
-    throw Error("El tipo de archivo debe ser PDF.");
+    throw Error(
+      `El tipo declarado no coincide con el formato ${format.toUpperCase()} del archivo.`,
+    );
   }
 
   // Paso 2: verificar la firma y el fin de PDF; el MIME declarado no es suficiente.
@@ -59,8 +90,26 @@ export async function preparePdf(
   const tail = new TextDecoder().decode(
     bytes.subarray(Math.max(0, bytes.length - 1024)),
   );
-  if (!/^%PDF-(1\.[0-7]|2\.0)\s/.test(header) || !/%%EOF\s*$/.test(tail)) {
+  if (
+    format === "pdf" &&
+    (!/^%PDF-(1\.[0-7]|2\.0)\s/.test(header) || !/%%EOF\s*$/.test(tail))
+  ) {
     throw Error("El contenido del archivo no corresponde a un PDF reconocido.");
+  }
+  if (format === "txt") {
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw Error("El TXT debe contener texto UTF-8 válido.");
+    }
+    if (
+      !text.trim() ||
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(text)
+    )
+      throw Error(
+        "El TXT no puede estar vacío ni contener controles binarios.",
+      );
   }
 
   // Paso 3: sanear el nombre y calcular la huella para detectar duplicados.
@@ -68,7 +117,7 @@ export async function preparePdf(
   const sha256 = Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
-  let baseName = file.name.replace(/\.pdf$/i, "").normalize("NFKC");
+  let baseName = file.name.replace(/\.(pdf|txt)$/i, "").normalize("NFKC");
   baseName = baseName
     .replace(/[\\/:*?"<>|\p{Cc}\p{Cf}]/gu, "_")
     .trim()
@@ -77,9 +126,9 @@ export async function preparePdf(
   if (!baseName || /^\.+$/.test(baseName)) baseName = "documento";
   const attachment: PublicationAttachment = {
     id: crypto.randomUUID(),
-    name: `${baseName}.pdf`,
+    name: `${baseName}.${format}`,
     size: file.size,
-    mime: "application/pdf",
+    mime: format === "pdf" ? "application/pdf" : "text/plain",
     sha256,
   };
   validateAttachmentMetadata(attachment);

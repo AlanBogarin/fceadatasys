@@ -1,195 +1,135 @@
 import { useEffect, useRef, useState } from "react";
-import { SESSION_KEY } from "./storage";
-import { INACTIVITY_MS, renewActivity, sessionExpired } from "./security";
 import {
-  logoutKey,
-  SESSION_GENERATION_KEY,
-  sessionGenerationMatches,
-} from "./sessionSignals";
-
-const DEADLINE_KEY = "fcea-datasys.session.deadline";
+  MockSessionStore,
+  SHARED_SESSION_KEY,
+  SESSION_SIGNAL,
+  type SharedSession,
+} from "./data/session";
+import { INACTIVITY_MS } from "./security";
+import { clientDeadline } from "./data/query";
 
 export function useSession() {
-  const [session, setSession] = useState(() =>
-    sessionStorage.getItem(SESSION_KEY),
+  const [store] = useState(
+    () =>
+      new MockSessionStore(localStorage, Date.now, undefined, () =>
+        window.dispatchEvent(new Event(SESSION_SIGNAL)),
+      ),
   );
-  const deadline = useRef(Number(sessionStorage.getItem(DEADLINE_KEY)));
-  const [locked, setLocked] = useState(
-    () => Boolean(session) && sessionExpired(deadline.current),
-  );
-  const identity = useRef(session);
-  identity.current = session;
-  const generation = useRef(
-    sessionStorage.getItem(SESSION_GENERATION_KEY) ?? "",
-  );
-  const logoutChannel = useRef<BroadcastChannel | null>(null);
-
-  function clearLocalSession() {
-    sessionStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(DEADLINE_KEY);
-    sessionStorage.removeItem(SESSION_GENERATION_KEY);
-    identity.current = null;
-    deadline.current = 0;
-    setSession(null);
-    setLocked(false);
+  const [info, setInfo] = useState<SharedSession | null>(() => store.read());
+  const [locked, setLocked] = useState(() => !!info && !store.active(info));
+  const identity = useRef(info);
+  identity.current = info;
+  function synchronize() {
+    const current = store.read();
+    identity.current = current;
+    setInfo(current);
+    const time = current ? store.timing(current) : undefined;
+    setLocked(
+      !!time &&
+        clientDeadline(time.serverTime, time.expiresAt, time.idleExpiresAt) <=
+          Date.now(),
+    );
   }
-
   function assertActive() {
-    if (
-      identity.current &&
-      !sessionGenerationMatches(
-        identity.current,
-        generation.current,
-        localStorage,
-      )
-    ) {
-      clearLocalSession();
-      throw Error(
-        "La sesión se cerró en otra pestaña. Volvé a iniciar sesión.",
-      );
-    }
-    // Paso 1: verificar identidad y plazo antes de persistir cualquier acción privada.
-    if (!identity.current || locked || sessionExpired(deadline.current)) {
-      // Paso 2: bloquear también si el temporizador se demoró por suspensión del equipo.
-      setLocked(true);
-      throw Error(
-        "La sesión está bloqueada por inactividad. Volvé a iniciar sesión.",
-      );
-    }
-    // Paso 3: permitir que el servicio continúe; no renovar por tareas automáticas.
+    store.assert(identity.current?.id ?? "closed");
   }
-
-  function login(userId: string) {
-    // Paso 1: el llamador ya verificó las credenciales.
-    const nextDeadline = Date.now() + INACTIVITY_MS;
-    // Paso 2: guardar el vencimiento por pestaña, conservado al recargar.
-    sessionStorage.setItem(SESSION_KEY, userId);
-    sessionStorage.setItem(DEADLINE_KEY, String(nextDeadline));
-    generation.current = localStorage.getItem(logoutKey(userId)) ?? "";
-    sessionStorage.setItem(SESSION_GENERATION_KEY, generation.current);
-    identity.current = userId;
-    // Paso 3: abrir la sesión únicamente tras guardar correctamente.
-    deadline.current = nextDeadline;
-    setSession(userId);
-    setLocked(false);
-  }
-
-  function logout() {
-    const userId = identity.current;
+  async function login(
+    userId: string,
+    before?: (session: SharedSession) => void | Promise<void>,
+  ) {
     try {
-      if (userId) {
-        logoutChannel.current?.postMessage({ type: "logout", userId });
-        localStorage.setItem(logoutKey(userId), crypto.randomUUID());
-      }
+      await store.login(userId, before);
     } finally {
-      clearLocalSession();
+      synchronize();
     }
   }
-
+  async function logout(before?: () => void | Promise<void>) {
+    const current = identity.current;
+    if (current) await store.logout(current.id, before);
+    synchronize();
+  }
+  async function confirmation(
+    valid: boolean,
+    auditFailure?: () => void | Promise<void>,
+  ) {
+    try {
+      return await store.confirmation(
+        identity.current?.id ?? "closed",
+        valid,
+        auditFailure,
+      );
+    } finally {
+      synchronize();
+    }
+  }
+  async function activity() {
+    const current = store.read();
+    if (current) await store.activity(current.id);
+    synchronize();
+  }
   useEffect(() => {
-    if (typeof BroadcastChannel === "undefined") return;
-    const channel = new BroadcastChannel("fcea-datasys.sessions");
-    logoutChannel.current = channel;
-    channel.onmessage = (event) => {
-      if (
-        event.data?.type === "logout" &&
-        event.data.userId === identity.current
-      )
-        clearLocalSession();
+    for (const key of [
+      "fcea-datasys.session",
+      "fcea-datasys.session.deadline",
+      "fcea-datasys.session.generation",
+      "fcea-datasys.audit.session",
+      "fcea-datasys.audit.started",
+    ])
+      sessionStorage.removeItem(key);
+    const storageListener = (event: StorageEvent) => {
+      if (event.key === SHARED_SESSION_KEY || event.key === null) synchronize();
     };
-    return () => {
-      channel.close();
-      logoutChannel.current = null;
+    const timer = setInterval(synchronize, 1000);
+    const activity = (event: Event) => {
+      if (
+        !event.isTrusted ||
+        !identity.current ||
+        !store.active(identity.current)
+      ) {
+        synchronize();
+        return;
+      }
+      if (Date.now() - identity.current.lastActivityAt < 15000) return;
+      void store
+        .activity(identity.current.id)
+        .then(synchronize)
+        .catch(synchronize);
     };
-  }, []);
-
-  useEffect(() => {
-    function synchronizeLogout(event?: StorageEvent) {
-      const userId = identity.current;
-      if (!userId) return;
-      if (event && event.key !== null && event.key !== logoutKey(userId))
-        return;
-      if (!sessionGenerationMatches(userId, generation.current, localStorage))
-        clearLocalSession();
-    }
-    synchronizeLogout();
-    window.addEventListener("storage", synchronizeLogout);
-    return () => window.removeEventListener("storage", synchronizeLogout);
-  }, [session]);
-
-  useEffect(() => {
-    if (!session || locked) {
-      return;
-    }
-
-    function checkDeadline() {
-      if (
-        identity.current &&
-        !sessionGenerationMatches(
-          identity.current,
-          generation.current,
-          localStorage,
-        )
-      ) {
-        clearLocalSession();
-        return;
-      }
-      if (sessionExpired(deadline.current)) {
-        setLocked(true);
-      }
-    }
-
-    function registerActivity(event: Event) {
-      // Paso 1: solo actividad real del usuario; nunca polling ni eventos sintéticos.
-      if (!event.isTrusted) {
-        return;
-      }
-      if (
-        identity.current &&
-        !sessionGenerationMatches(
-          identity.current,
-          generation.current,
-          localStorage,
-        )
-      ) {
-        clearLocalSession();
-        return;
-      }
-      // Paso 2: comprobar el plazo ANTES de renovarlo.
-      const renewed = renewActivity(deadline.current);
-      if (renewed === null) {
-        setLocked(true);
-        return;
-      }
-      // Paso 3: persistir el nuevo plazo. Si falla, bloquear de forma defensiva.
-      try {
-        sessionStorage.setItem(DEADLINE_KEY, String(renewed));
-        deadline.current = renewed;
-      } catch {
-        setLocked(true);
-      }
-    }
-
-    const activityEvents = ["pointerdown", "keydown", "wheel", "touchstart"];
-    for (const eventName of activityEvents) {
-      window.addEventListener(eventName, registerActivity, {
+    window.addEventListener("storage", storageListener);
+    window.addEventListener(SESSION_SIGNAL, synchronize);
+    window.addEventListener("focus", synchronize);
+    document.addEventListener("visibilitychange", synchronize);
+    for (const event of ["pointerdown", "keydown", "wheel", "touchstart"])
+      window.addEventListener(event, activity, {
         capture: true,
         passive: true,
       });
-    }
-    const timer = window.setInterval(checkDeadline, 1000);
-    window.addEventListener("focus", checkDeadline);
-    document.addEventListener("visibilitychange", checkDeadline);
-
+    synchronize();
     return () => {
       clearInterval(timer);
-      for (const eventName of activityEvents) {
-        window.removeEventListener(eventName, registerActivity, true);
-      }
-      window.removeEventListener("focus", checkDeadline);
-      document.removeEventListener("visibilitychange", checkDeadline);
+      window.removeEventListener("storage", storageListener);
+      window.removeEventListener(SESSION_SIGNAL, synchronize);
+      window.removeEventListener("focus", synchronize);
+      document.removeEventListener("visibilitychange", synchronize);
+      for (const event of ["pointerdown", "keydown", "wheel", "touchstart"])
+        window.removeEventListener(event, activity, true);
     };
-  }, [session, locked]);
-
-  return { session, locked, login, logout, assertActive };
+  }, [store]);
+  return {
+    session: info?.userId ?? null,
+    info,
+    locked,
+    login,
+    logout,
+    assertActive,
+    confirmation,
+    activity,
+    current: () => store.read(),
+    serverTime: new Date().toISOString(),
+    idleExpiresAt: info
+      ? new Date(
+          Math.min(info.expiresAt, info.lastActivityAt + INACTIVITY_MS),
+        ).toISOString()
+      : null,
+  };
 }

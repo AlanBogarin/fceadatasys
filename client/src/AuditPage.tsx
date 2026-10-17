@@ -1,30 +1,30 @@
-import { useRef, useState, useEffect } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Download,
   Eye,
   ListFilter,
-  Clock3,
   ShieldCheck,
 } from "lucide-react";
-import type { State, User } from "./model";
-import { ROLES, roleLabel } from "./model";
-import { Alert, errorText, Field, Modal } from "./ui";
+import { useEffect, useRef, useState } from "react";
+import "./administration.css";
 import {
-  auditRecords,
   emptyAuditFilters,
-  queryAudit,
   type AuditEvent,
   type AuditFilters,
   type AuditIntent,
 } from "./audit";
-import { buildAuditReport } from "./auditExports";
-import { downloadReport } from "./publicationExports";
 import { auditFailure } from "./auditSignals";
-import "./administration.css";
+import { useDataClient } from "./data/context";
+import type { UserDto as User } from "./data/contracts";
+import { useQuery } from "./data/useQuery";
+import type { ViewState as State } from "./data/view";
+import { roleLabel, ROLES } from "./model";
+import { downloadReport } from "./publicationExports";
+import { Alert, errorText, Field, Modal } from "./ui";
 
 export function AuditPage({
   state,
@@ -50,6 +50,15 @@ export function AuditPage({
   const current = useRef(state);
   current.current = state;
   const open = useRef(true);
+  const client = useDataClient();
+  const request = useQuery(
+    () => client.audit.list(filters, page, pageSize),
+    [state, filters, page, pageSize],
+  );
+  useEffect(() => {
+    const lastPage = Math.max(1, request.data?.pagination.totalPages ?? 1);
+    if (request.data && page > lastPage) setPage(lastPage);
+  }, [request.data, page]);
   useEffect(() => {
     open.current = true;
     return () => {
@@ -75,25 +84,15 @@ export function AuditPage({
       </section>
     );
   }
-  let all: AuditEvent[] = [];
-  let records: AuditEvent[] = [];
-  let filterError = "";
-  try {
-    all = auditRecords(state, user.id);
-    records = queryAudit(state, user.id, filters);
-  } catch (caught) {
-    filterError = errorText(caught);
-  }
-  const pages = Math.max(1, Math.ceil(records.length / pageSize));
+  const records = request.data?.data ?? [];
+  const total = request.data?.pagination.total ?? 0;
+  const allTotal = request.data?.summary.total ?? 0;
+  const filterError = request.error ? errorText(request.error) : "";
+  const pages = Math.max(1, request.data?.pagination.totalPages ?? 1);
   const currentPage = Math.min(page, pages);
-  const visible = records.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  );
+  const visible = records;
   const actors = new Map(
-    all
-      .filter((event) => event.actorId)
-      .map((event) => [event.actorId!, event.actorName]),
+    (request.data?.summary.actors ?? []).map((actor) => [actor.id, actor.name]),
   );
   function change(key: keyof AuditFilters, value: string) {
     setFilters({ ...filters, [key]: value });
@@ -109,22 +108,21 @@ export function AuditPage({
     setNotice("");
     try {
       assertActive();
-      const report = await buildAuditReport(state, user.id, filters, format);
+      if (!request.data) throw Error("Esperá a que termine la consulta.");
+      const report = await client.audit.export(
+        filters,
+        format,
+        request.data.export.snapshot,
+      );
       if (!open.current) return;
       assertActive();
-      if (current.current !== state)
-        throw Error(
-          "Los eventos cambiaron. Revisá el listado antes de exportar.",
-        );
-      recordAudit({
-        module: "Auditoría",
-        operation: "Exportar auditoría",
-        status: "EXITO",
-        detail: `${records.length} eventos seleccionados. Formato ${format.toUpperCase()}.`,
-      });
+      if ("data" in report) {
+        setNotice("No hay eventos para exportar. No se generó un archivo.");
+        return;
+      }
       downloadReport(report);
       setNotice(
-        `Reporte ${format.toUpperCase()} generado con ${records.length} ${records.length === 1 ? "evento" : "eventos"}.`,
+        `Reporte ${format.toUpperCase()} generado con ${total} ${total === 1 ? "evento" : "eventos"}.`,
       );
     } catch (caught) {
       auditFailure("Auditoría", "Exportar auditoría", caught);
@@ -153,7 +151,7 @@ export function AuditPage({
           </span>
           <div>
             <p>Eventos registrados</p>
-            <strong>{all.length}</strong>
+            <strong>{allTotal}</strong>
           </div>
         </div>
         <div className="stat">
@@ -162,7 +160,7 @@ export function AuditPage({
           </span>
           <div>
             <p>Coinciden con los filtros</p>
-            <strong>{records.length}</strong>
+            <strong>{total}</strong>
           </div>
         </div>
         <div className="stat">
@@ -171,9 +169,7 @@ export function AuditPage({
           </span>
           <div>
             <p>Operaciones fallidas</p>
-            <strong>
-              {records.filter((event) => event.status === "FALLIDO").length}
-            </strong>
+            <strong>{request.data?.summary.failed ?? 0}</strong>
           </div>
         </div>
       </div>
@@ -256,11 +252,9 @@ export function AuditPage({
               onChange={(event) => change("module", event.target.value)}
             >
               <option value="">Todos</option>
-              {[...new Set(all.map((event) => event.module))]
-                .sort()
-                .map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
+              {(request.data?.summary.modules ?? []).sort().map((name) => (
+                <option key={name}>{name}</option>
+              ))}
             </select>
           </Field>
           <Field label="Operación">
@@ -269,11 +263,9 @@ export function AuditPage({
               onChange={(event) => change("operation", event.target.value)}
             >
               <option value="">Todas</option>
-              {[...new Set(all.map((event) => event.operation))]
-                .sort()
-                .map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
+              {(request.data?.summary.operations ?? []).sort().map((name) => (
+                <option key={name}>{name}</option>
+              ))}
             </select>
           </Field>
           <Field label="Resultado">
@@ -303,7 +295,12 @@ export function AuditPage({
           </button>
           <button
             className="secondary"
-            disabled={busy || !records.length || Boolean(filterError)}
+            disabled={
+              busy ||
+              request.loading ||
+              !request.data?.export.exportable ||
+              Boolean(filterError)
+            }
             onClick={() => exportReport("pdf")}
           >
             <Download size={16} />
@@ -311,7 +308,12 @@ export function AuditPage({
           </button>
           <button
             className="secondary"
-            disabled={busy || !records.length || Boolean(filterError)}
+            disabled={
+              busy ||
+              request.loading ||
+              !request.data?.export.exportable ||
+              Boolean(filterError)
+            }
             onClick={() => exportReport("xlsx")}
           >
             <Download size={16} />
@@ -320,6 +322,17 @@ export function AuditPage({
         </div>
         <div className="audit-alerts">
           <Alert text={filterError || error} />
+          {request.loading && <p role="status">Consultando eventos…</p>}
+          <button
+            className="secondary"
+            disabled={busy || request.loading}
+            onClick={request.reload}
+          >
+            Actualizar resultados
+          </button>
+          {total > 0 && !request.data?.export.exportable && (
+            <Alert text="La selección supera 500 eventos o el tamaño máximo de exportación. Reducí los filtros." />
+          )}
           <Alert text={notice} success />
         </div>
         <div className="table-scroll">
@@ -380,16 +393,16 @@ export function AuditPage({
             </tbody>
           </table>
         </div>
-        {!records.length && !filterError && (
+        {!request.loading && !records.length && !filterError && (
           <div className="no-results">
             <ShieldCheck size={32} />
             <h3>
-              {all.length
+              {allTotal
                 ? "No hay eventos con estos filtros"
                 : "Todavía no hay eventos registrados"}
             </h3>
             <p>
-              {all.length
+              {allTotal
                 ? "Probá otro criterio o limpiá los filtros para ver todos los eventos."
                 : "Los accesos y las operaciones se mostrarán aquí cuando se registren."}
             </p>
@@ -397,8 +410,8 @@ export function AuditPage({
         )}
         <div className="table-footer audit-pagination">
           <span role="status">
-            {records.length
-              ? `Mostrando ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, records.length)} de ${records.length}`
+            {total
+              ? `Mostrando ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, total)} de ${total}`
               : "0 eventos"}
           </span>
           <label className="audit-page-size">

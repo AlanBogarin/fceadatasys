@@ -9,36 +9,46 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { DEMO_PASSWORD, digest, randomToken, type State } from "./model";
-import { INACTIVITY_MINUTES } from "./security";
-import { Alert, Brand, errorText, Field, Password } from "./ui";
-import { loginUser, recoverPassword, requireResult } from "./userService";
-import type { AuditIntent } from "./audit";
 import { auditFailure } from "./auditSignals";
+import { useDataClient } from "./data/context";
+import { DEMO_PASSWORD } from "./model";
+import { INACTIVITY_MINUTES } from "./security";
+import {
+  Alert,
+  applyFieldProblems,
+  Brand,
+  errorText,
+  Field,
+  Password,
+} from "./ui";
 export function Auth({
-  state,
-  commit,
   onLogin,
   lockedUsername,
   onExit,
+  initialToken,
+  onResetComplete,
 }: {
-  state: State;
-  commit: (value: State, intent?: AuditIntent) => void;
-  onLogin: (targetId: string) => void;
+  onLogin: () => void;
   lockedUsername?: string;
   onExit: () => void;
+  initialToken?: string;
+  onResetComplete: () => void;
 }) {
-  const [mode, setMode] = useState<"login" | "recover" | "reset">("login");
+  const client = useDataClient();
+  const [mode, setMode] = useState<"login" | "recover" | "reset">(
+    initialToken !== undefined ? "reset" : "login",
+  );
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(initialToken ?? "");
   const [credentials, setCredentials] = useState(false);
   const switchMode = (value: typeof mode) => {
     setMode(value);
     setError("");
     setMessage("");
     setToken("");
+    if (value === "login") onResetComplete();
   };
   async function submit(event: FormEvent<HTMLFormElement>) {
     // Paso 1: leer los datos de entrada e impedir envíos duplicados.
@@ -47,91 +57,35 @@ export function Auth({
     setError("");
     setMessage("");
     setBusy(true);
-    const form = new FormData(event.currentTarget);
+    const element = event.currentTarget;
+    const form = new FormData(element);
     try {
       if (mode === "login") {
-        const result = await loginUser(
-          state,
+        await client.auth.initializeBrowser();
+        await client.auth.login(
           lockedUsername || String(form.get("username")),
           String(form.get("password")),
         );
-        if (result.datos) {
-          const username = lockedUsername || String(form.get("username"));
-          const actor = state.users.find(
-            (account) =>
-              account.username.trim().toLocaleLowerCase() ===
-              username.trim().toLocaleLowerCase(),
-          );
-          commit(result.datos.state, {
-            module: "Sesiones",
-            operation: result.exito
-              ? "Iniciar sesión"
-              : "Inicio de sesión rechazado",
-            status: result.exito ? "EXITO" : "FALLIDO",
-            actorId: actor?.id ?? null,
-            actorName: actor?.name ?? username.slice(0, 40),
-            detail: result.mensaje,
-          });
-        }
-        if (!result.exito) {
-          setError(result.mensaje);
-        } else if (result.datos.userId) {
-          onLogin(result.datos.userId);
-        }
+        onLogin();
       }
       if (mode === "recover") {
-        const email = String(form.get("email")).trim().toLowerCase();
-        const person = state.users.find(
-          (account) => account.email.toLowerCase() === email && account.active,
-        );
-        setToken("");
-        if (person) {
-          const value = randomToken();
-          commit(
-            {
-              ...state,
-              recovery: [
-                ...state.recovery.filter(
-                  (entry) =>
-                    entry.userId !== person.id && entry.expiresAt > Date.now(),
-                ),
-                {
-                  userId: person.id,
-                  hash: await digest(value),
-                  expiresAt: Date.now() + 15 * 60000,
-                },
-              ],
-            },
-            {
-              module: "Sesiones",
-              operation: "Solicitar recuperación",
-              status: "EXITO",
-              actorId: person.id,
-              detail:
-                "Se preparó una recuperación local. El token no se registra en auditoría.",
-            },
-          );
-          setToken(value);
-        }
-        setMessage(
-          "Solicitud registrada. En el sistema final, una cuenta activa recibirá un enlace de recuperación por correo.",
-        );
+        const email = String(form.get("email"));
+        const result = await client.auth.requestRecovery(email);
+        setToken(client.auth.demoRecoveryToken(email));
+        setMessage(result.message);
       }
       if (mode === "reset") {
         const password = String(form.get("newPassword"));
-        if (password !== form.get("confirm")) {
+        if (password !== form.get("confirm"))
           throw Error("Las contraseñas no coinciden.");
-        }
-        commit(
-          requireResult(
-            await recoverPassword(state, String(form.get("token")), password),
-          ),
-        );
+        await client.auth.resetPassword(token, password);
         setMode("login");
         setToken("");
         setMessage("Contraseña actualizada. Ya podés iniciar sesión.");
+        onResetComplete();
       }
     } catch (error) {
+      applyFieldProblems(element, error);
       auditFailure("Sesiones", "Autenticación o recuperación rechazada", error);
       setError(errorText(error));
     } finally {
@@ -207,7 +161,7 @@ export function Auth({
               <div>
                 <strong>Sesión bloqueada por inactividad</strong>
                 <p>
-                  Pasaron {INACTIVITY_MINUTES} minutos sin actividad. Voler a
+                  Pasaron {INACTIVITY_MINUTES} minutos sin actividad. Volvé a
                   autenticarse como {lockedUsername}.
                 </p>
                 <button className="text-button" type="button" onClick={onExit}>

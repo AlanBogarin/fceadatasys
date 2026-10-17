@@ -1,11 +1,3 @@
-import { auditFailure } from "./auditSignals";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
 import {
   Check,
   ChevronLeft,
@@ -21,16 +13,23 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import type { State, User } from "./model";
 import {
-  catalogConfig,
-  deleteCatalogRecord,
-  filterCatalog,
-  saveCatalogRecord,
-  setCatalogActive,
-  type CatalogKey,
-  type CatalogRecord,
-} from "./catalogs";
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { auditFailure } from "./auditSignals";
+import { catalogConfig, type CatalogKey, type CatalogRecord } from "./catalogs";
+import { useDataClient } from "./data/context";
+import type { UserDto as User } from "./data/contracts";
+import { catalogDto } from "./data/contracts";
+import { useQuery } from "./data/useQuery";
+import { useVersionedDraft, VersionReview } from "./data/useVersionedDraft";
+import type { ViewState as State } from "./data/view";
+import { applyFieldProblems } from "./ui";
+type VersionedCatalog = CatalogRecord & { etag?: string };
 
 function CatalogDialog({
   title,
@@ -78,30 +77,45 @@ export default function CatalogPage({
   catalog,
   state,
   user,
-  commit,
   notify,
 }: {
   catalog: CatalogKey;
   state: State;
   user: User;
-  commit: (s: State) => Promise<void>;
   notify: (s: string) => void;
 }) {
+  const client = useDataClient();
   const config = catalogConfig[catalog];
   const records = state.catalogs[catalog];
   const person = catalog === "autores" || catalog === "tutores";
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [editing, setEditing] = useState<CatalogRecord | "new" | null>(null);
+  const [editing, setEditing] = useState<VersionedCatalog | "new" | null>(null);
   const [detail, setDetail] = useState<CatalogRecord | null>(null);
-  const [toggle, setToggle] = useState<CatalogRecord | null>(null);
-  const [deleting, setDeleting] = useState<CatalogRecord | null>(null);
+  const [toggle, setToggle] = useState<VersionedCatalog | null>(null);
+  const [deleting, setDeleting] = useState<VersionedCatalog | null>(null);
   const [error, setError] = useState("");
-  const filtered = filterCatalog(records, query, status);
-  const pages = Math.max(1, Math.ceil(filtered.length / 8));
+  const request = useQuery(
+    () =>
+      client.catalogs.list(catalog, {
+        search: query,
+        active: status ? String(status === "active") : "",
+        page,
+        pageSize: 8,
+      }),
+    [state, catalog, query, status, page],
+  );
+  const filtered = request.data?.data ?? [];
+  const total = request.data?.pagination.total ?? 0;
+  const totalRecords = request.data?.summary.total ?? 0;
+  const activeRecords = request.data?.summary.active ?? 0;
+  const pages = Math.max(1, request.data?.pagination.totalPages ?? 1);
+  useEffect(() => {
+    if (request.data && page > pages) setPage(pages);
+  }, [request.data, page, pages]);
   const current = Math.min(page, pages);
-  const visible = filtered.slice((current - 1) * 8, current * 8);
+  const visible = filtered;
   const resetFilters = () => {
     setQuery("");
     setStatus("");
@@ -129,7 +143,7 @@ export default function CatalogPage({
           </span>
           <div>
             <p>Total de registros</p>
-            <strong>{records.length.toString().padStart(2, "0")}</strong>
+            <strong>{String(totalRecords).padStart(2, "0")}</strong>
           </div>
         </div>
         <div className="stat">
@@ -138,12 +152,7 @@ export default function CatalogPage({
           </span>
           <div>
             <p>Activos</p>
-            <strong>
-              {records
-                .filter((r) => r.active)
-                .length.toString()
-                .padStart(2, "0")}
-            </strong>
+            <strong>{String(activeRecords).padStart(2, "0")}</strong>
           </div>
         </div>
         <div className="stat">
@@ -153,10 +162,7 @@ export default function CatalogPage({
           <div>
             <p>Inactivos</p>
             <strong>
-              {records
-                .filter((r) => !r.active)
-                .length.toString()
-                .padStart(2, "0")}
+              {String(totalRecords - activeRecords).padStart(2, "0")}
             </strong>
           </div>
         </div>
@@ -167,7 +173,7 @@ export default function CatalogPage({
             <h2>Directorio de {config.title.toLocaleLowerCase("es")}</h2>
             <p>Consultá, agregá y actualizá los registros.</p>
           </div>
-          <span className="badge blue">{records.length} registros</span>
+          <span className="badge blue">{totalRecords} registros</span>
         </div>
         <div className="filter-bar">
           <label className="search-field">
@@ -251,7 +257,14 @@ export default function CatalogPage({
                         className="icon-btn"
                         title="Editar"
                         aria-label={`Editar ${record.name}`}
-                        onClick={() => setEditing(record)}
+                        onClick={() => {
+                          void client.catalogs
+                            .get(catalog, record.id)
+                            .then((result) =>
+                              setEditing({ ...result.data, etag: result.etag }),
+                            )
+                            .catch((error) => setError(message(error)));
+                        }}
                       >
                         <Pencil size={16} />
                       </button>
@@ -259,9 +272,17 @@ export default function CatalogPage({
                         className="icon-btn"
                         title={record.active ? "Inactivar" : "Activar"}
                         aria-label={`${record.active ? "Inactivar" : "Activar"} ${record.name}`}
-                        onClick={() => {
+                        onClick={async () => {
                           setError("");
-                          setToggle(record);
+                          try {
+                            const result = await client.catalogs.get(
+                              catalog,
+                              record.id,
+                            );
+                            setToggle({ ...result.data, etag: result.etag });
+                          } catch (error) {
+                            setError(message(error));
+                          }
                         }}
                       >
                         <Settings2 size={17} />
@@ -272,9 +293,20 @@ export default function CatalogPage({
                           className="icon-btn catalog-delete"
                           title="Eliminar"
                           aria-label={`Eliminar ${record.name}`}
-                          onClick={() => {
+                          onClick={async () => {
                             setError("");
-                            setDeleting(record);
+                            try {
+                              const result = await client.catalogs.get(
+                                catalog,
+                                record.id,
+                              );
+                              setDeleting({
+                                ...result.data,
+                                etag: result.etag,
+                              });
+                            } catch (error) {
+                              setError(message(error));
+                            }
                           }}
                         >
                           <Trash2 size={17} />
@@ -287,7 +319,9 @@ export default function CatalogPage({
             </tbody>
           </table>
         </div>
-        {!visible.length && (
+        {request.loading && <p role="status">Consultando registros…</p>}
+        {Boolean(request.error) && <p role="alert">{message(request.error)}</p>}
+        {!request.loading && !visible.length && (
           <div className="no-results catalog-empty">
             <FolderOpen size={34} />
             <h3>
@@ -311,7 +345,7 @@ export default function CatalogPage({
         <div className="table-footer">
           <span>
             {filtered.length
-              ? `Mostrando ${(current - 1) * 8 + 1}–${Math.min(current * 8, filtered.length)} de ${filtered.length} registros`
+              ? `Mostrando ${(current - 1) * 8 + 1}–${Math.min(current * 8, total)} de ${total} registros`
               : "0 registros"}
           </span>
           <div className="pagination">
@@ -377,14 +411,10 @@ export default function CatalogPage({
               onClick={async () => {
                 try {
                   // Paso 1 y 2: el servicio exige Administrador y ausencia de referencias.
-                  const updatedState = deleteCatalogRecord(
-                    state,
-                    user.id,
-                    catalog,
-                    deleting.id,
-                  );
                   // Paso 3: confirmar el guardado antes de comunicar la eliminación.
-                  await commit(updatedState);
+                  await client.catalogs.remove(catalog, deleting.id, {
+                    ifMatch: deleting.etag,
+                  });
                   notify("Registro eliminado.");
                   setDeleting(null);
                 } catch (caught) {
@@ -404,7 +434,6 @@ export default function CatalogPage({
           state={state}
           user={user}
           editing={editing}
-          commit={commit}
           notify={notify}
           close={() => setEditing(null)}
         />
@@ -477,14 +506,11 @@ export default function CatalogPage({
               className="primary"
               onClick={async () => {
                 try {
-                  await commit(
-                    setCatalogActive(
-                      state,
-                      user.id,
-                      catalog,
-                      toggle.id,
-                      !toggle.active,
-                    ),
+                  await client.catalogs.active(
+                    catalog,
+                    toggle.id,
+                    !toggle.active,
+                    { ifMatch: toggle.etag },
                   );
                   notify(
                     toggle.active
@@ -512,46 +538,52 @@ function CatalogForm({
   state,
   user,
   editing,
-  commit,
   notify,
   close,
 }: {
   catalog: CatalogKey;
   state: State;
   user: User;
-  editing: CatalogRecord | "new";
-  commit: (s: State) => Promise<void>;
+  editing: VersionedCatalog | "new";
   notify: (s: string) => void;
   close: () => void;
 }) {
   const config = catalogConfig[catalog];
   const personForm = catalog === "autores" || catalog === "tutores";
   const record = editing === "new" ? null : editing;
+  const client = useDataClient();
+  const version = useVersionedDraft(
+    record ? catalogDto(record) : null,
+    record?.etag,
+  );
+  const current = record
+    ? state.catalogs[catalog].find((item) => item.id === record.id)
+    : undefined;
   const [error, setError] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const values = new FormData(e.currentTarget);
+    const element = e.currentTarget;
+    const values = new FormData(element);
     try {
-      await commit(
-        saveCatalogRecord(
-          state,
-          user.id,
-          catalog,
-          {
-            name: String(values.get("name") || ""),
-            fields: Object.fromEntries(
-              config.fields.map((f) => [
-                f.key,
-                String(values.get(f.key) || ""),
-              ]),
-            ),
-          },
-          record?.id,
-        ),
+      const etag = record
+        ? await version.check(current ? catalogDto(current) : null)
+        : undefined;
+      await client.catalogs.save(
+        catalog,
+        {
+          name: String(values.get("name") || ""),
+          fields: Object.fromEntries(
+            config.fields.map((f) => [f.key, String(values.get(f.key) || "")]),
+          ),
+        },
+        record?.id,
+        { ifMatch: etag },
       );
       notify(record ? "Registro actualizado." : "Registro creado.");
       close();
     } catch (e) {
+      applyFieldProblems(element, e);
+      version.failed(e);
       auditFailure("Catálogos", "Operación rechazada", e);
       setError(message(e));
     }
@@ -568,11 +600,29 @@ function CatalogForm({
               {error}
             </div>
           )}
+          {version.conflict && current && (
+            <VersionReview
+              values={{
+                Nombre: current.name,
+                ...current.fields,
+                Estado: current.active ? "Activo" : "Inactivo",
+              }}
+              onReviewed={() => {
+                void client.catalogs
+                  .get(catalog, current.id)
+                  .then((result) => {
+                    version.review(result.data, result.etag);
+                    setError("");
+                  })
+                  .catch((error) => setError(message(error)));
+              }}
+            />
+          )}
           <p className="muted">
             {personForm
-              ? "Nombre completo, cédula y correo son obligatorios. ORCID y los otros datos son opcionales."
+              ? "El nombre completo es obligatorio. Cédula, correo y los otros datos son opcionales."
               : catalog === "carreras"
-                ? "El nombre y el código son obligatorios."
+                ? "El nombre es obligatorio. El código es opcional."
                 : "El nombre es obligatorio. Los demás campos son opcionales."}
           </p>
           <label className="field">

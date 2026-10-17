@@ -1,5 +1,6 @@
 import { hashPassword, type State } from "./model";
 import { settingsOf } from "./settings";
+import { problem } from "./data/problems";
 
 export function existingChanges(
   before: State,
@@ -79,9 +80,35 @@ export async function verifyConfirmationPassword(
   );
   if (!actor || actor.lockedUntil > Date.now())
     throw Error("La cuenta no está habilitada para confirmar cambios.");
-  if (!password || password.length > 1024) return false;
+  if (!password || password.length > 128) return false;
   // Paso 2: comparar con la credencial vigente, sin guardar ni registrar el texto ingresado.
   const providedHash = await hashPassword(password, actor.salt);
   // Paso 3: devolver únicamente el resultado de la verificación.
   return providedHash === actor.passwordHash;
+}
+
+export async function verifyConfirmationHeader(
+  state: State,
+  actorId: string,
+  header?: string,
+): Promise<boolean> {
+  if (!header || !/^[A-Za-z0-9+/]+={0,2}$/.test(header) || header.length > 1024)
+    throw problem(
+      428,
+      "CONFIRMATION_REQUIRED",
+      "Ingresá tu contraseña actual para confirmar.",
+    );
+  let password: string;
+  try {
+    password = new TextDecoder("utf-8", { fatal: true }).decode(
+      Uint8Array.from(atob(header), (character) => character.charCodeAt(0)),
+    );
+  } catch {
+    throw problem(
+      428,
+      "CONFIRMATION_REQUIRED",
+      "La confirmación no es válida. Volvé a ingresarla.",
+    );
+  }
+  return verifyConfirmationPassword(state, actorId, password);
 }

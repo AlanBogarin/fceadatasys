@@ -1,98 +1,57 @@
-import { Brand, errorText, initials } from "./ui";
-import { UsersPage, Profile, ChangePassword } from "./UserPages";
-import { Auth } from "./AuthPage";
-import { PublicationsPage, PublicationReportsPage } from "./PublicationPages";
-import { AttachmentPage } from "./AttachmentPage";
-import { DemoDataPanel } from "./DemoDataPanel";
-import "./demoData.css";
-import { useSession } from "./useSession";
-import { useMutationConfirmation } from "./useMutationConfirmation";
-import { BibliographicPage } from "./BibliographicPage";
-import { AuditPage } from "./AuditPage";
-import { SettingsPage } from "./SettingsPage";
-import { auditMutation, type AuditIntent, type AuditContext } from "./audit";
-import { observeAudit } from "./auditSignals";
-import { canOpenPage, INACTIVITY_MINUTES } from "./security";
 import {
-  createUser,
-  editUser,
-  loadUserForEdit,
-  deleteUser,
-  editProfile,
-  loginUser,
-  updatePersonalPassword,
-  updateManagedPassword,
-  recoverPassword,
-  requireResult,
-} from "./userService";
-import CatalogPage, { RolesPage } from "./CatalogPage";
-import { isCatalogKey, canManageCatalog } from "./catalogs";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
-import {
-  Trash2,
   ArrowLeft,
   ArrowRight,
   BookOpen,
   Building2,
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   CircleHelp,
+  Clock3,
+  Construction,
   FileText,
   FolderOpen,
   GraduationCap,
   LayoutDashboard,
-  ListFilter,
+  LibraryBig,
   LockKeyhole,
   LogOut,
-  Mail,
   Menu,
-  Pencil,
-  Plus,
   Search,
-  Settings2,
   ShieldCheck,
   SlidersHorizontal,
   UploadCloud,
   UserRound,
   Users,
-  X,
-  Eye,
-  EyeOff,
-  Clock3,
-  Construction,
-  LibraryBig,
   type LucideIcon,
 } from "lucide-react";
-import {
-  authenticate,
-  changeOwnPassword,
-  changeUserPassword,
-  DEMO_PASSWORD,
-  digest,
-  guardAdmin,
-  hashPassword,
-  makeUser,
-  passwordError,
-  randomToken,
-  resetPassword,
-  roleLabel,
-  ROLES,
-  updateUser,
-  validateUser,
-  type Role,
-  type State,
-  type User,
-  type UserInput,
-} from "./model";
-import { load, save, SESSION_KEY } from "./storage";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AttachmentPage } from "./AttachmentPage";
+import { AuditPage } from "./AuditPage";
+import { Auth } from "./AuthPage";
+import { BibliographicPage } from "./BibliographicPage";
+import CatalogPage, { RolesPage } from "./CatalogPage";
+import { DemoDataPanel } from "./DemoDataPanel";
+import { PublicationReportsPage, PublicationsPage } from "./PublicationPages";
+import { SettingsPage } from "./SettingsPage";
+import { ChangePassword, Profile, UsersPage } from "./UserPages";
+import { auditMutation, type AuditContext, type AuditIntent } from "./audit";
+import { observeAudit } from "./auditSignals";
+import { isCatalogKey } from "./catalogs";
+import { assertMockMode, clientConfig } from "./data/config";
+import { DataProvider } from "./data/context";
+import { userDto, type UserDto as User } from "./data/contracts";
+import { browserLock } from "./data/coordination";
+import { createMockClient } from "./data/mockClient";
+import { problem } from "./data/problems";
+import { viewStateOf, type ViewState } from "./data/view";
+import "./demoData.css";
+import { roleLabel, type Role, type State } from "./model";
+import { canOpenPage } from "./security";
+import { load, save } from "./storage";
+import { Brand, errorText, initials } from "./ui";
+import { useMutationConfirmation } from "./useMutationConfirmation";
+import { useSession } from "./useSession";
 type Item = {
   id: string;
   label: string;
@@ -339,6 +298,9 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [reportPublicationId, setReportPublicationId] = useState("");
   const [registrationAttachmentId, setRegistrationAttachmentId] = useState("");
+  const [recoveryLink, setRecoveryLink] = useState<string | null>(() =>
+    new URL(location.href).searchParams.get("token"),
+  );
   const [mobile, setMobile] = useState(false);
   const auditSessionId = useRef(
     sessionStorage.getItem("fcea-datasys.audit.session") ?? crypto.randomUUID(),
@@ -346,6 +308,10 @@ export default function App() {
   const sessionStarted = useRef(
     Number(sessionStorage.getItem("fcea-datasys.audit.started")) || Date.now(),
   );
+  if (sessionControl.info) {
+    auditSessionId.current = sessionControl.info.id;
+    sessionStarted.current = sessionControl.info.createdAt;
+  }
   const sessionIdentity = useRef(session);
   sessionIdentity.current = session;
   const confirmationControl = useMutationConfirmation({
@@ -354,9 +320,70 @@ export default function App() {
     assertActive: sessionControl.assertActive,
     persist: (after, before) => commitAuthentication(after, before),
     logout: () => logout(),
+    recordConfirmation: (valid, persist) =>
+      sessionControl.confirmation(
+        valid,
+        valid
+          ? persist
+          : () =>
+              recordAudit({
+                module: "Seguridad",
+                operation:
+                  (sessionControl.info?.confirmationFailures ?? 0) >= 2
+                    ? "Cerrar sesión por confirmaciones incorrectas"
+                    : "Confirmación rechazada",
+                status: "FALLIDO",
+                detail: `Contraseña de confirmación incorrecta. Duración de sesión: ${Math.max(0, Math.floor((Date.now() - (sessionControl.info?.createdAt ?? Date.now())) / 1000))} segundos.`,
+              }),
+      ),
     contextKey: `${session ?? ""}:${locked}:${page}`,
   });
+  const clientRuntime = useRef({ confirmationControl, sessionControl });
+  clientRuntime.current = { confirmationControl, sessionControl };
+  const [client] = useState(() =>
+    createMockClient({
+      read: () => {
+        if (!stateRef.current)
+          throw Error("Los datos todavía no están disponibles.");
+        return stateRef.current;
+      },
+      actorId: () => sessionIdentity.current ?? "",
+      assertActive: () => clientRuntime.current.sessionControl.assertActive(),
+      commit: async (after, before, options) => {
+        if (options?.currentPasswordVerified) {
+          clientRuntime.current.sessionControl.assertActive();
+          await commitAuthentication(after, before);
+        } else
+          await clientRuntime.current.confirmationControl.commit(after, before);
+      },
+      audit: (intent) => recordAudit(intent),
+      authentication: {
+        current: () => clientRuntime.current.sessionControl.current(),
+        login: (userId, before) =>
+          clientRuntime.current.sessionControl.login(userId, async (shared) => {
+            auditSessionId.current = shared.id;
+            sessionStarted.current = shared.createdAt;
+            await before();
+          }),
+        logout: (before) => clientRuntime.current.sessionControl.logout(before),
+        activity: () => clientRuntime.current.sessionControl.activity(),
+        commit: (after, before, intent) =>
+          commitAuthentication(after, before, intent),
+      },
+    }),
+  );
   useEffect(() => {
+    try {
+      assertMockMode(clientConfig(import.meta.env));
+    } catch (error) {
+      setFatal(errorText(error));
+      return;
+    }
+    if (new URL(location.href).searchParams.has("token")) {
+      const cleanUrl = new URL(location.href);
+      cleanUrl.searchParams.delete("token");
+      history.replaceState(null, "", cleanUrl);
+    }
     load()
       .then(setState)
       .catch((error) =>
@@ -385,54 +412,69 @@ export default function App() {
       userAgent: navigator.userAgent,
     };
   }
-  function commitAuthentication(
+  async function commitAuthentication(
     next: State,
     expected = stateRef.current,
     intent?: AuditIntent,
+    auditOnly = false,
   ) {
-    // Paso 1: rechazar escrituras calculadas sobre una versión desactualizada.
-    const stored = localStorage.getItem("fcea-datasys.frontend.v1");
-    if (
-      stored &&
-      JSON.stringify(JSON.parse(stored)) !== JSON.stringify(expected)
-    ) {
-      const latest = JSON.parse(stored) as State;
-      stateRef.current = latest;
-      setState(latest);
-      throw Error(
-        "Los datos cambiaron en otra operación o pestaña. Volvé a abrir el formulario.",
-      );
-    }
-    // Paso 2: guardar de forma indivisible el estado local completo.
-    if (!expected) throw Error("Los datos todavía no están disponibles.");
-    const context = auditContext();
-    if (
-      intent?.module === "Sesiones" &&
-      intent.operation === "Iniciar sesión" &&
-      intent.status === "EXITO"
-    ) {
-      auditSessionId.current = crypto.randomUUID();
-      context.sessionId = auditSessionId.current;
-    }
-    const audited = auditMutation(expected, next, context, intent);
-    save(audited);
-    // Paso 3: actualizar la pantalla únicamente después de persistir.
-    stateRef.current = audited;
-    setState(audited);
+    return browserLock("data", async () => {
+      // Paso 1: rechazar escrituras calculadas sobre una versión desactualizada.
+      const stored = localStorage.getItem("fcea-datasys.frontend.v1");
+      if (auditOnly && stored) {
+        expected = JSON.parse(stored) as State;
+        next = expected;
+      }
+      if (
+        stored &&
+        JSON.stringify(JSON.parse(stored)) !== JSON.stringify(expected)
+      ) {
+        const latest = JSON.parse(stored) as State;
+        stateRef.current = latest;
+        setState(latest);
+        throw problem(
+          412,
+          "RESOURCE_VERSION_CONFLICT",
+          "Los datos cambiaron en otra operación o pestaña. Se conservaron tus datos ingresados; revisá los valores actuales.",
+        );
+      }
+      // Paso 2: guardar de forma indivisible el estado local completo.
+      if (!expected) throw Error("Los datos todavía no están disponibles.");
+      const context = auditContext();
+      if (
+        intent?.module === "Sesiones" &&
+        intent.operation === "Iniciar sesión" &&
+        intent.status === "EXITO"
+      ) {
+        context.sessionId = auditSessionId.current;
+      }
+      let audited: State;
+      try {
+        audited = auditMutation(expected, next, context, intent);
+        save(audited);
+      } catch {
+        throw problem(
+          503,
+          "AUDIT_UNAVAILABLE",
+          "No se pudieron guardar los datos junto con su auditoría. La operación se canceló.",
+        );
+      }
+      // Paso 3: actualizar la pantalla únicamente después de persistir.
+      stateRef.current = audited;
+      setState(audited);
+    });
   }
   function recordAudit(intent: AuditIntent) {
     const latest = stateRef.current;
     if (!latest) return;
-    commitAuthentication(latest, latest, intent);
+    return commitAuthentication(latest, latest, intent, true);
   }
   useEffect(
     () =>
       observeAudit((intent) => {
-        try {
-          recordAudit(intent);
-        } catch (caught) {
+        void Promise.resolve(recordAudit(intent)).catch((caught) => {
           setFatal(`No se pudo registrar la auditoría. ${errorText(caught)}`);
-        }
+        });
       }),
     [],
   );
@@ -440,16 +482,14 @@ export default function App() {
   useEffect(() => {
     if (!state) return;
     if (state && session && locked && !previousLock.current) {
-      try {
+      void Promise.resolve(
         recordAudit({
           module: "Sesiones",
           operation: "Bloquear por inactividad",
           status: "EXITO",
           detail: "La sesión alcanzó el plazo de diez minutos sin actividad.",
-        });
-      } catch (caught) {
-        setFatal(errorText(caught));
-      }
+        }),
+      ).catch((caught) => setFatal(errorText(caught)));
     }
     previousLock.current = locked;
   }, [locked, state, session]);
@@ -466,23 +506,18 @@ export default function App() {
       deniedPage.current !== key
     ) {
       deniedPage.current = key;
-      try {
+      void Promise.resolve(
         recordAudit({
           module: "Seguridad",
           operation: "Acceso denegado",
           status: "FALLIDO",
           resourceName: page,
           detail: "La cuenta no tiene permiso para abrir esta página.",
-        });
-      } catch (caught) {
-        setFatal(errorText(caught));
-      }
+        }),
+      ).catch((caught) => setFatal(errorText(caught)));
     } else if (currentUser && canOpenPage(currentUser.role, page))
       deniedPage.current = "";
   }, [session, page, locked]);
-  function commit(next: State) {
-    return confirmationControl.commit(next, state);
-  }
   useEffect(() => {
     function synchronize(event: StorageEvent) {
       if (event.key === "fcea-datasys.frontend.v1") {
@@ -494,12 +529,17 @@ export default function App() {
     window.addEventListener("storage", synchronize);
     return () => window.removeEventListener("storage", synchronize);
   }, []);
-  const user = state?.users.find(
+  const userRecord = state?.users.find(
     (account) => account.id === session && account.active,
+  );
+  const user = userRecord ? userDto(userRecord) : undefined;
+  const view = useMemo(
+    () => (state && userRecord ? viewStateOf(state, userRecord.id) : undefined),
+    [state, userRecord?.id],
   );
   useEffect(() => {
     if (state && session && !user) {
-      sessionControl.logout();
+      void sessionControl.logout().catch((error) => setFatal(errorText(error)));
     }
   }, [state, session, user]);
   const navigate = (targetId: string) => {
@@ -507,24 +547,17 @@ export default function App() {
     setMobile(false);
   };
   const logout = () => {
-    try {
-      if (stateRef.current && sessionIdentity.current)
-        recordAudit({
-          module: "Sesiones",
-          operation: "Cerrar sesión",
-          status: "EXITO",
-          detail: `Duración de sesión: ${Math.max(0, Math.round((Date.now() - sessionStarted.current) / 1000))} segundos. Cierre propagado a las pestañas de la misma cuenta.`,
-        });
-    } catch (caught) {
-      setFatal(
-        `No se pudo registrar el cierre de sesión. ${errorText(caught)}`,
-      );
-    }
-    sessionControl.logout();
-    sessionStorage.removeItem("fcea-datasys.audit.session");
-    sessionStorage.removeItem("fcea-datasys.audit.started");
-    location.hash = "login";
-    setToast("Sesión cerrada.");
+    return client.auth
+      .logout()
+      .then(() => {
+        location.hash = "login";
+        setToast("Sesión cerrada.");
+      })
+      .catch((caught) => {
+        setFatal(
+          `No se pudo registrar el cierre de sesión. ${errorText(caught)}`,
+        );
+      });
   };
   if (fatal) {
     return (
@@ -546,27 +579,18 @@ export default function App() {
       </div>
     );
   }
-  if (!user || locked) {
+  if (!user || locked || recoveryLink !== null) {
     return (
-      <>
+      <DataProvider client={client}>
         <Auth
-          state={state}
-          commit={(next, intent) =>
-            commitAuthentication(next, stateRef.current, intent)
-          }
+          initialToken={recoveryLink ?? undefined}
+          onResetComplete={() => {
+            setRecoveryLink(null);
+            if (user && !locked) navigate("dashboard");
+          }}
           lockedUsername={locked ? user?.username : undefined}
           onExit={logout}
-          onLogin={(targetId) => {
-            sessionControl.login(targetId);
-            sessionStorage.setItem(
-              "fcea-datasys.audit.session",
-              auditSessionId.current,
-            );
-            sessionStarted.current = Date.now();
-            sessionStorage.setItem(
-              "fcea-datasys.audit.started",
-              String(sessionStarted.current),
-            );
+          onLogin={() => {
             setToast("");
             if (!locked) {
               navigate("dashboard");
@@ -579,7 +603,7 @@ export default function App() {
             {toast}
           </div>
         )}
-      </>
+      </DataProvider>
     );
   }
   const current = allItems.find((item) => item.id === page);
@@ -610,11 +634,10 @@ export default function App() {
       return (
         <BibliographicPage
           key={page}
-          state={state!}
+          state={view!}
           user={user!}
           advanced={page === "busqueda"}
           navigate={navigate}
-          commit={commit}
           assertActive={sessionControl.assertActive}
         />
       );
@@ -624,9 +647,8 @@ export default function App() {
         <CatalogPage
           key={page}
           catalog={page}
-          state={state!}
+          state={view!}
           user={user!}
-          commit={commit}
           notify={setToast}
         />
       );
@@ -637,7 +659,7 @@ export default function App() {
     if (page === "auditoria") {
       return (
         <AuditPage
-          state={state!}
+          state={view!}
           user={user!}
           assertActive={sessionControl.assertActive}
           recordAudit={recordAudit}
@@ -645,23 +667,15 @@ export default function App() {
       );
     }
     if (page === "parametros") {
-      return (
-        <SettingsPage
-          state={state!}
-          user={user!}
-          commit={commit}
-          notify={setToast}
-        />
-      );
+      return <SettingsPage state={view!} user={user!} notify={setToast} />;
     }
     if (page === "gestion-publicaciones") {
       return (
         <PublicationsPage
           initialAttachmentId={registrationAttachmentId}
           consumeInitialAttachment={() => setRegistrationAttachmentId("")}
-          state={state!}
+          state={view!}
           user={user!}
-          commit={commit}
           assertActive={sessionControl.assertActive}
           notify={setToast}
           showReport={(publicationId) => {
@@ -674,9 +688,8 @@ export default function App() {
     if (page === "archivos") {
       return (
         <AttachmentPage
-          state={state!}
+          state={view!}
           user={user!}
-          commit={commit}
           assertActive={sessionControl.assertActive}
           register={(attachmentId) => {
             setRegistrationAttachmentId(attachmentId);
@@ -689,40 +702,24 @@ export default function App() {
       return (
         <PublicationReportsPage
           recordAudit={recordAudit}
-          state={state!}
+          state={view!}
           user={user!}
-          commit={commit}
           initialId={reportPublicationId}
           assertActive={sessionControl.assertActive}
         />
       );
     }
     if (page === "usuarios") {
-      return (
-        <UsersPage
-          state={state!}
-          user={user!}
-          commit={commit}
-          notify={setToast}
-        />
-      );
+      return <UsersPage state={view!} user={user!} notify={setToast} />;
     }
     if (page === "perfil") {
-      return (
-        <Profile
-          state={state!}
-          user={user!}
-          commit={commit}
-          notify={setToast}
-        />
-      );
+      return <Profile state={view!} user={user!} notify={setToast} />;
     }
     if (page === "password") {
       return (
         <ChangePassword
-          state={state!}
+          state={view!}
           user={user!}
-          commit={commit}
           onDone={() => {
             navigate("perfil");
             setToast("Contraseña actualizada. Tu sesión sigue activa.");
@@ -735,137 +732,139 @@ export default function App() {
     }
     return (
       <Dashboard
-        state={state!}
+        state={view!}
         user={user!}
         navigate={navigate}
-        commit={commit}
         notify={setToast}
       />
     );
   }
   return (
-    <div className="app-shell">
-      {mobile && (
-        <button
-          className="sidebar-backdrop"
-          aria-label="Cerrar menú"
-          onClick={() => setMobile(false)}
-        />
-      )}
-      <aside className={`sidebar ${mobile ? "open" : ""}`}>
-        <div className="sidebar-brand">
-          <Brand onNavigate={() => navigate("dashboard")} />
-        </div>
-        <div className="sidebar-nav">
-          {groups.map((group) => {
-            const items = group.items.filter(
-              (item) => !item.roles || item.roles.includes(user.role),
-            );
-            return (
-              !!items.length && (
-                <nav key={group.label} aria-label={group.label}>
-                  <p className="nav-label">{group.label}</p>
-                  {items.map((item) => (
-                    <a
-                      key={item.id}
-                      href={`#${item.id}`}
-                      onClick={() => setMobile(false)}
-                      className={`nav-item ${page === item.id ? "selected" : ""}`}
-                      aria-current={page === item.id ? "page" : undefined}
-                    >
-                      <item.icon size={18} />
-                      <span>{item.label}</span>
-                      {!item.ready && (
-                        <span className="pending-dot" title="En construcción" />
-                      )}
-                    </a>
-                  ))}
-                </nav>
-              )
-            );
-          })}
-          <nav aria-label="Mi cuenta">
-            <p className="nav-label">Mi cuenta</p>
-            <a
-              href="#perfil"
-              className={`nav-item ${page === "perfil" ? "selected" : ""}`}
-              onClick={() => setMobile(false)}
-            >
-              <UserRound size={18} />
-              Mi perfil
-            </a>
-            <a
-              href="#password"
-              className={`nav-item ${page === "password" ? "selected" : ""}`}
-              onClick={() => setMobile(false)}
-            >
-              <LockKeyhole size={18} />
-              Cambiar contraseña
-            </a>
-          </nav>
-        </div>
-        <div className="sidebar-bottom">
-          <div className="session-person">
-            <span className="avatar">{initials(user.name)}</span>
-            <span>
-              <strong>{user.name}</strong>
-              <small>{roleLabel[user.role]}</small>
-            </span>
+    <DataProvider client={client}>
+      <div className="app-shell">
+        {mobile && (
+          <button
+            className="sidebar-backdrop"
+            aria-label="Cerrar menú"
+            onClick={() => setMobile(false)}
+          />
+        )}
+        <aside className={`sidebar ${mobile ? "open" : ""}`}>
+          <div className="sidebar-brand">
+            <Brand onNavigate={() => navigate("dashboard")} />
           </div>
-          <button className="logout" onClick={logout}>
-            <LogOut size={18} />
-            Cerrar sesión
-          </button>
-        </div>
-      </aside>
-      <div className="workspace">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <button
-              className="icon-btn mobile-toggle"
-              aria-label="Abrir menú"
-              onClick={() => setMobile(true)}
-            >
-              <Menu size={22} />
+          <div className="sidebar-nav">
+            {groups.map((group) => {
+              const items = group.items.filter(
+                (item) => !item.roles || item.roles.includes(user.role),
+              );
+              return (
+                !!items.length && (
+                  <nav key={group.label} aria-label={group.label}>
+                    <p className="nav-label">{group.label}</p>
+                    {items.map((item) => (
+                      <a
+                        key={item.id}
+                        href={`#${item.id}`}
+                        onClick={() => setMobile(false)}
+                        className={`nav-item ${page === item.id ? "selected" : ""}`}
+                        aria-current={page === item.id ? "page" : undefined}
+                      >
+                        <item.icon size={18} />
+                        <span>{item.label}</span>
+                        {!item.ready && (
+                          <span
+                            className="pending-dot"
+                            title="En construcción"
+                          />
+                        )}
+                      </a>
+                    ))}
+                  </nav>
+                )
+              );
+            })}
+            <nav aria-label="Mi cuenta">
+              <p className="nav-label">Mi cuenta</p>
+              <a
+                href="#perfil"
+                className={`nav-item ${page === "perfil" ? "selected" : ""}`}
+                onClick={() => setMobile(false)}
+              >
+                <UserRound size={18} />
+                Mi perfil
+              </a>
+              <a
+                href="#password"
+                className={`nav-item ${page === "password" ? "selected" : ""}`}
+                onClick={() => setMobile(false)}
+              >
+                <LockKeyhole size={18} />
+                Cambiar contraseña
+              </a>
+            </nav>
+          </div>
+          <div className="sidebar-bottom">
+            <div className="session-person">
+              <span className="avatar">{initials(user.name)}</span>
+              <span>
+                <strong>{user.name}</strong>
+                <small>{roleLabel[user.role]}</small>
+              </span>
+            </div>
+            <button className="logout" onClick={logout}>
+              <LogOut size={18} />
+              Cerrar sesión
             </button>
-            <span>Espacio institucional</span>
-            <ChevronRight size={14} />
-            <strong>{title}</strong>
           </div>
-          <div className="topbar-right">
-            <span className="demo-chip">Demostración local</span>
-            <AccountMenu user={user} navigate={navigate} logout={logout} />
-          </div>
-        </header>
-        <main id="main" className="main-content" key={page}>
-          {renderPage()}
-        </main>
-        <footer className="workspace-footer">
-          <span>FCEA · Universidad Nacional de Concepción</span>
-          <span>Repositorio de investigaciones · Demostración local</span>
-        </footer>
-      </div>
-      {confirmationControl.confirmation}
-      {toast && (
-        <div className="toast" role="status">
-          <Check size={18} />
-          {toast}
+        </aside>
+        <div className="workspace">
+          <header className="topbar">
+            <div className="breadcrumb">
+              <button
+                className="icon-btn mobile-toggle"
+                aria-label="Abrir menú"
+                onClick={() => setMobile(true)}
+              >
+                <Menu size={22} />
+              </button>
+              <span>Espacio institucional</span>
+              <ChevronRight size={14} />
+              <strong>{title}</strong>
+            </div>
+            <div className="topbar-right">
+              <span className="demo-chip">Demostración local</span>
+              <AccountMenu user={user} navigate={navigate} logout={logout} />
+            </div>
+          </header>
+          <main id="main" className="main-content" key={page}>
+            {renderPage()}
+          </main>
+          <footer className="workspace-footer">
+            <span>FCEA · Universidad Nacional de Concepción</span>
+            <span>Repositorio de investigaciones · Demostración local</span>
+          </footer>
         </div>
-      )}
-    </div>
+        {confirmationControl.confirmation}
+        {toast && (
+          <div className="toast" role="status">
+            <Check size={18} />
+            {toast}
+          </div>
+        )}
+      </div>
+    </DataProvider>
   );
 }
 function Dashboard({
   state,
   user,
   navigate,
-  commit,
   notify,
 }: {
-  state: State;
+  state: ViewState;
   user: User;
   navigate: (targetId: string) => void;
-  commit: (state: State) => Promise<void>;
   notify: (message: string) => void;
 }) {
   const cards = [
@@ -1017,12 +1016,7 @@ function Dashboard({
           </div>
         </div>
       </div>
-      <DemoDataPanel
-        state={state}
-        user={user}
-        commit={commit}
-        notify={notify}
-      />
+      <DemoDataPanel user={user} notify={notify} />
       <div className="section-heading">
         <h2>Accesos rápidos</h2>
         <span>Herramientas de tu cuenta</span>

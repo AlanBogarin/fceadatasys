@@ -1,5 +1,3 @@
-import { settingsOf } from "./settings";
-import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   Check,
@@ -8,29 +6,27 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import type { State, User } from "./model";
-import { Alert, Field, errorText } from "./ui";
-import { normalizeCatalog } from "./catalogs";
-import { registrationDate } from "./publications";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { AttachmentDownload } from "./PublicationPages";
-import {
-  attachmentRecords,
-  attachmentSize,
-  uploadAttachment,
-  type UploadedAttachment,
-} from "./attachmentService";
+import { attachmentSize, type UploadedAttachment } from "./attachmentService";
+import { attachmentAccept } from "./attachments";
 import "./attachments.css";
+import { useDataClient } from "./data/context";
+import type { UserDto as User } from "./data/contracts";
+import { useQuery } from "./data/useQuery";
+import type { ViewState as State } from "./data/view";
+import { registrationDate } from "./publications";
+import { settingsOf } from "./settings";
+import { Alert, Field, errorText } from "./ui";
 
 export function AttachmentPage({
   state,
   user,
-  commit,
   assertActive,
   register,
 }: {
   state: State;
   user: User;
-  commit: (state: State) => Promise<void>;
   assertActive: () => void;
   register: (attachmentId: string) => void;
 }) {
@@ -46,6 +42,7 @@ export function AttachmentPage({
   const running = useRef(false);
   const mounted = useRef(true);
   const latest = useRef(state);
+  const client = useDataClient();
   latest.current = state;
   useEffect(() => {
     mounted.current = true;
@@ -54,18 +51,23 @@ export function AttachmentPage({
     };
   }, []);
 
-  const records = attachmentRecords(state, user.id);
-  const available = records.filter((entry) => !entry.publication).length;
-  const term = normalizeCatalog(query);
-  const matches = records.filter(
-    (entry) =>
-      (filter === "all" ||
-        (filter === "available" ? !entry.publication : !!entry.publication)) &&
-      normalizeCatalog(
-        `${entry.attachment.name} ${entry.publication?.title ?? ""} ${entry.publication?.code ?? ""}`,
-      ).includes(term),
+  const request = useQuery(
+    () =>
+      client.attachments.list({
+        search: query,
+        status: filter === "all" ? undefined : filter,
+        page,
+        pageSize: 8,
+      }),
+    [state, query, filter, page],
   );
-  const pages = Math.max(1, Math.ceil(matches.length / 8));
+  const records = request.data?.data ?? [];
+  const available = request.data?.summary.DISPONIBLE ?? 0;
+  const matches = records;
+  const pages = Math.max(1, request.data?.pagination.totalPages ?? 1);
+  useEffect(() => {
+    if (request.data && page > pages) setPage(pages);
+  }, [request.data, page, pages]);
   const current = Math.min(page, pages);
   const busy = !!stage;
 
@@ -76,7 +78,7 @@ export function AttachmentPage({
     if (!files?.length) return;
     if (files.length !== 1) {
       setFile(undefined);
-      setError("Seleccioná un solo PDF por carga.");
+      setError("Seleccioná un solo documento por carga.");
       return;
     }
     setFile(files[0]);
@@ -86,32 +88,31 @@ export function AttachmentPage({
     event.preventDefault();
     if (running.current) return;
     if (!file) {
-      setError("Seleccioná el PDF que querés cargar.");
+      setError("Seleccioná el documento que querés cargar.");
       return;
     }
     running.current = true;
     setError("");
     setUploaded(undefined);
     try {
-      const result = await uploadAttachment({
-        state,
-        actorId: user.id,
-        file,
-        commit,
-        onStage: setStage,
-        assertActive: () => {
-          assertActive();
-          if (!mounted.current)
-            throw Error("La pantalla se cerró. No se confirmó la carga.");
-          if (latest.current !== state)
-            throw Error("Los datos cambiaron. Volvé a intentar la carga.");
-        },
+      const result = await client.attachments.upload(file, (stage) => {
+        assertActive();
+        if (!mounted.current)
+          throw Error("La pantalla se cerró. No se confirmó la carga.");
+        if (latest.current !== state)
+          throw Error("Los datos cambiaron. Volvé a intentar la carga.");
+        setStage(stage);
       });
       if (!mounted.current) return;
-      setUploaded(result);
+      setUploaded({
+        attachment: result,
+        createdAt: result.createdAt,
+        createdBy: result.createdBy,
+        status: result.status,
+      });
       setFile(undefined);
       if (input.current) input.current.value = "";
-      setFilter("available");
+      setFilter("DISPONIBLE");
       setQuery("");
       setPage(1);
     } catch (caught) {
@@ -140,7 +141,7 @@ export function AttachmentPage({
         <li>
           <span>1</span>
           <div>
-            <strong>Cargar el PDF</strong>
+            <strong>Cargar el documento</strong>
             <small>Seleccioná y guardá el documento.</small>
           </div>
         </li>
@@ -156,8 +157,9 @@ export function AttachmentPage({
         <form className="upload-card" onSubmit={submit} aria-busy={busy}>
           <h2>Nuevo archivo</h2>
           <p>
-            Un documento por carga · PDF de hasta{" "}
-            {settingsOf(state).maxPdfSizeMb} MB
+            Un documento por carga ·{" "}
+            {settingsOf(state).allowedFormats.join(" / ").toUpperCase()} de
+            hasta {settingsOf(state).maxPdfSizeMb} MiB
           </p>
           <div
             className={`upload-dropzone${dragging ? " dragging" : ""}`}
@@ -180,16 +182,16 @@ export function AttachmentPage({
             }}
           >
             <UploadCloud size={36} aria-hidden="true" />
-            <strong>Arrastrá tu PDF hasta aquí</strong>
+            <strong>Arrastrá tu documento hasta aquí</strong>
             <span>o elegilo desde tu equipo</span>
             <label
               className={`secondary upload-file-label${busy ? " disabled" : ""}`}
             >
-              Seleccionar PDF
+              Seleccionar archivo
               <input
                 ref={input}
                 type="file"
-                accept=".pdf,application/pdf"
+                accept={attachmentAccept(settingsOf(state).allowedFormats)}
                 disabled={busy}
                 onChange={(event) => {
                   selectFiles(event.target.files);
@@ -223,7 +225,7 @@ export function AttachmentPage({
           <div className="upload-submit">
             <span role="status">
               {stage === "validating"
-                ? "Comprobando el PDF y buscando duplicados…"
+                ? "Comprobando el archivo y buscando duplicados…"
                 : stage === "saving"
                   ? "Guardando el archivo…"
                   : "El archivo se vincula al confirmar la publicación."}
@@ -239,7 +241,8 @@ export function AttachmentPage({
           <ul>
             <li>Usá la versión final de un trabajo aprobado.</li>
             <li>
-              Se comprueba el formato, el contenido básico y el tamaño del PDF.
+              Se comprueba el formato, el contenido básico y el tamaño del
+              archivo.
             </li>
             <li>
               No se admite el mismo archivo dos veces, aunque cambies su nombre.
@@ -283,8 +286,8 @@ export function AttachmentPage({
           <div>
             <h2 id="upload-library-title">Archivos cargados</h2>
             <p>
-              {available} disponibles · {records.length - available} vinculados
-              a publicaciones
+              {available} disponibles · {request.data?.summary.VINCULADO ?? 0}{" "}
+              vinculados a publicaciones
             </p>
           </div>
         </div>
@@ -292,7 +295,7 @@ export function AttachmentPage({
           <Field label="Buscar archivo o publicación">
             <input
               type="search"
-              placeholder="Nombre del PDF, título o código…"
+              placeholder="Nombre del archivo, título o código…"
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
@@ -309,8 +312,11 @@ export function AttachmentPage({
               }}
             >
               <option value="all">Todos los archivos</option>
-              <option value="available">Disponibles para vincular</option>
-              <option value="linked">Vinculados a publicaciones</option>
+              <option value="DISPONIBLE">Disponibles para vincular</option>
+              <option value="VINCULADO">Vinculados a publicaciones</option>
+              <option value="RESERVADO">Reservados por uso histórico</option>
+              <option value="RECHAZADO">Rechazados</option>
+              <option value="PENDIENTE">Pendientes de verificación</option>
             </select>
           </Field>
         </div>
@@ -324,26 +330,35 @@ export function AttachmentPage({
               </tr>
             </thead>
             <tbody>
-              {matches.slice((current - 1) * 8, current * 8).map((entry) => (
-                <tr key={entry.attachment.id}>
+              {matches.map((entry) => (
+                <tr key={entry.id}>
                   <td>
-                    <strong>{entry.attachment.name}</strong>
+                    <strong>{entry.name}</strong>
                     <small>
-                      PDF · {attachmentSize(entry.attachment.size)} ·{" "}
+                      {entry.mime === "text/plain" ? "TXT" : "PDF"} ·{" "}
+                      {attachmentSize(entry.size)} ·{" "}
                       {registrationDate(entry.createdAt)}
                     </small>
                     <details>
                       <summary>Detalles del archivo</summary>
                       <small>Cargado por {entry.createdBy.name}</small>
                       <small>SHA-256</small>
-                      <code>{entry.attachment.sha256}</code>
+                      <code>{entry.sha256}</code>
                     </details>
                   </td>
                   <td>
                     <span
                       className={`badge ${entry.publication ? "neutral" : "active"}`}
                     >
-                      {entry.publication ? "Vinculado" : "Disponible"}
+                      {
+                        {
+                          DISPONIBLE: "Disponible",
+                          VINCULADO: "Vinculado",
+                          RESERVADO: "Reservado",
+                          RECHAZADO: "Rechazado",
+                          PENDIENTE: "Pendiente de verificación",
+                        }[entry.status]
+                      }
                     </span>
                     {entry.publication ? (
                       <>
@@ -355,29 +370,41 @@ export function AttachmentPage({
                     )}
                   </td>
                   <td>
-                    {entry.publication ? (
+                    {entry.publication && entry.status === "VINCULADO" ? (
                       <AttachmentDownload
-                        publication={entry.publication}
+                        attachment={entry}
                         state={state}
                         user={user}
-                        commit={commit}
                         assertActive={assertActive}
                       />
-                    ) : (
+                    ) : entry.status === "DISPONIBLE" ? (
                       <button
                         className="secondary"
-                        disabled={busy}
-                        onClick={() => register(entry.attachment.id)}
+                        disabled={
+                          busy ||
+                          !settingsOf(state).allowedFormats.includes(
+                            entry.mime === "text/plain" ? "txt" : "pdf",
+                          ) ||
+                          entry.size >
+                            settingsOf(state).maxPdfSizeMb * 1024 * 1024
+                        }
+                        onClick={() => register(entry.id)}
                       >
                         Registrar publicación <ArrowRight size={16} />
                       </button>
+                    ) : (
+                      <span className="muted">
+                        No disponible para vincular ni descargar
+                      </span>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {!matches.length && (
+          {request.loading && <p role="status">Buscando archivos…</p>}
+          <Alert text={request.error ? errorText(request.error) : ""} />
+          {!request.loading && !matches.length && (
             <div className="publication-empty">
               <FolderOpen size={32} />
               <h3>
@@ -388,14 +415,15 @@ export function AttachmentPage({
               <p>
                 {records.length
                   ? "Probá otro nombre o cambiá el estado seleccionado."
-                  : "Cargá un PDF para empezar. Los enlaces externos se registran desde Publicaciones."}
+                  : "Cargá un archivo permitido para empezar. Los enlaces externos se registran desde Publicaciones."}
               </p>
             </div>
           )}
         </div>
         <div className="people-pagination">
           <span role="status">
-            {matches.length} archivo(s) · Página {current} de {pages}
+            {request.data?.pagination.total ?? 0} archivo(s) · Página {current}{" "}
+            de {pages}
           </span>
           <div className="publication-actions">
             <button

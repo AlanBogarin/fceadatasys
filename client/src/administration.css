@@ -1,3 +1,62 @@
+.version-review {
+  padding: 18px;
+  margin: 0 0 22px;
+  border: 1px solid #e4c58f;
+  border-radius: 8px;
+  background: #fff9ef;
+  color: #5c421d;
+}
+.version-review p {
+  margin: 8px 0 12px;
+}
+.version-review dl {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+.version-review dt {
+  font-size: 12px;
+  font-weight: 600;
+}
+.version-review dd {
+  margin: 3px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.version-review button {
+  white-space: normal;
+  text-align: center;
+}
+.format-options {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 8px 0 18px;
+}
+.format-options legend {
+  font-weight: 600;
+  padding: 0 5px;
+}
+.format-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 7px 22px 12px 0;
+}
+.format-options input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  accent-color: #590d31;
+}
+.format-options p {
+  font-size: 12px;
+}
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"] {
+  border-color: #b43d4c;
+}
 .administration-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr);

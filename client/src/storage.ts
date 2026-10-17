@@ -2,9 +2,13 @@ import { migrateCatalogs } from "./catalogs";
 import { seed, type State } from "./model";
 import { buildDemoData } from "./demoData";
 import { updateSettings } from "./settings";
+import { browserLock } from "./data/coordination";
 const KEY = "fcea-datasys.frontend.v1";
 export const SESSION_KEY = "fcea-datasys.session";
 export async function load(demoBaseUrl = window.location.href): Promise<State> {
+  return browserLock("data", () => loadLocal(demoBaseUrl));
+}
+async function loadLocal(demoBaseUrl: string): Promise<State> {
   const raw = localStorage.getItem(KEY);
   if (raw) {
     const state = JSON.parse(raw) as State;

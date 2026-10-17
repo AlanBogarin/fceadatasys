@@ -1,4 +1,3 @@
-import { auditFailure } from "./auditSignals";
 import {
   Check,
   ChevronLeft,
@@ -15,60 +14,77 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { auditFailure } from "./auditSignals";
+import { useDataClient } from "./data/context";
+import { userDto, type UserDto as User } from "./data/contracts";
+import { useQuery } from "./data/useQuery";
+import { useVersionedDraft, VersionReview } from "./data/useVersionedDraft";
+import type { ViewState as State } from "./data/view";
 import {
   guardAdmin,
   roleLabel,
   ROLES,
   type Role,
-  type State,
-  type User,
   type UserInput,
 } from "./model";
-import { Alert, errorText, Field, initials, Modal, Password } from "./ui";
 import {
-  createUser,
-  deleteUser,
-  editProfile,
-  editUser,
-  loadUserForEdit,
-  requireResult,
-  updateManagedPassword,
-  updatePersonalPassword,
-} from "./userService";
+  Alert,
+  applyFieldProblems,
+  errorText,
+  Field,
+  initials,
+  Modal,
+  Password,
+} from "./ui";
+type VersionedUser = User & { etag?: string };
+const userInput = (user: User): UserInput => ({
+  name: user.name,
+  ci: user.ci,
+  email: user.email,
+  username: user.username,
+  role: user.role,
+  active: user.active,
+});
 export function UsersPage({
   state,
   user,
-  commit,
   notify,
 }: {
   state: State;
   user: User;
-  commit: (value: State) => Promise<void>;
   notify: (text: string) => void;
 }) {
+  const client = useDataClient();
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [deleting, setDeleting] = useState<User | null>(null);
-  const [editing, setEditing] = useState<User | "new" | null>(null);
+  const [deleting, setDeleting] = useState<VersionedUser | null>(null);
+  const [editing, setEditing] = useState<VersionedUser | "new" | null>(null);
   const [detail, setDetail] = useState<User | null>(null);
-  const [toggle, setToggle] = useState<User | null>(null);
+  const [toggle, setToggle] = useState<VersionedUser | null>(null);
   const [passwordUser, setPasswordUser] = useState<User | null>(null);
   const [error, setError] = useState("");
-  const filtered = state.users.filter(
-    (account) =>
-      (!query ||
-        `${account.name} ${account.username} ${account.email} ${account.ci}`
-          .toLowerCase()
-          .includes(query.toLowerCase())) &&
-      (!role || account.role === role) &&
-      (!status || (status === "active") === account.active),
+  const request = useQuery(
+    () =>
+      client.users.list({
+        search: query,
+        role,
+        active: status ? String(status === "active") : "",
+        page,
+        pageSize: 6,
+      }),
+    [state, query, role, status, page],
   );
-  const maxPage = Math.max(1, Math.ceil(filtered.length / 6));
+  const filtered = request.data?.data ?? [];
+  const total = request.data?.pagination.total ?? 0;
+  const maxPage = Math.max(1, request.data?.pagination.totalPages ?? 1);
+  useEffect(() => {
+    if (request.data && page > maxPage) setPage(maxPage);
+  }, [request.data, page, maxPage]);
   const actualPage = Math.min(page, maxPage);
-  const rows = filtered.slice((actualPage - 1) * 6, actualPage * 6);
+  const rows = filtered;
   return (
     <>
       <div className="page-heading">
@@ -89,7 +105,9 @@ export function UsersPage({
           </span>
           <div>
             <p>Total de usuarios</p>
-            <strong>{state.users.length.toString().padStart(2, "0")}</strong>
+            <strong>
+              {String(request.data?.summary.total ?? 0).padStart(2, "0")}
+            </strong>
           </div>
         </div>
         <div className="stat">
@@ -99,10 +117,7 @@ export function UsersPage({
           <div>
             <p>Cuentas activas</p>
             <strong>
-              {state.users
-                .filter((account) => account.active)
-                .length.toString()
-                .padStart(2, "0")}
+              {String(request.data?.summary.active ?? 0).padStart(2, "0")}
             </strong>
           </div>
         </div>
@@ -113,13 +128,10 @@ export function UsersPage({
           <div>
             <p>Administradores activos</p>
             <strong>
-              {state.users
-                .filter(
-                  (account) =>
-                    account.active && account.role === "ADMINISTRADOR",
-                )
-                .length.toString()
-                .padStart(2, "0")}
+              {String(request.data?.summary.administrators ?? 0).padStart(
+                2,
+                "0",
+              )}
             </strong>
           </div>
         </div>
@@ -130,7 +142,9 @@ export function UsersPage({
             <h2>Directorio de usuarios</h2>
             <p>Consultá y mantené las cuentas institucionales.</p>
           </div>
-          <span className="badge blue">{state.users.length} usuarios</span>
+          <span className="badge blue">
+            {request.data?.summary.total ?? 0} usuarios
+          </span>
         </div>
         <div className="filter-bar">
           <label className="search-field">
@@ -266,13 +280,10 @@ export function UsersPage({
                       <button
                         className="icon-btn"
                         aria-label={`Editar ${account.username}`}
-                        onClick={() => {
+                        onClick={async () => {
                           try {
-                            setEditing(
-                              requireResult(
-                                loadUserForEdit(state, user.id, account.id),
-                              ),
-                            );
+                            const result = await client.users.get(account.id);
+                            setEditing({ ...result.data, etag: result.etag });
                           } catch (error) {
                             auditFailure(
                               "Usuarios",
@@ -303,9 +314,14 @@ export function UsersPage({
                         className="icon-btn"
                         aria-label={`${account.active ? "Inactivar" : "Activar"} ${account.username}`}
                         disabled={account.id === user.id}
-                        onClick={() => {
+                        onClick={async () => {
                           setError("");
-                          setToggle(account);
+                          try {
+                            const result = await client.users.get(account.id);
+                            setToggle({ ...result.data, etag: result.etag });
+                          } catch (error) {
+                            setError(errorText(error));
+                          }
                         }}
                       >
                         <Settings2 size={17} />
@@ -314,9 +330,14 @@ export function UsersPage({
                         className="icon-btn"
                         aria-label={`Eliminar ${account.username}`}
                         disabled={account.id === user.id}
-                        onClick={() => {
+                        onClick={async () => {
                           setError("");
-                          setDeleting(account);
+                          try {
+                            const result = await client.users.get(account.id);
+                            setDeleting({ ...result.data, etag: result.etag });
+                          } catch (error) {
+                            setError(errorText(error));
+                          }
                         }}
                       >
                         <Trash2 size={17} />
@@ -327,7 +348,9 @@ export function UsersPage({
               ))}
             </tbody>
           </table>
-          {!rows.length && (
+          {request.loading && <p role="status">Consultando usuarios…</p>}
+          <Alert text={request.error ? errorText(request.error) : ""} />
+          {!request.loading && !rows.length && (
             <div className="no-results">
               <Search size={28} />
               <h3>No se encontraron usuarios</h3>
@@ -338,7 +361,7 @@ export function UsersPage({
         <div className="table-footer">
           <span>
             {filtered.length
-              ? `Mostrando ${(actualPage - 1) * 6 + 1}–${Math.min(actualPage * 6, filtered.length)} de ${filtered.length} usuarios`
+              ? `Mostrando ${(actualPage - 1) * 6 + 1}–${Math.min(actualPage * 6, total)} de ${total} usuarios`
               : "0 usuarios"}
           </span>
           <div className="pagination">
@@ -393,9 +416,10 @@ export function UsersPage({
               className="primary"
               onClick={async () => {
                 try {
-                  const result = deleteUser(state, user.id, deleting.id);
-                  await commit(requireResult(result));
-                  notify(result.mensaje);
+                  await client.users.remove(deleting.id, {
+                    ifMatch: deleting.etag,
+                  });
+                  notify("Usuario eliminado.");
                   setDeleting(null);
                   setError("");
                 } catch (error) {
@@ -414,7 +438,6 @@ export function UsersPage({
           state={state}
           actor={user}
           target={passwordUser}
-          commit={commit}
           notify={notify}
           close={() => setPasswordUser(null)}
         />
@@ -424,7 +447,6 @@ export function UsersPage({
           state={state}
           actor={user}
           editing={editing}
-          commit={commit}
           close={() => setEditing(null)}
           notify={notify}
         />
@@ -485,13 +507,10 @@ export function UsersPage({
               className="primary"
               onClick={async () => {
                 try {
-                  await commit(
-                    requireResult(
-                      editUser(state, user.id, toggle.id, {
-                        ...toggle,
-                        active: !toggle.active,
-                      }),
-                    ),
+                  await client.users.update(
+                    toggle.id,
+                    { ...userInput(toggle), active: !toggle.active },
+                    { ifMatch: toggle.etag },
                   );
                   notify(
                     toggle.active ? "Usuario inactivado." : "Usuario activado.",
@@ -516,17 +535,16 @@ export function AdminPasswordForm({
   state,
   actor,
   target,
-  commit,
   close,
   notify,
 }: {
   state: State;
   actor: User;
   target: User;
-  commit: (value: State) => Promise<void>;
   close: () => void;
   notify: (value: string) => void;
 }) {
+  const client = useDataClient();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -535,20 +553,18 @@ export function AdminPasswordForm({
     event.preventDefault();
     setError("");
     setBusy(true);
-    const data = new FormData(event.currentTarget);
+    const element = event.currentTarget;
+    const data = new FormData(element);
     try {
       const password = String(data.get("newPassword"));
       if (password !== data.get("confirm")) {
         throw Error("Las contraseñas nuevas no coinciden.");
       }
-      await commit(
-        requireResult(
-          await updateManagedPassword(state, actor.id, target.id, password),
-        ),
-      );
+      await client.users.managedPassword(target.id, password);
       notify(`Contraseña de ${target.username} actualizada.`);
       close();
     } catch (error) {
+      applyFieldProblems(element, error);
       auditFailure("Usuarios", "Operación rechazada", error);
       setError(errorText(error));
     } finally {
@@ -616,18 +632,24 @@ export function UserForm({
   state,
   actor,
   editing,
-  commit,
   close,
   notify,
 }: {
   state: State;
   actor: User;
-  editing: User | "new";
-  commit: (value: State) => Promise<void>;
+  editing: VersionedUser | "new";
   close: () => void;
   notify: (value: string) => void;
 }) {
   const person = editing === "new" ? null : editing;
+  const client = useDataClient();
+  const version = useVersionedDraft(
+    person ? userDto(person) : null,
+    person?.etag,
+  );
+  const currentPerson = person
+    ? state.users.find((user) => user.id === person.id)
+    : undefined;
   const [selectedRole, setSelectedRole] = useState<Role>(
     person?.role || "PUBLICO",
   );
@@ -641,7 +663,8 @@ export function UserForm({
     event.preventDefault();
     setBusy(true);
     setError("");
-    const data = new FormData(event.currentTarget);
+    const element = event.currentTarget;
+    const data = new FormData(element);
     try {
       guardAdmin(state, actor.id);
       const input: UserInput = {
@@ -653,29 +676,26 @@ export function UserForm({
         active: data.get("active") === "true",
       };
       // Paso 2: comprobar que la precarga no quedó desactualizada.
-      if (
-        person &&
-        JSON.stringify(
-          state.users.find((account) => account.id === person.id),
-        ) !== JSON.stringify(person)
-      ) {
-        throw Error(
-          "La cuenta cambió desde que abriste el formulario. Cerralo y volvé a editar.",
-        );
-      }
+      const etag = person
+        ? await version.check(
+            currentPerson ? userDto(currentPerson) : null,
+            "USER_VERSION_CONFLICT",
+          )
+        : undefined;
       // Paso 3: aplicar reglas y persistir antes de informar éxito.
       if (person) {
-        await commit(
-          requireResult(editUser(state, actor.id, person.id, input)),
-        );
+        await client.users
+          .update(person.id, input, { ifMatch: etag })
+          .catch((error) => {
+            version.failed(error);
+            throw error;
+          });
       } else {
         const password = String(data.get("password"));
         if (password !== data.get("confirm")) {
           throw Error("Las contraseñas no coinciden.");
         }
-        await commit(
-          requireResult(await createUser(state, actor.id, input, password)),
-        );
+        await client.users.create(input, password);
       }
       notify(
         person
@@ -684,6 +704,7 @@ export function UserForm({
       );
       close();
     } catch (error) {
+      applyFieldProblems(element, error);
       auditFailure("Usuarios", "Operación rechazada", error);
       setError(errorText(error));
     } finally {
@@ -695,6 +716,27 @@ export function UserForm({
       <form onSubmit={submit}>
         <div className="modal-body">
           <Alert text={error} />
+          {version.conflict && currentPerson && (
+            <VersionReview
+              values={{
+                Nombre: currentPerson.name,
+                CI: currentPerson.ci,
+                Correo: currentPerson.email,
+                Usuario: currentPerson.username,
+                Rol: roleLabel[currentPerson.role],
+                Estado: currentPerson.active ? "Activo" : "Inactivo",
+              }}
+              onReviewed={() => {
+                void client.users
+                  .get(currentPerson.id)
+                  .then((result) => {
+                    version.review(result.data, result.etag);
+                    setError("");
+                  })
+                  .catch((error) => setError(errorText(error)));
+              }}
+            />
+          )}
           <p className="muted">Los campos marcados con * son obligatorios.</p>
           <div className="form-grid">
             <Field
@@ -829,32 +871,29 @@ export function UserForm({
 export function Profile({
   state,
   user,
-  commit,
   notify,
 }: {
   state: State;
   user: User;
-  commit: (value: State) => Promise<void>;
   notify: (value: string) => void;
 }) {
+  const client = useDataClient();
   const [error, setError] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
     // Paso 1: leer solamente los campos editables del perfil.
     event.preventDefault();
     setError("");
-    const data = new FormData(event.currentTarget);
+    const element = event.currentTarget;
+    const data = new FormData(element);
     try {
-      await commit(
-        requireResult(
-          editProfile(state, user.id, {
-            name: String(data.get("name")),
-            email: String(data.get("email")),
-            username: String(data.get("username")),
-          }),
-        ),
-      );
+      await client.users.profile({
+        name: String(data.get("name")),
+        email: String(data.get("email")),
+        username: String(data.get("username")),
+      });
       notify("Tu perfil fue actualizado.");
     } catch (error) {
+      applyFieldProblems(element, error);
       auditFailure("Usuarios", "Operación rechazada", error);
       setError(errorText(error));
     }
@@ -957,14 +996,13 @@ export function Profile({
 export function ChangePassword({
   state,
   user,
-  commit,
   onDone,
 }: {
   state: State;
   user: User;
-  commit: (value: State) => Promise<void>;
   onDone: () => void;
 }) {
+  const client = useDataClient();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -972,24 +1010,17 @@ export function ChangePassword({
     event.preventDefault();
     setError("");
     setBusy(true);
-    const data = new FormData(event.currentTarget);
+    const element = event.currentTarget;
+    const data = new FormData(element);
     try {
       const password = String(data.get("newPassword"));
       if (password !== data.get("confirm")) {
         throw Error("Las contraseñas nuevas no coinciden.");
       }
-      await commit(
-        requireResult(
-          await updatePersonalPassword(
-            state,
-            user.id,
-            String(data.get("current")),
-            password,
-          ),
-        ),
-      );
+      await client.users.password(String(data.get("current")), password);
       onDone();
     } catch (error) {
+      applyFieldProblems(element, error);
       auditFailure("Usuarios", "Operación rechazada", error);
       setError(errorText(error));
     } finally {

@@ -12,7 +12,7 @@ import {
 import { existingChanges, verifyConfirmationPassword } from "./mutationPolicy";
 import { logoutKey, sessionGenerationMatches } from "./sessionSignals";
 
-test("Autores y tutores exigen nombre, CI y correo; ORCID vacío/ausente se acepta", async () => {
+test("Autores y tutores admiten CI/correo opcionales y validan los datos informados; código de carrera opcional", async () => {
   const state = await seed();
   const actorId = state.users[0].id;
   for (const catalog of ["autores", "tutores"] as const) {
@@ -21,13 +21,11 @@ test("Autores y tutores exigen nombre, CI y correo; ORCID vacío/ausente se acep
       { ci: "1234567" },
       { email: "persona@example.test" },
     ] as Record<string, string>[]) {
-      assert.throws(
-        () =>
-          saveCatalogRecord(state, actorId, catalog, {
-            name: "Persona de prueba",
-            fields,
-          }),
-        /cédula y correo/,
+      assert.doesNotThrow(() =>
+        saveCatalogRecord(state, actorId, catalog, {
+          name: "Persona de prueba",
+          fields,
+        }),
       );
     }
     for (const orcid of [undefined, ""]) {
@@ -45,13 +43,11 @@ test("Autores y tutores exigen nombre, CI y correo; ORCID vacío/ausente se acep
       );
     }
   }
-  assert.throws(
-    () =>
-      saveCatalogRecord(state, actorId, "carreras", {
-        name: "Carrera",
-        fields: {},
-      }),
-    /código.*obligatorio/,
+  assert.doesNotThrow(() =>
+    saveCatalogRecord(state, actorId, "carreras", {
+      name: "Carrera",
+      fields: {},
+    }),
   );
 });
 

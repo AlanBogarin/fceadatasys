@@ -170,6 +170,22 @@
   max-width: 560px;
   min-width: 220px;
 }
+.publication-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 178px;
+}
+.publication-row-actions .secondary {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.publication-row-actions .icon-btn {
+  width: 34px;
+  height: 34px;
+}
 .publication-table {
   overflow-x: auto;
   background: white;

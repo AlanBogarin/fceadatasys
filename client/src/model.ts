@@ -47,6 +47,7 @@ export type State = {
   attachmentAudit?: AttachmentAudit[];
   auditEvents?: AuditEvent[];
   settings?: SystemSettings;
+  recoveryRates?: Record<string, { windowStart: number; count: number }>;
 };
 export const DEMO_PASSWORD = "Fcea2026!";
 export const roleLabel: Record<Role, string> = {
@@ -95,10 +96,11 @@ export function passwordError(password: string) {
   // Paso 1 y 2: comprobar longitud y composición de la nueva contraseña.
   if (
     password.length < 8 ||
+    password.length > 128 ||
     !/[A-Za-z]/.test(password) ||
     !/\d/.test(password)
   ) {
-    return "Usá al menos 8 caracteres, una letra y un número.";
+    return "Usá de 8 a 128 caracteres, una letra y un número.";
   }
   // Paso 3: una cadena vacía indica que la validación fue satisfactoria.
   return "";
@@ -273,7 +275,10 @@ export async function authenticate(
     userId: user.id,
   };
 }
-export function guardAdmin(state: State, actorId: string) {
+export function guardAdmin(
+  state: { users: Pick<User, "id" | "active" | "role">[] },
+  actorId: string,
+) {
   // Paso 1 y 2: comprobar identidad, estado activo y rol de administración.
   if (
     !state.users.some(
@@ -341,6 +346,12 @@ export function updateUser(
     users: state.users.map((account) =>
       account.id === targetId ? { ...account, ...validatedInput } : account,
     ),
+    recovery:
+      normalize(existingUser.email) !== normalize(validatedInput.email) ||
+      existingUser.role !== validatedInput.role ||
+      existingUser.active !== validatedInput.active
+        ? state.recovery.filter((entry) => entry.userId !== targetId)
+        : state.recovery,
   };
 }
 export async function resetPassword(
@@ -362,6 +373,8 @@ export async function resetPassword(
   if (!recovery || !user) {
     throw Error("El enlace venció o ya fue utilizado. Solicitá uno nuevo.");
   }
+  if ((await hashPassword(password, user.salt)) === user.passwordHash)
+    throw Error("La nueva contraseña debe ser diferente de la actual.");
   const salt = randomToken();
   const passwordHash = await hashPassword(password, salt);
   return {

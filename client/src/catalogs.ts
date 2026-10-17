@@ -48,14 +48,12 @@ export const catalogConfig: Record<
     fields: [
       {
         key: "ci",
-        required: true,
         label: "Cédula de identidad",
         maxLength: 12,
         placeholder: "Solo números",
       },
       {
         key: "email",
-        required: true,
         label: "Correo electrónico",
         type: "email",
         maxLength: 150,
@@ -76,14 +74,12 @@ export const catalogConfig: Record<
     fields: [
       {
         key: "ci",
-        required: true,
         label: "Cédula de identidad",
         maxLength: 12,
         placeholder: "Solo números",
       },
       {
         key: "email",
-        required: true,
         label: "Correo electrónico",
         type: "email",
         maxLength: 150,
@@ -98,7 +94,7 @@ export const catalogConfig: Record<
     description:
       "Organizá las carreras utilizadas para clasificar las publicaciones.",
     fields: [
-      { key: "codigo", label: "Código", maxLength: 30, required: true },
+      { key: "codigo", label: "Código", maxLength: 30 },
       { key: "descripcion", label: "Descripción", maxLength: 300 },
     ],
   },
@@ -176,7 +172,7 @@ export function migrateCatalogs(state: State): State {
   }
   return { ...state, catalogs };
 }
-function guardCatalog(state: State, actorId: string, key: CatalogKey) {
+export function guardCatalog(state: State, actorId: string, key: CatalogKey) {
   const actor = state.users.find(
     (account) => account.id === actorId && account.active,
   );
@@ -230,14 +226,6 @@ export function saveCatalogRecord(
       return value;
     })();
   }
-  if (key === "autores" || key === "tutores") {
-    if (!fields.ci || !fields.email)
-      throw Error(
-        "Completá nombre completo, cédula y correo electrónico. ORCID es opcional.",
-      );
-  }
-  if (key === "carreras" && !fields.codigo)
-    throw Error("El código de la carrera es obligatorio.");
   if (fields.ci && !/^\d{5,12}$/.test(fields.ci)) {
     throw Error("La CI debe contener entre 5 y 12 dígitos.");
   }
@@ -298,8 +286,10 @@ export function setCatalogActive(
   guardCatalog(state, actorId, key);
   if (
     !active &&
-    (state.publications ?? []).some((publication) =>
-      publicationUsesCatalog(publication, key, targetId),
+    (state.publications ?? []).some(
+      (publication) =>
+        publication.active !== false &&
+        publicationUsesCatalog(publication, key, targetId),
     )
   ) {
     throw Error(

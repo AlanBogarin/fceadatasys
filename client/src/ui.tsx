@@ -1,10 +1,45 @@
 import { Check, CircleHelp, Eye, EyeOff, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ClientProblem } from "./data/problems";
 export function errorText(error: unknown): string {
+  if (error instanceof ClientProblem)
+    return [
+      ...new Set([
+        error.message,
+        ...(error.problem.invalid_params ?? []).map((field) => field.reason),
+      ]),
+    ].join(" ");
   if (error instanceof Error) {
     return error.message;
   }
   return "No se pudo completar la operación.";
+}
+export function applyFieldProblems(form: HTMLFormElement, error: unknown) {
+  if (!(error instanceof ClientProblem)) return;
+  let first:
+    HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | undefined;
+  for (const field of error.problem.invalid_params ?? []) {
+    const name = field.name.split(".").at(-1)!;
+    const element = form.elements.namedItem(name);
+    if (!(
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLSelectElement ||
+      element instanceof HTMLTextAreaElement
+    ))
+      continue;
+    element.setAttribute("aria-invalid", "true");
+    element.setCustomValidity(field.reason);
+    element.addEventListener(
+      "input",
+      () => {
+        element.removeAttribute("aria-invalid");
+        element.setCustomValidity("");
+      },
+      { once: true },
+    );
+    first ??= element;
+  }
+  first?.reportValidity();
 }
 export function initials(name: string): string {
   const words = name.split(" ").slice(0, 2);
@@ -66,6 +101,7 @@ export function Password({
         name={name}
         type={show ? "text" : "password"}
         required={required}
+        maxLength={128}
         placeholder={placeholder}
         autoComplete={autoComplete}
       />

@@ -1,21 +1,18 @@
-import { auditFailure } from "./auditSignals";
-import { useState } from "react";
 import { Database } from "lucide-react";
-import type { State, User } from "./model";
-import { buildDemoData } from "./demoData";
+import { useState } from "react";
+import { auditFailure } from "./auditSignals";
+import { useDataClient } from "./data/context";
+import type { UserDto as User } from "./data/contracts";
 import { Alert, errorText } from "./ui";
 
 export function DemoDataPanel({
-  state,
   user,
-  commit,
   notify,
 }: {
-  state: State;
   user: User;
-  commit: (state: State) => Promise<void>;
   notify: (message: string) => void;
 }) {
+  const client = useDataClient();
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
   if (user.role !== "ADMINISTRADOR") return null;
@@ -26,7 +23,7 @@ export function DemoDataPanel({
     setError("");
     try {
       // Paso 1 y 2: preparar altas y correcciones de nombres institucionales de muestra.
-      const result = buildDemoData(state, user.id, window.location.href);
+      const result = await client.demo.load(window.location.href);
       if (
         !result.addedCatalogs &&
         !result.addedPublications &&
@@ -40,7 +37,6 @@ export function DemoDataPanel({
         return;
       }
       // Paso 3: la confirmación habitual verifica sesión y conserva la atomicidad local.
-      await commit(result.state);
       notify(
         `Datos UNC (demo): ${result.addedCatalogs} registros y ${result.addedPublications} investigaciones agregados; ${result.updatedCatalogs} registros y ${result.updatedPublications} investigaciones corregidos. Filiales ficticias consolidadas: ${result.consolidatedBranches}.`,
       );

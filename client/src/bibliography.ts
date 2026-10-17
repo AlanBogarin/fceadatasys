@@ -1,7 +1,9 @@
-import type { State, User } from "./model";
+import type { ViewState as State } from "./data/view";
+import type { UserDto as User } from "./data/contracts";
 import { normalizeCatalog } from "./catalogs";
 import {
   registrationDate,
+  publicationView,
   type Publication,
   type Reference,
 } from "./publications";
@@ -18,6 +20,7 @@ export type BibliographicFilters = {
   source: string;
   from: string;
   to: string;
+  active?: string;
 };
 export const emptyBibliographicFilters: BibliographicFilters = {
   search: "",
@@ -31,6 +34,7 @@ export const emptyBibliographicFilters: BibliographicFilters = {
   source: "",
   from: "",
   to: "",
+  active: "",
 };
 export type BibliographicRecord = Omit<
   Publication,
@@ -70,9 +74,10 @@ export function bibliographicRecord(
 ): BibliographicRecord {
   // Paso 1: exigir cuenta activa también al consultar directamente un identificador.
   const actor = bibliographicActor(state, actorId);
-  const publication = state.publications?.find(
+  const saved = state.publications?.find(
     (record) => record.id === publicationId,
   );
+  const publication = saved ? publicationView(state, saved) : undefined;
   if (
     !publication ||
     (publication.active === false && actor.role !== "ADMINISTRADOR")
@@ -103,7 +108,12 @@ export function bibliographicRecord(
     hasAttachment: !!publication.attachment,
   };
   // Paso 3: habilitar metadatos de descarga solo a los roles autorizados.
-  if (actor.role !== "PUBLICO" && publication.attachment)
+  const unavailable = state.uploadedAttachments?.some(
+    (upload) =>
+      upload.attachment.id === publication.attachment?.id &&
+      ["RECHAZADO", "PENDIENTE"].includes(upload.status ?? ""),
+  );
+  if (actor.role !== "PUBLICO" && publication.attachment && !unavailable)
     result.attachment = { ...publication.attachment };
   return result;
 }
@@ -156,8 +166,14 @@ export function queryBibliography(
   const tutorTerm = normalizeCatalog(filters.tutor);
   // Paso 2: combinar filtros con AND y conservar el orden de autoría de cada trabajo.
   const matches = (state.publications ?? [])
+    .map((publication) => publicationView(state, publication))
     .filter((publication) => {
       if (publication.active === false && actor.role !== "ADMINISTRADOR")
+        return false;
+      if (
+        filters.active &&
+        (publication.active !== false) !== (filters.active === "true")
+      )
         return false;
       const date = registrationDate(publication.createdAt);
       const groups = [

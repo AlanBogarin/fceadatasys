@@ -1,22 +1,33 @@
-import { settingsOf } from "./settings";
+import {
+  Archive,
+  ArrowLeft,
+  Download,
+  FileText,
+  Pencil,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { attachmentAccept } from "./attachments";
+import {
+  attachmentRecords,
+  attachmentSize,
+  availableAttachments,
+} from "./attachmentService";
 import type { AuditIntent } from "./audit";
 import { auditFailure } from "./auditSignals";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, Download, FileText, Plus, Search, X } from "lucide-react";
-import type { State, User } from "./model";
-import {
-  catalogConfig,
-  filterCatalog,
-  normalizeCatalog,
-  type CatalogKey,
-} from "./catalogs";
-import { Alert, Field, errorText } from "./ui";
-import { requireResult } from "./userService";
+import { bibliographicRecord, emptyBibliographicFilters } from "./bibliography";
+import { catalogConfig, normalizeCatalog, type CatalogKey } from "./catalogs";
+import { useDataClient } from "./data/context";
+import type { UserDto as User } from "./data/contracts";
+import { useQuery } from "./data/useQuery";
+import { useVersionedDraft, VersionReview } from "./data/useVersionedDraft";
+import type { ViewState as State } from "./data/view";
+import { downloadReport } from "./publicationExports";
 import {
   emptyReportFilters,
-  publicationReport,
   publicationActor,
-  registerPublication,
   registrationDate,
   requiredCatalogs,
   type Publication,
@@ -24,19 +35,13 @@ import {
   type Reference,
   type ReportFilters,
 } from "./publications";
-import { buildPublicationReport, downloadReport } from "./publicationExports";
-import {
-  commitWithAttachment,
-  preparePdf,
-  readAttachment,
-} from "./attachments";
 import "./publications.css";
-import { availableAttachments, attachmentSize } from "./attachmentService";
+import { settingsOf } from "./settings";
+import { Alert, applyFieldProblems, errorText, Field } from "./ui";
 
 type PageProps = {
   state: State;
   user: User;
-  commit: (state: State) => Promise<void>;
   notify: (message: string) => void;
   showReport: (publicationId: string) => void;
   assertActive: () => void;
@@ -49,20 +54,22 @@ function ReferencePicker({
   catalog,
   name,
   label,
+  initialId = "",
 }: {
   state: State;
   catalog: CatalogKey;
   name: string;
   label: string;
+  initialId?: string;
 }) {
   return (
     <Field label={label}>
-      <select name={name} required defaultValue="">
+      <select name={name} required defaultValue={initialId}>
         <option value="" disabled>
           Seleccioná una opción
         </option>
         {state.catalogs[catalog]
-          .filter((entry) => entry.active)
+          .filter((entry) => entry.active || entry.id === initialId)
           .map((entry) => (
             <option key={entry.id} value={entry.id}>
               {entry.name}
@@ -86,13 +93,26 @@ function PeoplePicker({
   selected: string[];
   onChange: (selected: string[]) => void;
 }) {
-  const records = state.catalogs[catalog].filter((entry) => entry.active);
+  const records = state.catalogs[catalog].filter(
+    (entry) => entry.active || selected.includes(entry.id),
+  );
+  const client = useDataClient();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const matches = filterCatalog(records, query, "active");
-  const pages = Math.max(1, Math.ceil(matches.length / 10));
+  const request = useQuery(
+    () =>
+      client.catalogs.list(catalog, {
+        search: query,
+        active: "true",
+        page,
+        pageSize: 10,
+      }),
+    [state, catalog, query, page],
+  );
+  const matches = request.data?.data ?? [];
+  const pages = Math.max(1, request.data?.pagination.totalPages ?? 1);
   const current = Math.min(page, pages);
-  const visible = matches.slice((current - 1) * 10, current * 10);
+  const visible = matches;
   const searchLabel = `Buscar ${catalog}`;
   return (
     <fieldset className="people-picker">
@@ -131,7 +151,10 @@ function PeoplePicker({
         })}
       </div>
       <p role="status">
-        {matches.length} coincidencia(s) · {selected.length} seleccionados
+        {request.loading
+          ? "Buscando…"
+          : `${request.data?.pagination.total ?? 0} coincidencia(s)`}{" "}
+        · {selected.length} seleccionados
       </p>
       <div className="people-options">
         {visible.map((entry) => (
@@ -162,7 +185,8 @@ function PeoplePicker({
           </label>
         ))}
       </div>
-      {!matches.length && (
+      <Alert text={request.error ? errorText(request.error) : ""} />
+      {!request.loading && !matches.length && (
         <p>No hay coincidencias. Probá otro nombre o dato.</p>
       )}
       {pages > 1 && (
@@ -194,18 +218,19 @@ function PeoplePicker({
 
 export function AttachmentDownload({
   publication,
+  attachment: providedAttachment,
   state,
   user,
-  commit,
   assertActive,
 }: {
-  publication: Publication;
+  publication?: Publication;
+  attachment?: Publication["attachment"];
   state: State;
   user: User;
-  commit: (state: State) => Promise<void>;
   assertActive: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const client = useDataClient();
   const [error, setError] = useState("");
   const latestState = useRef(state);
   const pageOpen = useRef(true);
@@ -226,43 +251,13 @@ export function AttachmentDownload({
     try {
       // Paso 1: verificar sesión, permisos y el documento realmente registrado.
       assertActive();
-      const actor = publicationActor(state, user.id);
-      const saved = state.publications?.find(
-        (entry) => entry.id === publication.id,
-      );
-      if (!saved?.attachment)
-        throw Error("No se encontró el adjunto registrado.");
-      const bytes = await readAttachment(saved.attachment);
-
-      // Paso 2: la lectura asíncrona no debe eludir el bloqueo ni cambios concurrentes.
+      const attachment = providedAttachment ?? publication?.attachment;
+      if (!attachment) throw Error("No se encontró el adjunto registrado.");
+      const result = await client.attachments.download(attachment.id);
       if (!pageOpen.current) return;
       assertActive();
-      publicationActor(latestState.current, user.id);
-      if (latestState.current !== state)
-        throw Error(
-          "Los datos cambiaron. Volvé a abrir el detalle para descargar.",
-        );
-
-      // Paso 3: registrar la descarga local antes de entregar el PDF verificado.
-      await commit({
-        ...state,
-        publicationAudit: [
-          ...(state.publicationAudit ?? []),
-          {
-            id: crypto.randomUUID(),
-            publicationId: publication.id,
-            actorId: actor.id,
-            actorRole: actor.role,
-            operation: "DESCARGAR_ADJUNTO",
-            createdAt: new Date().toISOString(),
-          },
-        ],
-      });
-      downloadReport({
-        bytes,
-        filename: saved.attachment.name,
-        mime: saved.attachment.mime,
-      });
+      if ("data" in result) throw Error("El adjunto no está disponible.");
+      downloadReport(result);
     } catch (caught) {
       auditFailure("Publicaciones", "Operación rechazada", caught);
       if (pageOpen.current) setError(errorText(caught));
@@ -272,15 +267,16 @@ export function AttachmentDownload({
     }
   }
 
-  if (!publication.attachment || user.role === "PUBLICO") return null;
-  let fileSize = `${Math.ceil(publication.attachment.size / 1024)} KB`;
-  if (publication.attachment.size >= 1024 * 1024) {
-    fileSize = `${(publication.attachment.size / 1024 / 1024).toLocaleString("es-PY", { maximumFractionDigits: 2 })} MB`;
+  const attachment = providedAttachment ?? publication?.attachment;
+  if (!attachment || user.role === "PUBLICO") return null;
+  let fileSize = `${Math.ceil(attachment.size / 1024)} KB`;
+  if (attachment.size >= 1024 * 1024) {
+    fileSize = `${(attachment.size / 1024 / 1024).toLocaleString("es-PY", { maximumFractionDigits: 2 })} MiB`;
   }
   return (
     <div className="attachment-download">
       <p>
-        {publication.attachment.name} · {fileSize}
+        {attachment.name} · {fileSize}
       </p>
       <button
         type="button"
@@ -289,7 +285,7 @@ export function AttachmentDownload({
         onClick={download}
       >
         <Download size={17} />
-        {busy ? "Preparando PDF…" : "Descargar adjunto PDF"}
+        {busy ? "Preparando archivo…" : "Descargar adjunto"}
       </button>
       <Alert text={error} />
     </div>
@@ -300,13 +296,11 @@ function PublicationDetail({
   publication,
   state,
   user,
-  commit,
   assertActive,
 }: {
   publication: Publication;
   state: State;
   user: User;
-  commit: (state: State) => Promise<void>;
   assertActive: () => void;
 }) {
   return (
@@ -368,7 +362,6 @@ function PublicationDetail({
           publication={publication}
           state={state}
           user={user}
-          commit={commit}
           assertActive={assertActive}
         />
       ) : publication.externalUrl ? (
@@ -390,13 +383,21 @@ function PublicationDetail({
 export function PublicationsPage({
   state,
   user,
-  commit,
   notify,
   showReport,
   assertActive,
   initialAttachmentId = "",
   consumeInitialAttachment,
 }: PageProps) {
+  const client = useDataClient();
+  const version = useVersionedDraft<
+    ReturnType<typeof bibliographicRecord> | undefined
+  >(undefined);
+  const [editing, setEditing] = useState<
+    Publication & { hasAttachment?: boolean }
+  >();
+  const [status, setStatus] = useState("true");
+  const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(!!initialAttachmentId);
   const [selected, setSelected] = useState<Publication>();
   const [authorIds, setAuthorIds] = useState<string[]>([]);
@@ -411,7 +412,16 @@ export function PublicationsPage({
   const [attachmentId, setAttachmentId] = useState(initialAttachmentId);
   const [attachmentQuery, setAttachmentQuery] = useState("");
   const [requiresLibraryCopy, setRequiresLibraryCopy] = useState(true);
-  const uploads = availableAttachments(state, user.id);
+  const uploads = [
+    ...availableAttachments(state, user.id),
+    ...attachmentRecords(state, user.id).filter(
+      (record) =>
+        editing &&
+        record.status === "RESERVADO" &&
+        record.reservedPublicationId === editing.id &&
+        (user.role === "ADMINISTRADOR" || record.createdBy.id === user.id),
+    ),
+  ];
   const attachmentTerm = normalizeCatalog(attachmentQuery);
   const matchingUploads = uploads.filter((entry) =>
     normalizeCatalog(entry.attachment.name).includes(attachmentTerm),
@@ -433,16 +443,25 @@ export function PublicationsPage({
   const missing = requiredCatalogs.filter(
     (catalog) => !state.catalogs[catalog].some((entry) => entry.active),
   );
-  const term = normalizeCatalog(query);
-  const records = [...(state.publications ?? [])]
-    .reverse()
-    .filter((entry) =>
-      normalizeCatalog(
-        `${entry.code} ${entry.title} ${entry.authors.map((author) => author.name).join(" ")}`,
-      ).includes(term),
-    );
+  const request = useQuery(
+    () =>
+      client.publications.list(
+        { ...emptyBibliographicFilters, search: query, active: status },
+        page,
+        12,
+      ),
+    [state, query, status, page],
+  );
+  const records = request.data?.data ?? [];
+  const total = request.data?.pagination.total ?? 0;
+  const pages = Math.max(1, request.data?.pagination.totalPages ?? 1);
+  useEffect(() => {
+    if (request.data && page > pages) setPage(pages);
+  }, [request.data, page, pages]);
+  const currentPage = Math.min(page, pages);
 
   function startCreation() {
+    setEditing(undefined);
     setSelected(undefined);
     setError("");
     setSummary("");
@@ -455,12 +474,59 @@ export function PublicationsPage({
     setCreating(true);
   }
 
+  async function startEditing(record: Publication) {
+    try {
+      const detail = await client.publications.get(record.id);
+      const current = detail.data;
+      if (current.active === false)
+        throw Error("No se puede editar una publicación inactiva.");
+      setEditing(current);
+      setSelected(undefined);
+      setError("");
+      setSummary(current.summary);
+      setAuthorIds(current.authors.map((person) => person.id));
+      setTutorIds(current.tutors.map((person) => person.id));
+      setDocumentMode(
+        current.hasAttachment ? "keep" : current.externalUrl ? "link" : "none",
+      );
+      setAttachmentId(current.attachment?.id ?? "");
+      setAttachmentQuery("");
+      setRequiresLibraryCopy(
+        current.requiresLibraryCopy ?? !!current.attachment,
+      );
+      version.review(current, detail.etag);
+      setCreating(true);
+    } catch (error) {
+      setError(errorText(error));
+    }
+  }
+
+  async function inactivate(record: Publication) {
+    setError("");
+    try {
+      const current = await client.publications.get(record.id);
+      if (
+        JSON.stringify(current.data) !==
+        JSON.stringify(bibliographicRecord(state, user.id, record.id))
+      )
+        throw Error("El registro cambió. Abrí su detalle nuevamente.");
+      await client.publications.inactivate(record.id, {
+        ifMatch: current.etag,
+      });
+      setSelected(undefined);
+      notify("Publicación inactivada. Se conserva su historial.");
+    } catch (error) {
+      setError(errorText(error));
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving.current) return;
     saving.current = true;
     setError("");
     setBusy(true);
+    const element = event.currentTarget;
     try {
       // Paso 1: leer los campos y participantes elegidos, sin guardar parcialmente.
       const form = new FormData(event.currentTarget);
@@ -471,12 +537,12 @@ export function PublicationsPage({
       if (documentMode === "file") {
         const selectedFile = form.get("attachment");
         if (!(selectedFile instanceof File) || !selectedFile.size)
-          throw Error("Seleccioná el archivo PDF de la investigación.");
+          throw Error("Seleccioná el documento de la investigación.");
         file = selectedFile;
-        attachment = await preparePdf(
-          file,
-          settingsOf(state).maxPdfSizeMb * 1024 * 1024,
-        );
+        const uploaded = await client.attachments.upload(file);
+        attachment = undefined;
+        setAttachmentId(uploaded.id);
+        form.set("uploadedId", uploaded.id);
       }
       const text = (key: string) => String(form.get(key) ?? "");
       const input: PublicationInput = {
@@ -493,7 +559,14 @@ export function PublicationsPage({
         keywords: text("keywords"),
         externalUrl: text("externalUrl"),
         attachment,
-        attachmentId: documentMode === "uploaded" ? attachmentId : undefined,
+        attachmentId:
+          documentMode === "file"
+            ? text("uploadedId")
+            : documentMode === "uploaded" || documentMode === "keep"
+              ? attachmentId || undefined
+              : editing
+                ? null
+                : undefined,
         source: documentMode === "link" ? "EXTERNA" : "LOCAL",
         requiresLibraryCopy:
           documentMode === "link" || documentMode === "none"
@@ -502,38 +575,47 @@ export function PublicationsPage({
         approved: form.get("approved") === "on",
       };
       // Paso 2: el servicio valida reglas y prepara todos los registros de la transacción.
-      if (!pageOpen.current || latestState.current !== state) {
+      if (!pageOpen.current) {
         throw Error(
           "Los datos cambiaron o el formulario se cerró. Volvé a intentar.",
         );
       }
       assertActive();
-      if (input.attachmentId) {
+      if (input.attachmentId && documentMode === "uploaded") {
         const upload = uploads.find(
           (entry) => entry.attachment.id === input.attachmentId,
         );
         if (!upload)
           throw Error("El archivo ya no está disponible para vincular.");
-        await readAttachment(upload.attachment);
       }
-      const result = requireResult(registerPublication(state, user.id, input));
+      const etag = editing
+        ? await version.check(
+            bibliographicRecord(latestState.current, user.id, editing.id),
+            "PRECONDITION_FAILED",
+          )
+        : undefined;
       // Paso 3: persistir todo junto; informar éxito solamente si la escritura finaliza.
-      await commitWithAttachment(attachment, file, async () => {
-        if (!pageOpen.current)
-          throw Error("El formulario se cerró. No se guardaron cambios.");
-        assertActive();
-        if (latestState.current !== state)
-          throw Error("Los datos cambiaron. Volvé a intentar.");
-        await commit(result.state);
-      });
-      setSelected(result.publication);
+      const { approved, attachment: _metadata, ...patch } = input;
+      const result = editing
+        ? await client.publications
+            .update(editing.id, patch, { ifMatch: etag })
+            .catch((error) => {
+              version.failed(error);
+              throw error;
+            })
+        : await client.publications.create({ ...patch, approved });
+      setSelected(result);
       setCreating(false);
+      setEditing(undefined);
       notify(
-        `${result.publication.code}: investigación registrada correctamente.`,
+        `${result.code}: investigación ${editing ? "modificada" : "registrada"} correctamente.`,
       );
     } catch (caught) {
       auditFailure("Publicaciones", "Operación rechazada", caught);
-      if (pageOpen.current) setError(errorText(caught));
+      if (pageOpen.current) {
+        applyFieldProblems(element, caught);
+        setError(errorText(caught));
+      }
     } finally {
       saving.current = false;
       if (pageOpen.current) setBusy(false);
@@ -546,7 +628,9 @@ export function PublicationsPage({
         <div className="page-heading">
           <div>
             <p className="eyebrow">Gestión bibliográfica</p>
-            <h1>Registrar investigación</h1>
+            <h1>
+              {editing ? "Editar investigación" : "Registrar investigación"}
+            </h1>
             <p>
               Registrá los datos del trabajo aprobado y su documento, según
               corresponda.
@@ -576,7 +660,37 @@ export function PublicationsPage({
             </p>
           </div>
         )}
-        <form className="publication-form" onSubmit={submit}>
+        <form
+          key={editing?.id ?? "new"}
+          className="publication-form"
+          onSubmit={submit}
+        >
+          {version.conflict && editing && (
+            <VersionReview
+              values={{
+                Título:
+                  state.publications?.find((record) => record.id === editing.id)
+                    ?.title ?? "No disponible",
+                Resumen:
+                  state.publications?.find((record) => record.id === editing.id)
+                    ?.summary ?? "",
+                Estado:
+                  state.publications?.find((record) => record.id === editing.id)
+                    ?.active === false
+                    ? "Inactiva"
+                    : "Activa",
+              }}
+              onReviewed={() => {
+                void client.publications
+                  .get(editing.id)
+                  .then((result) => {
+                    version.review(result.data, result.etag);
+                    setError("");
+                  })
+                  .catch((error) => setError(errorText(error)));
+              }}
+            />
+          )}
           <fieldset disabled={busy} className="publication-fields">
             <section>
               <h2>1. Identificación del trabajo</h2>
@@ -587,6 +701,7 @@ export function PublicationsPage({
                   required
                   maxLength={250}
                   placeholder="Título completo de la investigación"
+                  defaultValue={editing?.title}
                 />
               </Field>
               <div className="publication-grid">
@@ -595,6 +710,7 @@ export function PublicationsPage({
                   catalog="tipos"
                   name="typeId"
                   label="Tipo de publicación *"
+                  initialId={editing?.type.id}
                 />
                 <Field label="Año de publicación *">
                   <input
@@ -603,7 +719,7 @@ export function PublicationsPage({
                     min={1900}
                     max={new Date().getFullYear()}
                     required
-                    defaultValue={new Date().getFullYear()}
+                    defaultValue={editing?.year ?? new Date().getFullYear()}
                   />
                 </Field>
                 <ReferencePicker
@@ -611,18 +727,21 @@ export function PublicationsPage({
                   catalog="carreras"
                   name="careerId"
                   label="Carrera *"
+                  initialId={editing?.career.id}
                 />
                 <ReferencePicker
                   state={state}
                   catalog="niveles"
                   name="levelId"
                   label="Nivel académico *"
+                  initialId={editing?.level.id}
                 />
                 <ReferencePicker
                   state={state}
                   catalog="filiales"
                   name="branchId"
                   label="Sede / filial *"
+                  initialId={editing?.branch.id}
                 />
               </div>
             </section>
@@ -665,13 +784,19 @@ export function PublicationsPage({
                   lang="en"
                   required
                   maxLength={5000}
+                  defaultValue={editing?.abstract}
                 />
               </Field>
               <Field
                 label="Palabras clave *"
                 hint="Separá los términos con comas."
               >
-                <input name="keywords" required maxLength={300} />
+                <input
+                  name="keywords"
+                  required
+                  maxLength={300}
+                  defaultValue={editing?.keywords}
+                />
               </Field>
               <Field label="Documento de la investigación *">
                 <select
@@ -679,7 +804,15 @@ export function PublicationsPage({
                   onChange={(event) => setDocumentMode(event.target.value)}
                 >
                   <option value="link">Enlace externo</option>
-                  <option value="file">Archivo PDF adjunto</option>
+                  {editing?.hasAttachment && (
+                    <option value="keep">
+                      Conservar adjunto actual
+                      {editing.attachment
+                        ? `: ${editing.attachment.name}`
+                        : " (sin descarga disponible)"}
+                    </option>
+                  )}
+                  <option value="file">Archivo adjunto nuevo</option>
                   <option value="uploaded">Archivo ya cargado</option>
                   <option value="none">
                     Local sin copia digital obligatoria
@@ -688,13 +821,13 @@ export function PublicationsPage({
               </Field>
               {documentMode === "file" ? (
                 <Field
-                  label="Adjuntar PDF *"
-                  hint={`Hasta ${settingsOf(state).maxPdfSizeMb} MB. El archivo quedará guardado en este navegador.`}
+                  label="Adjuntar documento *"
+                  hint={`Hasta ${settingsOf(state).maxPdfSizeMb} MiB. El archivo quedará guardado en este navegador.`}
                 >
                   <input
                     name="attachment"
                     type="file"
-                    accept=".pdf,application/pdf"
+                    accept={attachmentAccept(settingsOf(state).allowedFormats)}
                     required
                   />
                 </Field>
@@ -706,7 +839,7 @@ export function PublicationsPage({
                   >
                     <input
                       type="search"
-                      placeholder="Nombre del archivo PDF…"
+                      placeholder="Nombre del archivo…"
                       value={attachmentQuery}
                       onChange={(event) =>
                         setAttachmentQuery(event.target.value)
@@ -719,14 +852,14 @@ export function PublicationsPage({
                   </p>
                   <Field
                     label="Archivo disponible *"
-                    hint="Se vinculará al guardar la investigación. Cada PDF se usa una sola vez."
+                    hint="Se vinculará al guardar la investigación. Cada documento conserva su reserva histórica."
                   >
                     <select
                       required
                       value={attachmentId}
                       onChange={(event) => setAttachmentId(event.target.value)}
                     >
-                      <option value="">Seleccioná un PDF cargado</option>
+                      <option value="">Seleccioná un archivo cargado</option>
                       {selectedUpload &&
                         !matchingUploads.some(
                           (entry) => entry.attachment.id === attachmentId,
@@ -749,8 +882,8 @@ export function PublicationsPage({
                     </select>
                     {!uploads.length && (
                       <small>
-                        No hay archivos disponibles. Podés adjuntar un PDF nuevo
-                        en este formulario.
+                        No hay archivos disponibles. Podés adjuntar un documento
+                        nuevo en este formulario.
                       </small>
                     )}
                   </Field>
@@ -769,8 +902,11 @@ export function PublicationsPage({
                     required
                     maxLength={2000}
                     placeholder="https://..."
+                    defaultValue={editing?.externalUrl}
                   />
                 </Field>
+              ) : documentMode === "keep" ? (
+                <p>Se conservará el documento actual y su historial de uso.</p>
               ) : (
                 <p>
                   Esta modalidad corresponde a trabajos locales que no requieren
@@ -789,13 +925,18 @@ export function PublicationsPage({
                       setRequiresLibraryCopy(event.target.checked)
                     }
                   />
-                  Corresponde conservar este trabajo en Biblioteca (PDF
+                  Corresponde conservar este trabajo en Biblioteca (archivo
                   obligatorio).
                 </label>
               )}
               <label className="publication-confirm">
-                <input name="approved" type="checkbox" required /> Confirmo que
-                el trabajo ya fue aprobado fuera del repositorio.
+                <input
+                  name="approved"
+                  type="checkbox"
+                  required
+                  defaultChecked={!!editing}
+                />{" "}
+                Confirmo que el trabajo ya fue aprobado fuera del repositorio.
               </label>
             </section>
           </fieldset>
@@ -845,15 +986,31 @@ export function PublicationsPage({
                 <FileText size={17} /> Reporte de esta investigación
               </button>
             )}
+            {selected.active !== false && (
+              <button
+                className="secondary"
+                onClick={() => startEditing(selected)}
+              >
+                <Pencil size={17} /> Editar
+              </button>
+            )}
+            {selected.active !== false && user.role === "ADMINISTRADOR" && (
+              <button
+                className="secondary"
+                onClick={() => inactivate(selected)}
+              >
+                <Archive size={17} /> Inactivar
+              </button>
+            )}
           </div>
         </div>
         <PublicationDetail
           publication={selected}
           state={state}
           user={user}
-          commit={commit}
           assertActive={assertActive}
         />
+        <Alert text={error} />
         {user.role === "DIGITADOR" && (
           <p>El registro está disponible en Reportes para el administrador.</p>
         )}
@@ -877,11 +1034,29 @@ export function PublicationsPage({
         <Field label="Buscar por código, título o autor">
           <input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(1);
+            }}
             placeholder="Buscar investigación"
           />
         </Field>
-        <span>{records.length} registros</span>
+        <span>{request.loading ? "Consultando…" : `${total} registros`}</span>
+        {user.role === "ADMINISTRADOR" && (
+          <Field label="Estado">
+            <select
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="true">Activas</option>
+              <option value="false">Inactivas</option>
+              <option value="">Todas</option>
+            </select>
+          </Field>
+        )}
         {user.role === "ADMINISTRADOR" && (
           <button className="secondary" onClick={() => showReport("")}>
             <FileText size={17} /> Ver reporte
@@ -912,24 +1087,71 @@ export function PublicationsPage({
                 <td>{entry.career.name}</td>
                 <td>{registrationDate(entry.createdAt)}</td>
                 <td>
-                  <button
-                    className="secondary"
-                    onClick={() => setSelected(entry)}
-                  >
-                    Ver detalle
-                  </button>
+                  <div className="publication-row-actions">
+                    <button
+                      className="secondary"
+                      onClick={() => setSelected(entry)}
+                    >
+                      Ver detalle
+                    </button>
+                    {entry.active !== false && (
+                      <button
+                        className="icon-btn"
+                        title="Editar"
+                        onClick={() => startEditing(entry)}
+                        aria-label={`Editar ${entry.title}`}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    )}
+                    {entry.active === false && (
+                      <span className="badge neutral">Inactiva</span>
+                    )}
+                    {entry.active !== false &&
+                      user.role === "ADMINISTRADOR" && (
+                        <button
+                          className="icon-btn"
+                          title="Inactivar"
+                          onClick={() => inactivate(entry)}
+                          aria-label={`Inactivar ${entry.title}`}
+                        >
+                          <Archive size={16} />
+                        </button>
+                      )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {!records.length && (
+        {!request.loading && !records.length && (
           <div className="publication-empty">
             <FileText size={32} />
             <h2>No hay investigaciones para mostrar</h2>
             <p>Registrá la primera investigación o cambiá la búsqueda.</p>
           </div>
         )}
+      </div>
+      <Alert text={error} />
+      <Alert text={request.error ? errorText(request.error) : ""} />
+      <div className="people-pagination">
+        <button
+          className="secondary"
+          disabled={currentPage === 1}
+          onClick={() => setPage(currentPage - 1)}
+        >
+          Anterior
+        </button>
+        <span>
+          Página {currentPage} de {pages} · {total} registros
+        </span>
+        <button
+          className="secondary"
+          disabled={currentPage === pages}
+          onClick={() => setPage(currentPage + 1)}
+        >
+          Siguiente
+        </button>
       </div>
     </>
   );
@@ -940,16 +1162,17 @@ export function PublicationReportsPage({
   user,
   initialId,
   assertActive,
-  commit,
   recordAudit,
 }: {
   state: State;
   user: User;
   initialId: string;
   assertActive: () => void;
-  commit: (state: State) => Promise<void>;
   recordAudit: (intent: AuditIntent) => void;
 }) {
+  const client = useDataClient();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [filters, setFilters] = useState<ReportFilters>({
     ...emptyReportFilters,
     publicationId: initialId,
@@ -966,19 +1189,27 @@ export function PublicationReportsPage({
     };
   }, []);
   latestState.current = state;
-  let records: Publication[] = [];
-  let filterError = "";
-  try {
-    records = publicationReport(state, user.id, filters);
-  } catch (caught) {
-    filterError = errorText(caught);
-  }
+  const request = useQuery(
+    () => client.reports.list(filters, page, pageSize),
+    [state, filters, page, pageSize],
+  );
+  useEffect(() => {
+    const lastPage = Math.max(1, request.data?.pagination.totalPages ?? 1);
+    if (request.data && page > lastPage) setPage(lastPage);
+  }, [request.data, page]);
+  const records = request.data?.data ?? [];
+  const total = request.data?.pagination.total ?? 0;
+  const filterError = request.error ? errorText(request.error) : "";
+  const exportable = !!request.data?.report.exportable && !request.loading;
   const saved = state.publications ?? [];
-  const uniqueReferences = (field: "career" | "level"): Reference[] => [
+  const uniqueReferences = (
+    field: "career" | "level" | "type",
+  ): Reference[] => [
     ...new Map(saved.map((entry) => [entry[field].id, entry[field]])).values(),
   ];
   function changeFilter(key: keyof ReportFilters, value: string) {
     setFilters({ ...filters, [key]: value });
+    setPage(1);
     setError("");
     setNotice("");
   }
@@ -989,33 +1220,25 @@ export function PublicationReportsPage({
     try {
       // Paso 1: comprobar sesión y permisos antes de preparar el archivo.
       assertActive();
-      const report = await buildPublicationReport(
-        state,
-        user.id,
+      if (!request.data) throw Error("Esperá a que termine la consulta.");
+      const report = await client.reports.export(
         filters,
         format,
+        request.data.report.snapshot,
       );
       // Paso 2: una generación lenta no debe saltarse el vencimiento de la sesión.
       if (!pageOpen.current) {
         return;
       }
       assertActive();
-      publicationReport(latestState.current, user.id, filters);
-      if (latestState.current !== state) {
-        throw Error(
-          "Los datos cambiaron. Revisá la vista previa y volvé a exportar.",
-        );
-      }
       // Paso 3: descargar exactamente los registros filtrados y confirmar el resultado.
-      recordAudit({
-        module: "Reportes",
-        operation: "Exportar investigaciones",
-        status: "EXITO",
-        detail: `${records.length} investigaciones. Formato ${format.toUpperCase()}.`,
-      });
+      if ("data" in report) {
+        setNotice("No hay registros para exportar. No se generó un archivo.");
+        return;
+      }
       downloadReport(report);
       setNotice(
-        `Reporte ${format.toUpperCase()} generado con ${records.length} registro(s).`,
+        `Reporte ${format.toUpperCase()} generado con ${total} registro(s).`,
       );
     } catch (caught) {
       auditFailure("Publicaciones", "Operación rechazada", caught);
@@ -1096,12 +1319,59 @@ export function PublicationReportsPage({
               ))}
             </select>
           </Field>
+          <Field label="Tipo de publicación">
+            <select
+              value={filters.typeId ?? ""}
+              onChange={(event) => changeFilter("typeId", event.target.value)}
+            >
+              <option value="">Todos los tipos</option>
+              {uniqueReferences("type").map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Año de publicación">
+            <input
+              type="number"
+              min={1900}
+              max={9999}
+              value={filters.year ?? ""}
+              onChange={(event) => changeFilter("year", event.target.value)}
+            />
+          </Field>
+          <Field label="Nombre de autor">
+            <input
+              value={filters.author ?? ""}
+              maxLength={150}
+              onChange={(event) => changeFilter("author", event.target.value)}
+            />
+          </Field>
+          <Field label="Nombre de tutor">
+            <input
+              value={filters.tutor ?? ""}
+              maxLength={150}
+              onChange={(event) => changeFilter("tutor", event.target.value)}
+            />
+          </Field>
+          <Field label="Estado">
+            <select
+              value={filters.active ?? ""}
+              onChange={(event) => changeFilter("active", event.target.value)}
+            >
+              <option value="">Todas las publicaciones</option>
+              <option value="true">Activas</option>
+              <option value="false">Inactivas</option>
+            </select>
+          </Field>
         </div>
         <button
           className="secondary"
           disabled={busy}
           onClick={() => {
             setFilters({ ...emptyReportFilters });
+            setPage(1);
             setError("");
             setNotice("");
           }}
@@ -1114,24 +1384,77 @@ export function PublicationReportsPage({
       <div className="report-heading">
         <div>
           <h2>Vista previa</h2>
-          <p>{records.length} investigación(es) seleccionada(s)</p>
+          <p>
+            {request.loading
+              ? "Consultando…"
+              : `${total} investigación(es) seleccionada(s)`}{" "}
+            · Máximo {request.data?.report.maxRecords ?? 500} por exportación
+          </p>
         </div>
         <div className="publication-actions">
           <button
             className="secondary"
-            disabled={busy || !records.length || !!filterError}
+            disabled={busy || !exportable || !!filterError}
             onClick={() => exportReport("xlsx")}
           >
             <Download size={17} /> Descargar Excel
           </button>
           <button
             className="primary"
-            disabled={busy || !records.length || !!filterError}
+            disabled={busy || !exportable || !!filterError}
             onClick={() => exportReport("pdf")}
           >
             <Download size={17} /> Descargar PDF
           </button>
         </div>
+      </div>
+      <button
+        className="secondary"
+        disabled={busy || request.loading}
+        onClick={request.reload}
+      >
+        Actualizar vista previa
+      </button>
+      {total > 0 && !request.data?.report.exportable && (
+        <Alert text="La selección supera el límite de exportación. Reducí los filtros." />
+      )}
+      <div className="people-pagination">
+        <button
+          className="secondary"
+          disabled={page <= 1 || request.loading}
+          onClick={() => setPage(page - 1)}
+        >
+          Anterior
+        </button>
+        <span>
+          Página {page} de{" "}
+          {Math.max(1, request.data?.pagination.totalPages ?? 1)}
+        </span>
+        <button
+          className="secondary"
+          disabled={
+            page >= (request.data?.pagination.totalPages ?? 1) ||
+            request.loading
+          }
+          onClick={() => setPage(page + 1)}
+        >
+          Siguiente
+        </button>
+        <Field label="Registros por página">
+          <select
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(+event.target.value);
+              setPage(1);
+            }}
+          >
+            {[10, 20, 50].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </Field>
       </div>
       {records.map((entry) => (
         <PublicationDetail
@@ -1139,11 +1462,10 @@ export function PublicationReportsPage({
           publication={entry}
           state={state}
           user={user}
-          commit={commit}
           assertActive={assertActive}
         />
       ))}
-      {!records.length && (
+      {!request.loading && !records.length && (
         <div className="publication-empty">
           <Search size={32} />
           <h2>No hay registros con estos filtros</h2>
