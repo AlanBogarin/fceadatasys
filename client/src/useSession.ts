@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { SESSION_KEY } from "./storage";
 import { INACTIVITY_MS, renewActivity, sessionExpired } from "./security";
+import {
+  logoutKey,
+  SESSION_GENERATION_KEY,
+  sessionGenerationMatches,
+} from "./sessionSignals";
 
 const DEADLINE_KEY = "fcea-datasys.session.deadline";
 
@@ -12,10 +17,39 @@ export function useSession() {
   const [locked, setLocked] = useState(
     () => Boolean(session) && sessionExpired(deadline.current),
   );
+  const identity = useRef(session);
+  identity.current = session;
+  const generation = useRef(
+    sessionStorage.getItem(SESSION_GENERATION_KEY) ?? "",
+  );
+  const logoutChannel = useRef<BroadcastChannel | null>(null);
+
+  function clearLocalSession() {
+    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(DEADLINE_KEY);
+    sessionStorage.removeItem(SESSION_GENERATION_KEY);
+    identity.current = null;
+    deadline.current = 0;
+    setSession(null);
+    setLocked(false);
+  }
 
   function assertActive() {
+    if (
+      identity.current &&
+      !sessionGenerationMatches(
+        identity.current,
+        generation.current,
+        localStorage,
+      )
+    ) {
+      clearLocalSession();
+      throw Error(
+        "La sesión se cerró en otra pestaña. Volvé a iniciar sesión.",
+      );
+    }
     // Paso 1: verificar identidad y plazo antes de persistir cualquier acción privada.
-    if (!session || locked || sessionExpired(deadline.current)) {
+    if (!identity.current || locked || sessionExpired(deadline.current)) {
       // Paso 2: bloquear también si el temporizador se demoró por suspensión del equipo.
       setLocked(true);
       throw Error(
@@ -31,6 +65,9 @@ export function useSession() {
     // Paso 2: guardar el vencimiento por pestaña, conservado al recargar.
     sessionStorage.setItem(SESSION_KEY, userId);
     sessionStorage.setItem(DEADLINE_KEY, String(nextDeadline));
+    generation.current = localStorage.getItem(logoutKey(userId)) ?? "";
+    sessionStorage.setItem(SESSION_GENERATION_KEY, generation.current);
+    identity.current = userId;
     // Paso 3: abrir la sesión únicamente tras guardar correctamente.
     deadline.current = nextDeadline;
     setSession(userId);
@@ -38,12 +75,47 @@ export function useSession() {
   }
 
   function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(DEADLINE_KEY);
-    deadline.current = 0;
-    setSession(null);
-    setLocked(false);
+    const userId = identity.current;
+    try {
+      if (userId) {
+        logoutChannel.current?.postMessage({ type: "logout", userId });
+        localStorage.setItem(logoutKey(userId), crypto.randomUUID());
+      }
+    } finally {
+      clearLocalSession();
+    }
   }
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel("fcea-datasys.sessions");
+    logoutChannel.current = channel;
+    channel.onmessage = (event) => {
+      if (
+        event.data?.type === "logout" &&
+        event.data.userId === identity.current
+      )
+        clearLocalSession();
+    };
+    return () => {
+      channel.close();
+      logoutChannel.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    function synchronizeLogout(event?: StorageEvent) {
+      const userId = identity.current;
+      if (!userId) return;
+      if (event && event.key !== null && event.key !== logoutKey(userId))
+        return;
+      if (!sessionGenerationMatches(userId, generation.current, localStorage))
+        clearLocalSession();
+    }
+    synchronizeLogout();
+    window.addEventListener("storage", synchronizeLogout);
+    return () => window.removeEventListener("storage", synchronizeLogout);
+  }, [session]);
 
   useEffect(() => {
     if (!session || locked) {
@@ -51,6 +123,17 @@ export function useSession() {
     }
 
     function checkDeadline() {
+      if (
+        identity.current &&
+        !sessionGenerationMatches(
+          identity.current,
+          generation.current,
+          localStorage,
+        )
+      ) {
+        clearLocalSession();
+        return;
+      }
       if (sessionExpired(deadline.current)) {
         setLocked(true);
       }
@@ -59,6 +142,17 @@ export function useSession() {
     function registerActivity(event: Event) {
       // Paso 1: solo actividad real del usuario; nunca polling ni eventos sintéticos.
       if (!event.isTrusted) {
+        return;
+      }
+      if (
+        identity.current &&
+        !sessionGenerationMatches(
+          identity.current,
+          generation.current,
+          localStorage,
+        )
+      ) {
+        clearLocalSession();
         return;
       }
       // Paso 2: comprobar el plazo ANTES de renovarlo.

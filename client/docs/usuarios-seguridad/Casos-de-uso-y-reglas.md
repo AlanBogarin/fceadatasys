@@ -14,6 +14,8 @@ Los diagramas son modelos de diseño específicos por flujo. Los elementos marca
 
 RN-01 — El nombre de la cuenta Público es de solo lectura en edición administrativa y Mi perfil. También se rechaza su cambio en la lógica de negocio. Un cambio de rol en el mismo guardado no permite eludir la restricción.
 
+En **Mi perfil**, el nombre completo de Digitador también es de solo lectura y su modificación se rechaza en `editProfile`, incluso si se altera el formulario. Digitador conserva la edición de correo y nombre de usuario. Administrador puede cambiar su propio nombre y editar el nombre de una cuenta Digitador desde Usuarios. Esta ampliación es local al frontend y no cambia el contrato de la API.
+
 RN-02 — Tanto eliminar como pasar de Activo a Inactivo requieren ausencia de vínculos. Se consultan las relaciones registradas y todos los participantes históricos de catálogos. Un registro anterior sin trazabilidad impide la baja cautelarmente, sin inventar su propietario.
 
 RN-03 — La condición de cuenta inactiva se comunica después de verificar correctamente la contraseña. Las credenciales erróneas mantienen el mensaje genérico. Un bloqueo temporal vigente tiene prioridad.

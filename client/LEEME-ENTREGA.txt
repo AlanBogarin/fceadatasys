@@ -1,3 +1,36 @@
+FCEA-DATASYS - REVISION POSTERIOR AL PARCIAL (16/10/2026)
+
+ACTUALIZACION: AUDITORIA Y PARAMETROS
+- Ya no quedan modulos del menu marcados En construccion.
+- Auditoria: consultas, filtros, detalle, PDF y Excel. Solo Administrador.
+- Parametros: limite del resumen y tamano maximo de nuevas cargas PDF.
+- Altas: mensaje Confirmar registro. Modificar/eliminar: contrasena actual.
+- Las operaciones nuevas se guardan junto con su evento de auditoria.
+- Conserva cuentas, muestras UNC (demo) y datos anteriores. Frontend local.
+Guia actual: docs/AUDITORIA-Y-PARAMETROS.md. Verificacion: 61 pruebas.
+Las instrucciones anteriores sobre altas sin confirmacion quedan reemplazadas.
+
+Extraer todo en una carpeta nueva y abrir Iniciar-Frontend.cmd.
+Ingresar con admin / Fcea2026! si no se cambió antes la contraseña.
+
+NOVEDADES
+- Catálogo bibliográfico y Búsqueda avanzada funcionales.
+- Confirmación con TU contraseña al modificar/inactivar/eliminar.
+- Altas nuevas sin segunda contraseña; cancelar no guarda.
+- Nombre, cédula y correo obligatorios en autores/tutores. ORCID opcional.
+- Código de carrera obligatorio.
+- Cerrar sesión también cierra las otras pestañas de la misma cuenta.
+- Reporte PDF con membrete FCEA/UNC y ambos escudos.
+
+Conserva datos de prueba y la Carga de archivos desarrollada por Alan.
+No borrar datos del navegador para actualizar. Usar el mismo host y puerto
+si se quieren conservar las cuentas, catálogos y archivos anteriores.
+
+Recorrido y detalles: docs/REVISION-16-OCTUBRE.md
+Alcance: frontend local. No conecta el servidor ni cambia su base de datos.
+
+--- Instrucciones anteriores ---
+
 FCEA-DATASYS - ENTREGA: TRANSACCION Y REPORTE
 
 1. Extraer todo el ZIP en una carpeta nueva.
@@ -5,7 +38,7 @@ FCEA-DATASYS - ENTREGA: TRANSACCION Y REPORTE
 3. Esperar la instalación inicial y abrir la dirección junto a Local.
 4. Ingresar con admin / Fcea2026! (contraseña inicial de demostración).
 5. La primera apertura ya incluye datos de muestra. Si hay datos anteriores,
-   ir a Inicio > Cargar datos de prueba con la cuenta Administrador.
+   ir a Inicio > Cargar / actualizar datos de prueba con la cuenta Administrador.
 6. Ir a Publicaciones > Registrar investigación y guardar el trabajo.
 7. En el detalle guardado, pulsar Reporte de esta investigación.
 8. Descargar PDF o Excel. Los reportes se habilitan para Administrador.
@@ -39,3 +72,12 @@ DATOS DE PRUEBA
 Incluye ocho PDF de muestra y fechas variadas para demostrar reportes.
 La carga no reemplaza tus datos ni duplica las muestras ya agregadas.
 Recorrido sugerido: docs/DATOS-DE-DEMOSTRACION.md
+
+DATOS INSTITUCIONALES UNC (16/10/2026)
+Se incluyen las 6 facultades UNC, las 4 carreras FCEA y las sedes Concepcion /
+Horqueta verificadas en www.unc.edu.py y fcea-unc.edu.py. Todos llevan (demo).
+Las personas, los trabajos y los codigos siguen siendo ficticios.
+Para corregir muestras de versiones anteriores: Admin > Inicio > Cargar /
+actualizar datos de prueba. Confirmar con la contrasena actual si hay cambios.
+No borrar el almacenamiento: se conservan cuentas, contrasenas y registros propios.
+Fuentes y reglas: docs/DATOS-DE-DEMOSTRACION.md. Verificacion: 52 pruebas.

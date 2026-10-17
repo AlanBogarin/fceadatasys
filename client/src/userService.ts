@@ -7,6 +7,7 @@ import {
   changeOwnPassword,
   changeUserPassword,
   resetPassword,
+  roleLabel,
   type State,
   type User,
   type UserInput,
@@ -160,13 +161,14 @@ export function editProfile(
       throw Error("No se encontró una cuenta activa.");
     }
 
-    // Paso 2: RN-01 también rige en Mi perfil. CI, rol y estado no provienen del formulario.
+    // Paso 2: Público y Digitador no pueden cambiar su nombre desde Mi perfil.
+    // CI, rol y estado tampoco provienen del formulario.
     if (
-      currentUser.role === "PUBLICO" &&
+      currentUser.role !== "ADMINISTRADOR" &&
       input.name.trim() !== currentUser.name
     ) {
       throw Error(
-        "El nombre completo de una cuenta Público es de solo lectura.",
+        `El nombre completo de una cuenta ${roleLabel[currentUser.role]} es de solo lectura.`,
       );
     }
     const validated = validateUser(

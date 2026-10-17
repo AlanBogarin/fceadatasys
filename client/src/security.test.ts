@@ -1,3 +1,4 @@
+import { saveCatalogSample } from "./testFixtures";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { seed, DEMO_PASSWORD, authenticate, type State } from "./model";
@@ -10,11 +11,7 @@ import {
   loginUser,
   requireResult,
 } from "./userService";
-import {
-  saveCatalogRecord,
-  setCatalogActive,
-  migrateCatalogs,
-} from "./catalogs";
+import { setCatalogActive, migrateCatalogs } from "./catalogs";
 import {
   canOpenPage,
   INACTIVITY_MS,
@@ -76,6 +73,40 @@ test("RN-01: precarga una copia actual y bloquea nombre Público en edición y p
     ).users[1].name,
     "Nombre actualizado",
   );
+});
+
+test("Mi perfil: Digitador no puede cambiar su nombre, conserva edición de contacto y Admin puede cambiar el propio", async () => {
+  const state = await seed();
+  const [administrator, editor] = state.users;
+  const original = JSON.stringify(state);
+  const rejected = editProfile(state, editor.id, {
+    ...editor,
+    name: "Nombre alterado",
+    email: "alterado@example.test",
+  });
+  assert.equal(rejected.exito, false);
+  assert.match(rejected.mensaje, /Digitador.*solo lectura/);
+  assert.equal(JSON.stringify(state), original);
+
+  const edited = requireResult(
+    editProfile(state, editor.id, {
+      ...editor,
+      email: "contacto@example.test",
+      username: "digitador.actualizado",
+    }),
+  );
+  assert.equal(edited.users[1].name, editor.name);
+  assert.equal(edited.users[1].email, "contacto@example.test");
+  assert.equal(edited.users[1].username, "digitador.actualizado");
+  assert.equal(JSON.stringify(state), original);
+
+  const adminEdited = requireResult(
+    editProfile(state, administrator.id, {
+      ...administrator,
+      name: "Administrador actualizado",
+    }),
+  );
+  assert.equal(adminEdited.users[0].name, "Administrador actualizado");
 });
 
 test("Crear usuario: permiso, campos únicos, contraseña y respuesta estructurada", async () => {
@@ -162,12 +193,12 @@ test("RN-02: investigaciones, revisiones, documentos y transacciones impiden eli
 test("RN-02: operaciones reales de catálogo conservan participantes y bloquean baja incluso inactivo", async () => {
   let state = await seed();
   const [administrator, editor] = state.users;
-  state = saveCatalogRecord(state, editor.id, "autores", {
+  state = saveCatalogSample(state, editor.id, "autores", {
     name: "Autora de prueba",
     fields: {},
   });
   const recordId = state.catalogs.autores[0].id;
-  state = saveCatalogRecord(
+  state = saveCatalogSample(
     state,
     administrator.id,
     "autores",
@@ -191,7 +222,7 @@ test("RN-02: operaciones reales de catálogo conservan participantes y bloquean 
 test("Migración: registros anteriores sin trazabilidad conservan datos y bloquean eliminación cautelar", async () => {
   let state = await seed();
   const [administrator, editor] = state.users;
-  state = saveCatalogRecord(state, administrator.id, "autores", {
+  state = saveCatalogSample(state, administrator.id, "autores", {
     name: "Registro anterior",
     fields: {},
   });
