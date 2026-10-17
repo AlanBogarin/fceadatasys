@@ -1,0 +1,111 @@
+.administration-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.administration-info {
+  display: grid;
+  gap: 20px;
+}
+.administration-info h2 {
+  margin: 14px 0;
+}
+.administration-info p {
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.administration-info svg {
+  color: #7a133c;
+}
+.audit-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 18px;
+}
+.audit-filters .field:first-child {
+  grid-column: span 3;
+}
+.administration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 25px 20px;
+}
+.audit-alerts {
+  padding: 0 25px;
+}
+.audit-table {
+  min-width: 760px;
+}
+.audit-table td {
+  white-space: normal;
+  vertical-align: top;
+  max-width: 260px;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.audit-table small {
+  display: block;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.audit-scope {
+  margin: 18px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.audit-detail dl {
+  margin: 0 0 20px;
+}
+.audit-detail dl > div {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.audit-detail dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+.audit-detail dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.audit-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+  background: #f4f8f8;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.audit-detail h3 {
+  margin-top: 20px;
+}
+@media (max-width: 800px) {
+  .administration-layout {
+    grid-template-columns: 1fr;
+  }
+  .audit-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .audit-filters .field:first-child {
+    grid-column: span 2;
+  }
+}
+@media (max-width: 520px) {
+  .audit-filters {
+    grid-template-columns: 1fr;
+  }
+  .audit-filters .field:first-child {
+    grid-column: auto;
+  }
+  .administration-actions {
+    flex-direction: column;
+  }
+}

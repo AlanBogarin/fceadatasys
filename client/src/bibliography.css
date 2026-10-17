@@ -1,0 +1,127 @@
+.bibliography-filters {
+  background: white;
+  border: 1px solid #dfe8e7;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 25px;
+}
+.bibliography-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.bibliography-card {
+  background: white;
+  border: 1px solid #dfe8e7;
+  border-radius: 14px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.bibliography-card h2 {
+  font-size: 19px;
+  line-height: 1.5;
+  margin: 10px 0 15px;
+  overflow-wrap: anywhere;
+}
+.bibliography-card-tags,
+.bibliography-card-footer,
+.bibliography-result-heading,
+.bibliography-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.bibliography-card-tags {
+  margin-bottom: 16px;
+  color: #6b7e84;
+  font-size: 12px;
+}
+.bibliography-card-tags .badge {
+  white-space: normal;
+}
+.bibliography-authors {
+  display: flex;
+  gap: 8px;
+  color: #526970;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.bibliography-summary {
+  color: #526970;
+  font-size: 13px;
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.bibliography-meta {
+  display: grid;
+  gap: 8px;
+  margin: 20px 0;
+  color: #61757b;
+  font-size: 12px;
+}
+.bibliography-meta span,
+.bibliography-card-footer > span,
+.bibliography-restricted {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.bibliography-card-footer {
+  border-top: 1px solid #edf1f0;
+  padding-top: 17px;
+  margin-top: auto;
+  font-size: 12px;
+  color: #590d31;
+}
+.bibliography-result-heading {
+  margin-bottom: 18px;
+}
+.bibliography-result-heading h2 span {
+  display: inline-block;
+  background: #e4f5f3;
+  border-radius: 30px;
+  padding: 3px 10px;
+  font-size: 14px;
+  margin-left: 8px;
+}
+.bibliography-result-heading .field {
+  margin: 0;
+}
+.bibliography-pagination {
+  justify-content: center;
+  margin: 25px 0;
+}
+.bibliography-restricted {
+  padding: 14px;
+  background: #f8eff3;
+  border-radius: 8px;
+  color: #590d31;
+}
+@media (max-width: 800px) {
+  .bibliography-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.security-confirmation h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.confirmation-records {
+  padding: 14px 14px 14px 32px;
+  background: #f8eff3;
+  border-radius: 8px;
+  line-height: 1.7;
+  margin: 16px 0;
+}
+.security-confirmation .field {
+  margin-top: 20px;
+}

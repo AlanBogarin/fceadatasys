@@ -2,6 +2,7 @@ import type { State } from "./model";
 import { guardAdmin } from "./model";
 import {
   CATALOG_KEYS,
+  deleteCatalogRecord,
   normalizeCatalog,
   saveCatalogRecord,
   setCatalogActive,
@@ -10,6 +11,11 @@ import {
 } from "./catalogs";
 import { registerPublication } from "./publications";
 import { requireResult } from "./userService";
+import {
+  institutionalSamples,
+  legacyInstitutionalNames,
+} from "./institutionalDemo";
+import type { Reference } from "./publications";
 
 const demoPrefix = "fcea-demo-v1";
 const demoLabel = " (demo)";
@@ -44,23 +50,12 @@ const tutorNames = [
   "Claudia Ramírez",
   "Ricardo Ayala",
 ];
-const careerNames = [
-  "Administración de Empresas",
-  "Contaduría Pública",
-  "Economía",
-  "Comercio Internacional",
-];
 const levelNames = ["Grado", "Especialización", "Maestría"];
 const typeNames = [
   "Trabajo de grado",
   "Artículo científico",
   "Monografía",
   "Proyecto de investigación",
-];
-const branchNames = [
-  "Sede Central de Concepción",
-  "Filial Norte",
-  "Filial Sur",
 ];
 
 export const demoPublications = [
@@ -114,7 +109,7 @@ export const demoPublications = [
     career: 2,
     level: 2,
     type: 3,
-    branch: 2,
+    branch: 0,
     daysAgo: 7,
   },
   {
@@ -140,7 +135,7 @@ export const demoPublications = [
     career: 3,
     level: 0,
     type: 1,
-    branch: 1,
+    branch: 0,
     daysAgo: 20,
   },
   {
@@ -153,7 +148,7 @@ export const demoPublications = [
     career: 1,
     level: 0,
     type: 2,
-    branch: 2,
+    branch: 1,
     daysAgo: 30,
   },
   {
@@ -178,10 +173,20 @@ export function demoDocumentPath(index: number): string {
 function catalogSamples(
   catalog: CatalogKey,
 ): (CatalogInput & { active?: boolean })[] {
+  if (
+    catalog === "carreras" ||
+    catalog === "facultades" ||
+    catalog === "filiales"
+  ) {
+    return institutionalSamples[catalog];
+  }
   if (catalog === "autores") {
     return authorNames.map((name, index) => ({
       name: name + demoLabel,
-      fields: { email: `autor${index + 1}@demo.example.test` },
+      fields: {
+        ci: String(9000001 + index),
+        email: `autor${index + 1}@demo.example.test`,
+      },
       active: index !== authorNames.length - 1,
     }));
   }
@@ -189,33 +194,164 @@ function catalogSamples(
     return tutorNames.map((name, index) => ({
       name: name + demoLabel,
       fields: {
+        ci: String(9100001 + index),
         email: `tutor${index + 1}@demo.example.test`,
         especialidad: ["Administración", "Contabilidad", "Economía"][index % 3],
       },
       active: index !== tutorNames.length - 1,
     }));
   }
-  let names: string[];
-  if (catalog === "carreras") names = careerNames;
-  else if (catalog === "niveles") names = levelNames;
-  else if (catalog === "tipos") names = typeNames;
-  else if (catalog === "filiales") names = branchNames;
-  else
-    names = [
-      "Facultad de Ciencias Económicas y Administrativas",
-      "Facultad de Estudios Sociales",
-    ];
-  return names.map((name, index) => {
+  const names = catalog === "niveles" ? levelNames : typeNames;
+  return names.map((name) => {
     const fields: Record<string, string> = {
       descripcion:
         "Registro ficticio para la demostración académica del sistema.",
     };
-    if (catalog === "carreras") fields.codigo = `DEMO-CAR-${index + 1}`;
-    if (catalog === "facultades") fields.sigla = `DEMO-FAC-${index + 1}`;
-    if (catalog === "filiales")
-      fields.direccion = "Dirección de muestra, sin ubicación real.";
     return { name: name + demoLabel, fields };
   });
+}
+
+type CorrectedName = { before: string; after: string };
+
+function correctInstitutionalCatalogs(state: State, actorId: string) {
+  // Paso 1: reconocer únicamente marcas y nombres originales de la muestra antigua.
+  let prepared = state;
+  let updatedCatalogs = 0;
+  const correctedNames = new Map<string, CorrectedName>();
+
+  for (const catalog of ["carreras", "facultades", "filiales"] as const) {
+    for (const [index, sample] of institutionalSamples[catalog].entries()) {
+      const previousName = legacyInstitutionalNames[catalog][index];
+      const existing = prepared.catalogs[catalog].find(
+        (record) => record.demoKey === `${demoPrefix}/${catalog}/${index + 1}`,
+      );
+      if (
+        !existing ||
+        !previousName ||
+        normalizeCatalog(existing.name) !== normalizeCatalog(previousName)
+      ) {
+        continue;
+      }
+
+      // Paso 2: conservar campos que la persona editó y el estado activo/inactivo.
+      const fields = { ...existing.fields };
+      if (
+        fields.descripcion ===
+        "Registro ficticio para la demostración académica del sistema."
+      ) {
+        fields.descripcion = sample.fields.descripcion;
+      }
+      if (
+        catalog === "filiales" &&
+        fields.direccion === "Dirección de muestra, sin ubicación real."
+      ) {
+        fields.direccion = sample.fields.direccion;
+      }
+      if (
+        existing.name === sample.name &&
+        JSON.stringify(existing.fields) === JSON.stringify(fields)
+      ) {
+        continue;
+      }
+
+      // Paso 3: validar la corrección conservando ID, trazabilidad y referencias.
+      prepared = saveCatalogRecord(
+        prepared,
+        actorId,
+        catalog,
+        { name: sample.name, fields },
+        existing.id,
+      );
+      correctedNames.set(existing.id, {
+        before: existing.name,
+        after: sample.name,
+      });
+      updatedCatalogs += 1;
+    }
+  }
+  return { state: prepared, updatedCatalogs, correctedNames };
+}
+
+function correctDemoReferences(
+  state: State,
+  actorId: string,
+  correctedNames: Map<string, CorrectedName>,
+  branchIds: string[],
+) {
+  // Paso 1: localizar la filial ficticia sobrante, sin afectar registros propios.
+  const obsolete = state.catalogs.filiales.find(
+    (record) =>
+      record.demoKey === `${demoPrefix}/filiales/3` &&
+      record.name === legacyInstitutionalNames.filiales[2],
+  );
+  let updatedPublications = 0;
+  const publications = state.publications?.map((publication) => {
+    const sampleIndex = demoPublications.findIndex(
+      (_sample, index) =>
+        publication.demoKey === `${demoPrefix}/publicaciones/${index + 1}`,
+    );
+    if (sampleIndex < 0) return publication;
+
+    // Paso 2: corregir solo las etiquetas originales de investigaciones de muestra.
+    // Las instantáneas de trabajos propios y las ediciones manuales se conservan.
+    function corrected(reference: Reference): Reference {
+      const correction = correctedNames.get(reference.id);
+      if (correction && reference.name === correction.before) {
+        return { ...reference, name: correction.after };
+      }
+      return reference;
+    }
+    const career = corrected(publication.career);
+    let branch = corrected(publication.branch);
+    if (
+      obsolete &&
+      branch.id === obsolete.id &&
+      branch.name === obsolete.name
+    ) {
+      const target = state.catalogs.filiales.find(
+        (record) =>
+          record.id === branchIds[demoPublications[sampleIndex].branch],
+      );
+      if (!target)
+        throw Error("No se encontró la sede de reemplazo para la muestra.");
+      branch = { id: target.id, name: target.name };
+    }
+    // La carrera de Informática se ofrece en Concepción; corregir su antigua sede de muestra.
+    if (
+      sampleIndex === 5 &&
+      correctedNames.has(publication.branch.id) &&
+      branch.id === branchIds[1] &&
+      branch.name === institutionalSamples.filiales[1].name
+    ) {
+      const central = state.catalogs.filiales.find(
+        (record) => record.id === branchIds[0],
+      )!;
+      branch = { id: central.id, name: central.name };
+    }
+    if (career === publication.career && branch === publication.branch)
+      return publication;
+    updatedPublications += 1;
+    return { ...publication, career, branch };
+  });
+
+  // Paso 3: retirar la filial inexistente únicamente si ya no tiene referencias.
+  // Una referencia de un trabajo propio provoca el rechazo de toda la preparación.
+  let prepared: State = { ...state, publications };
+  if (obsolete) {
+    if (
+      publications?.some((publication) => publication.branch.id === obsolete.id)
+    ) {
+      throw Error(
+        "Filial Sur (demo) tiene investigaciones propias o editadas vinculadas. Corregí su sede desde Publicaciones antes de actualizar los datos UNC; no se guardó ningún cambio.",
+      );
+    }
+    prepared = deleteCatalogRecord(prepared, actorId, "filiales", obsolete.id);
+  }
+  return {
+    state: prepared,
+    updatedPublications,
+    consolidatedBranches: obsolete ? 1 : 0,
+  };
 }
 
 export function buildDemoData(
@@ -227,6 +363,9 @@ export function buildDemoData(
   state: State;
   addedCatalogs: number;
   addedPublications: number;
+  updatedCatalogs: number;
+  updatedPublications: number;
+  consolidatedBranches: number;
 } {
   // Paso 1: la carga de muestras corresponde exclusivamente a Administrador activo.
   guardAdmin(state, actorId);
@@ -241,8 +380,10 @@ export function buildDemoData(
     );
   }
 
-  // Paso 2: preparar catálogos sin reemplazar datos ni reactivar registros existentes.
-  let prepared = state;
+  // Paso 2: corregir la muestra institucional antigua y agregar registros faltantes.
+  // El llamador debe confirmar con contraseña si se modifican registros existentes.
+  const correction = correctInstitutionalCatalogs(state, actorId);
+  let prepared = correction.state;
   let addedCatalogs = 0;
   let addedPublications = 0;
   const identifiers = {} as Record<CatalogKey, string[]>;
@@ -282,6 +423,14 @@ export function buildDemoData(
       addedCatalogs += 1;
     }
   }
+
+  const references = correctDemoReferences(
+    prepared,
+    actorId,
+    correction.correctedNames,
+    identifiers.filiales,
+  );
+  prepared = references.state;
 
   // Paso 3: usar las mismas validaciones de registro y devolver una única confirmación local.
   for (const [index, sample] of demoPublications.entries()) {
@@ -331,5 +480,12 @@ export function buildDemoData(
     };
     addedPublications += 1;
   }
-  return { state: prepared, addedCatalogs, addedPublications };
+  return {
+    state: prepared,
+    addedCatalogs,
+    addedPublications,
+    updatedCatalogs: correction.updatedCatalogs,
+    updatedPublications: references.updatedPublications,
+    consolidatedBranches: references.consolidatedBranches,
+  };
 }

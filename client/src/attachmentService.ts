@@ -1,4 +1,5 @@
 import type { State, User } from "./model";
+import { settingsOf } from "./settings";
 import {
   publicationActor,
   type Publication,
@@ -80,7 +81,7 @@ export async function uploadAttachment({
   state: State;
   actorId: string;
   file: File;
-  commit: (state: State) => void;
+  commit: (state: State) => void | Promise<void>;
   assertActive: () => void;
   onStage?: (stage: "validating" | "saving") => void;
   write?: (id: string, file?: Blob) => Promise<void>;
@@ -104,7 +105,10 @@ export async function uploadAttachment({
   let attachment: PublicationAttachment;
   try {
     onStage?.("validating");
-    attachment = await preparePdf(file);
+    attachment = await preparePdf(
+      file,
+      settingsOf(state).maxPdfSizeMb * 1024 * 1024,
+    );
     const hashes = [
       ...(state.uploadedAttachments ?? []).map(
         (entry) => entry.attachment.sha256,
@@ -120,7 +124,7 @@ export async function uploadAttachment({
     }
   } catch (error) {
     assertActive();
-    commit({
+    await commit({
       ...state,
       attachmentAudit: [
         ...(state.attachmentAudit ?? []),
@@ -143,9 +147,9 @@ export async function uploadAttachment({
   await commitWithAttachment(
     attachment,
     file,
-    () => {
+    async () => {
       assertActive();
-      commit({
+      await commit({
         ...state,
         uploadedAttachments: [...(state.uploadedAttachments ?? []), upload],
         attachmentAudit: [

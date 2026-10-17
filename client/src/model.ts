@@ -2,6 +2,8 @@ import { userDependencies } from "./relations";
 import type { Publication, PublicationAudit } from "./publications";
 import type { UploadedAttachment, AttachmentAudit } from "./attachmentService";
 import { emptyCatalogs, type Catalogs } from "./catalogs";
+import type { SystemSettings } from "./settings";
+import type { AuditEvent } from "./audit";
 // Adaptador local de demostración. No constituye autenticación ni autorización de servidor.
 export const ROLES = ["ADMINISTRADOR", "DIGITADOR", "PUBLICO"] as const;
 export type Role = (typeof ROLES)[number];
@@ -43,6 +45,8 @@ export type State = {
   publicationAudit?: PublicationAudit[];
   uploadedAttachments?: UploadedAttachment[];
   attachmentAudit?: AttachmentAudit[];
+  auditEvents?: AuditEvent[];
+  settings?: SystemSettings;
 };
 export const DEMO_PASSWORD = "Fcea2026!";
 export const roleLabel: Record<Role, string> = {

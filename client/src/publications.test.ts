@@ -1,11 +1,8 @@
+import { saveCatalogSample } from "./testFixtures";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { seed } from "./model";
-import {
-  deleteCatalogRecord,
-  saveCatalogRecord,
-  setCatalogActive,
-} from "./catalogs";
+import { deleteCatalogRecord, setCatalogActive } from "./catalogs";
 import { preparePdf } from "./attachments";
 import { jsPDF } from "jspdf";
 import { userDependencies } from "./relations";
@@ -25,7 +22,7 @@ async function fixture() {
   let state = await seed();
   const administrator = state.users[0];
   for (const catalog of requiredCatalogs) {
-    state = saveCatalogRecord(state, administrator.id, catalog, {
+    state = saveCatalogSample(state, administrator.id, catalog, {
       name: `Ejemplo ${catalog}`,
       fields: {},
     });
@@ -230,7 +227,7 @@ test("Normaliza duplicados de título, resumen y abstract, y conserva los nombre
       ),
     /vinculado/,
   );
-  const changed = saveCatalogRecord(
+  const changed = saveCatalogSample(
     registered.state,
     administrator.id,
     "carreras",

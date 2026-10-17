@@ -100,10 +100,12 @@ export function Alert({
 
 export function Modal({
   title,
+  eyebrow = "Administración de cuentas",
   close,
   children,
 }: {
   title: string;
+  eyebrow?: string;
   close: () => void;
   children: ReactNode;
 }) {
@@ -120,7 +122,7 @@ export function Modal({
     <dialog ref={ref} className="modal" aria-label={title} onCancel={close}>
       <div className="modal-heading">
         <div>
-          <p className="eyebrow">Administración de cuentas</p>
+          <p className="eyebrow">{eyebrow}</p>
           <h2>{title}</h2>
         </div>
         <button

@@ -1,3 +1,4 @@
+import { auditFailure } from "./auditSignals";
 import {
   Check,
   ChevronLeft,
@@ -43,7 +44,7 @@ export function UsersPage({
 }: {
   state: State;
   user: User;
-  commit: (value: State) => void;
+  commit: (value: State) => Promise<void>;
   notify: (text: string) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -273,6 +274,7 @@ export function UsersPage({
                               ),
                             );
                           } catch (error) {
+                            auditFailure("Usuarios", "Operación rechazada", error);
                             setError(errorText(error));
                           }
                         }}
@@ -385,14 +387,15 @@ export function UsersPage({
             </button>
             <button
               className="primary"
-              onClick={() => {
+              onClick={async () => {
                 try {
                   const result = deleteUser(state, user.id, deleting.id);
-                  commit(requireResult(result));
+                  await commit(requireResult(result));
                   notify(result.mensaje);
                   setDeleting(null);
                   setError("");
                 } catch (error) {
+                  auditFailure("Usuarios", "Operación rechazada", error);
                   setError(errorText(error));
                 }
               }}
@@ -476,9 +479,9 @@ export function UsersPage({
             </button>
             <button
               className="primary"
-              onClick={() => {
+              onClick={async () => {
                 try {
-                  commit(
+                  await commit(
                     requireResult(
                       editUser(state, user.id, toggle.id, {
                         ...toggle,
@@ -491,6 +494,7 @@ export function UsersPage({
                   );
                   setToggle(null);
                 } catch (error) {
+                  auditFailure("Usuarios", "Operación rechazada", error);
                   setError(errorText(error));
                 }
               }}
@@ -515,7 +519,7 @@ export function AdminPasswordForm({
   state: State;
   actor: User;
   target: User;
-  commit: (value: State) => void;
+  commit: (value: State) => Promise<void>;
   close: () => void;
   notify: (value: string) => void;
 }) {
@@ -533,7 +537,7 @@ export function AdminPasswordForm({
       if (password !== data.get("confirm")) {
         throw Error("Las contraseñas nuevas no coinciden.");
       }
-      commit(
+      await commit(
         requireResult(
           await updateManagedPassword(state, actor.id, target.id, password),
         ),
@@ -541,6 +545,7 @@ export function AdminPasswordForm({
       notify(`Contraseña de ${target.username} actualizada.`);
       close();
     } catch (error) {
+      auditFailure("Usuarios", "Operación rechazada", error);
       setError(errorText(error));
     } finally {
       setBusy(false);
@@ -614,7 +619,7 @@ export function UserForm({
   state: State;
   actor: User;
   editing: User | "new";
-  commit: (value: State) => void;
+  commit: (value: State) => Promise<void>;
   close: () => void;
   notify: (value: string) => void;
 }) {
@@ -656,13 +661,15 @@ export function UserForm({
       }
       // Paso 3: aplicar reglas y persistir antes de informar éxito.
       if (person) {
-        commit(requireResult(editUser(state, actor.id, person.id, input)));
+        await commit(
+          requireResult(editUser(state, actor.id, person.id, input)),
+        );
       } else {
         const password = String(data.get("password"));
         if (password !== data.get("confirm")) {
           throw Error("Las contraseñas no coinciden.");
         }
-        commit(
+        await commit(
           requireResult(await createUser(state, actor.id, input, password)),
         );
       }
@@ -673,6 +680,7 @@ export function UserForm({
       );
       close();
     } catch (error) {
+      auditFailure("Usuarios", "Operación rechazada", error);
       setError(errorText(error));
     } finally {
       setBusy(false);
@@ -822,17 +830,17 @@ export function Profile({
 }: {
   state: State;
   user: User;
-  commit: (value: State) => void;
+  commit: (value: State) => Promise<void>;
   notify: (value: string) => void;
 }) {
   const [error, setError] = useState("");
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     // Paso 1: leer solamente los campos editables del perfil.
     event.preventDefault();
     setError("");
     const data = new FormData(event.currentTarget);
     try {
-      commit(
+      await commit(
         requireResult(
           editProfile(state, user.id, {
             name: String(data.get("name")),
@@ -843,6 +851,7 @@ export function Profile({
       );
       notify("Tu perfil fue actualizado.");
     } catch (error) {
+      auditFailure("Usuarios", "Operación rechazada", error);
       setError(errorText(error));
     }
   }
@@ -949,7 +958,7 @@ export function ChangePassword({
 }: {
   state: State;
   user: User;
-  commit: (value: State) => void;
+  commit: (value: State) => Promise<void>;
   onDone: () => void;
 }) {
   const [error, setError] = useState("");
@@ -965,7 +974,7 @@ export function ChangePassword({
       if (password !== data.get("confirm")) {
         throw Error("Las contraseñas nuevas no coinciden.");
       }
-      commit(
+      await commit(
         requireResult(
           await updatePersonalPassword(
             state,
@@ -977,6 +986,7 @@ export function ChangePassword({
       );
       onDone();
     } catch (error) {
+      auditFailure("Usuarios", "Operación rechazada", error);
       setError(errorText(error));
     } finally {
       setBusy(false);

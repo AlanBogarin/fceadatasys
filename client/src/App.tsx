@@ -6,6 +6,12 @@ import { AttachmentPage } from "./AttachmentPage";
 import { DemoDataPanel } from "./DemoDataPanel";
 import "./demoData.css";
 import { useSession } from "./useSession";
+import { useMutationConfirmation } from "./useMutationConfirmation";
+import { BibliographicPage } from "./BibliographicPage";
+import { AuditPage } from "./AuditPage";
+import { SettingsPage } from "./SettingsPage";
+import { auditMutation, type AuditIntent, type AuditContext } from "./audit";
+import { observeAudit } from "./auditSignals";
 import { canOpenPage, INACTIVITY_MINUTES } from "./security";
 import {
   createUser,
@@ -104,8 +110,13 @@ const groups: {
     label: "Repositorio",
     items: [
       { id: "dashboard", label: "Inicio", icon: LayoutDashboard, ready: true },
-      { id: "publicaciones", label: "Catálogo bibliográfico", icon: BookOpen },
-      { id: "busqueda", label: "Búsqueda avanzada", icon: Search },
+      {
+        id: "publicaciones",
+        label: "Catálogo bibliográfico",
+        icon: BookOpen,
+        ready: true,
+      },
+      { id: "busqueda", label: "Búsqueda avanzada", icon: Search, ready: true },
     ],
   },
   {
@@ -195,6 +206,7 @@ const groups: {
       },
       {
         id: "parametros",
+        ready: true,
         label: "Parámetros generales",
         icon: SlidersHorizontal,
         roles: admins,
@@ -206,7 +218,13 @@ const groups: {
         icon: FileText,
         roles: admins,
       },
-      { id: "auditoria", label: "Auditoría", icon: Clock3, roles: admins },
+      {
+        id: "auditoria",
+        label: "Auditoría",
+        icon: Clock3,
+        roles: admins,
+        ready: true,
+      },
     ],
   },
 ];
@@ -322,6 +340,22 @@ export default function App() {
   const [reportPublicationId, setReportPublicationId] = useState("");
   const [registrationAttachmentId, setRegistrationAttachmentId] = useState("");
   const [mobile, setMobile] = useState(false);
+  const auditSessionId = useRef(
+    sessionStorage.getItem("fcea-datasys.audit.session") ?? crypto.randomUUID(),
+  );
+  const sessionStarted = useRef(
+    Number(sessionStorage.getItem("fcea-datasys.audit.started")) || Date.now(),
+  );
+  const sessionIdentity = useRef(session);
+  sessionIdentity.current = session;
+  const confirmationControl = useMutationConfirmation({
+    getState: () => stateRef.current,
+    actorId: session,
+    assertActive: sessionControl.assertActive,
+    persist: (after, before) => commitAuthentication(after, before),
+    logout: () => logout(),
+    contextKey: `${session ?? ""}:${locked}:${page}`,
+  });
   useEffect(() => {
     load()
       .then(setState)
@@ -344,12 +378,23 @@ export default function App() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [page, session]);
-  function commitAuthentication(next: State) {
+  function auditContext(): AuditContext {
+    return {
+      actorId: sessionIdentity.current,
+      sessionId: sessionIdentity.current ? auditSessionId.current : null,
+      userAgent: navigator.userAgent,
+    };
+  }
+  function commitAuthentication(
+    next: State,
+    expected = stateRef.current,
+    intent?: AuditIntent,
+  ) {
     // Paso 1: rechazar escrituras calculadas sobre una versión desactualizada.
     const stored = localStorage.getItem("fcea-datasys.frontend.v1");
     if (
       stored &&
-      JSON.stringify(JSON.parse(stored)) !== JSON.stringify(state)
+      JSON.stringify(JSON.parse(stored)) !== JSON.stringify(expected)
     ) {
       const latest = JSON.parse(stored) as State;
       stateRef.current = latest;
@@ -359,14 +404,84 @@ export default function App() {
       );
     }
     // Paso 2: guardar de forma indivisible el estado local completo.
-    save(next);
+    if (!expected) throw Error("Los datos todavía no están disponibles.");
+    const context = auditContext();
+    if (
+      intent?.module === "Sesiones" &&
+      intent.operation === "Iniciar sesión" &&
+      intent.status === "EXITO"
+    ) {
+      auditSessionId.current = crypto.randomUUID();
+      context.sessionId = auditSessionId.current;
+    }
+    const audited = auditMutation(expected, next, context, intent);
+    save(audited);
     // Paso 3: actualizar la pantalla únicamente después de persistir.
-    stateRef.current = next;
-    setState(next);
+    stateRef.current = audited;
+    setState(audited);
   }
+  function recordAudit(intent: AuditIntent) {
+    const latest = stateRef.current;
+    if (!latest) return;
+    commitAuthentication(latest, latest, intent);
+  }
+  useEffect(
+    () =>
+      observeAudit((intent) => {
+        try {
+          recordAudit(intent);
+        } catch (caught) {
+          setFatal(`No se pudo registrar la auditoría. ${errorText(caught)}`);
+        }
+      }),
+    [],
+  );
+  const previousLock = useRef(false);
+  useEffect(() => {
+    if (!state) return;
+    if (state && session && locked && !previousLock.current) {
+      try {
+        recordAudit({
+          module: "Sesiones",
+          operation: "Bloquear por inactividad",
+          status: "EXITO",
+          detail: "La sesión alcanzó el plazo de diez minutos sin actividad.",
+        });
+      } catch (caught) {
+        setFatal(errorText(caught));
+      }
+    }
+    previousLock.current = locked;
+  }, [locked, state, session]);
+  const deniedPage = useRef("");
+  useEffect(() => {
+    const currentUser = stateRef.current?.users.find(
+      (account) => account.id === session && account.active,
+    );
+    const key = `${session}:${page}`;
+    if (
+      currentUser &&
+      !locked &&
+      !canOpenPage(currentUser.role, page) &&
+      deniedPage.current !== key
+    ) {
+      deniedPage.current = key;
+      try {
+        recordAudit({
+          module: "Seguridad",
+          operation: "Acceso denegado",
+          status: "FALLIDO",
+          resourceName: page,
+          detail: "La cuenta no tiene permiso para abrir esta página.",
+        });
+      } catch (caught) {
+        setFatal(errorText(caught));
+      }
+    } else if (currentUser && canOpenPage(currentUser.role, page))
+      deniedPage.current = "";
+  }, [session, page, locked]);
   function commit(next: State) {
-    sessionControl.assertActive();
-    commitAuthentication(next);
+    return confirmationControl.commit(next, state);
   }
   useEffect(() => {
     function synchronize(event: StorageEvent) {
@@ -392,7 +507,22 @@ export default function App() {
     setMobile(false);
   };
   const logout = () => {
+    try {
+      if (stateRef.current && sessionIdentity.current)
+        recordAudit({
+          module: "Sesiones",
+          operation: "Cerrar sesión",
+          status: "EXITO",
+          detail: `Duración de sesión: ${Math.max(0, Math.round((Date.now() - sessionStarted.current) / 1000))} segundos. Cierre propagado a las pestañas de la misma cuenta.`,
+        });
+    } catch (caught) {
+      setFatal(
+        `No se pudo registrar el cierre de sesión. ${errorText(caught)}`,
+      );
+    }
     sessionControl.logout();
+    sessionStorage.removeItem("fcea-datasys.audit.session");
+    sessionStorage.removeItem("fcea-datasys.audit.started");
     location.hash = "login";
     setToast("Sesión cerrada.");
   };
@@ -421,11 +551,22 @@ export default function App() {
       <>
         <Auth
           state={state}
-          commit={commitAuthentication}
+          commit={(next, intent) =>
+            commitAuthentication(next, stateRef.current, intent)
+          }
           lockedUsername={locked ? user?.username : undefined}
           onExit={logout}
           onLogin={(targetId) => {
             sessionControl.login(targetId);
+            sessionStorage.setItem(
+              "fcea-datasys.audit.session",
+              auditSessionId.current,
+            );
+            sessionStarted.current = Date.now();
+            sessionStorage.setItem(
+              "fcea-datasys.audit.started",
+              String(sessionStarted.current),
+            );
             setToast("");
             if (!locked) {
               navigate("dashboard");
@@ -465,6 +606,19 @@ export default function App() {
         </section>
       );
     }
+    if (page === "publicaciones" || page === "busqueda") {
+      return (
+        <BibliographicPage
+          key={page}
+          state={state!}
+          user={user!}
+          advanced={page === "busqueda"}
+          navigate={navigate}
+          commit={commit}
+          assertActive={sessionControl.assertActive}
+        />
+      );
+    }
     if (isCatalogKey(page)) {
       return (
         <CatalogPage
@@ -479,6 +633,26 @@ export default function App() {
     }
     if (page === "roles") {
       return <RolesPage />;
+    }
+    if (page === "auditoria") {
+      return (
+        <AuditPage
+          state={state!}
+          user={user!}
+          assertActive={sessionControl.assertActive}
+          recordAudit={recordAudit}
+        />
+      );
+    }
+    if (page === "parametros") {
+      return (
+        <SettingsPage
+          state={state!}
+          user={user!}
+          commit={commit}
+          notify={setToast}
+        />
+      );
     }
     if (page === "gestion-publicaciones") {
       return (
@@ -514,6 +688,7 @@ export default function App() {
     if (page === "reportes") {
       return (
         <PublicationReportsPage
+          recordAudit={recordAudit}
           state={state!}
           user={user!}
           commit={commit}
@@ -670,6 +845,7 @@ export default function App() {
           <span>Repositorio de investigaciones · Demostración local</span>
         </footer>
       </div>
+      {confirmationControl.confirmation}
       {toast && (
         <div className="toast" role="status">
           <Check size={18} />
@@ -689,7 +865,7 @@ function Dashboard({
   state: State;
   user: User;
   navigate: (targetId: string) => void;
-  commit: (state: State) => void;
+  commit: (state: State) => Promise<void>;
   notify: (message: string) => void;
 }) {
   const cards = [
@@ -727,7 +903,7 @@ function Dashboard({
       label: "Catálogo bibliográfico",
       desc: "Consulta de la producción académica.",
       icon: BookOpen,
-      pending: true,
+      pending: false,
     },
     ...(user.role === "ADMINISTRADOR"
       ? [

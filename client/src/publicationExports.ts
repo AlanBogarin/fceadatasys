@@ -124,23 +124,66 @@ export async function buildPublicationReport(
     };
   }
 
-  const { jsPDF } = await import("jspdf");
+  const [{ jsPDF }, { FCEA_REPORT_LOGO, UNC_REPORT_LOGO }] = await Promise.all([
+    import("jspdf"),
+    import("./reportBrand"),
+  ]);
   const document = new jsPDF();
-  let cursor = 44;
+  let cursor = 66;
   function header() {
-    document.setFillColor(89, 13, 49);
-    document.rect(0, 0, 210, 29, "F");
-    document.setTextColor(255, 255, 255);
-    document.setFontSize(17);
-    document.text("FCEA · UNC", 18, 13);
-    document.setFontSize(11);
-    document.text("Reporte de investigaciones registradas", 18, 22);
+    document.addImage(
+      FCEA_REPORT_LOGO,
+      "PNG",
+      16,
+      8,
+      22,
+      22,
+      "fcea-logo",
+      "FAST",
+    );
+    document.addImage(
+      UNC_REPORT_LOGO,
+      "PNG",
+      173,
+      8,
+      22,
+      22,
+      "unc-logo",
+      "FAST",
+    );
+    document.setTextColor(89, 13, 49);
+    document.setFont("helvetica", "bold");
+    document.setFontSize(12);
+    document.text("Universidad Nacional de Concepción", 105, 13, {
+      align: "center",
+    });
+    document.setFontSize(9.5);
+    document.text(
+      "Facultad de Ciencias Económicas y Administrativas",
+      105,
+      20,
+      { align: "center" },
+    );
+    document.setFont("helvetica", "normal");
+    document.setFontSize(9);
+    document.text(
+      "Dirección de Investigación · Repositorio institucional",
+      105,
+      27,
+      { align: "center" },
+    );
+    document.setDrawColor(89, 13, 49);
+    document.line(16, 35, 194, 35);
+    document.setFont("helvetica", "bold");
+    document.setFontSize(14);
+    document.text("Reporte de investigaciones registradas", 18, 45);
     document.setTextColor(35, 48, 55);
+    document.setFont("helvetica", "normal");
     document.setFontSize(9);
     document.text(
       `Generado: ${generatedAt} · Total: ${publications.length}`,
       18,
-      36,
+      55,
     );
   }
   function textBlock(text: string, bold = false) {
@@ -151,7 +194,7 @@ export async function buildPublicationReport(
       if (cursor > 274) {
         document.addPage();
         header();
-        cursor = 44;
+        cursor = 66;
       }
       document.text(line, 18, cursor);
       cursor += 5;
@@ -164,7 +207,7 @@ export async function buildPublicationReport(
     if (index > 0) {
       document.addPage();
       header();
-      cursor = 44;
+      cursor = 66;
     }
     textBlock(`${publication.code} · ${publication.title}`, true);
     for (const [label, value] of reportFields(publication).slice(2)) {
