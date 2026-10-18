@@ -10,6 +10,7 @@ export interface AppConfig {
   jwtAudience: string;
   allowedOrigins: string[];
   secureCookies: boolean;
+  trustedProxies?: string[];
   recoveryUrl: string;
   smtp?: { host: string; port: number; user?: string; pass?: string; from: string; secure: boolean };
   attachments?: { directory: string; command: string; database?: string; timeoutMs: number; maxSignatureAgeDays: number; concurrency: number };
@@ -26,6 +27,7 @@ const environmentSchema = z.object({
   JWT_AUDIENCE: z.string().min(1).default('fceadatasys-client'),
   ALLOWED_ORIGINS: z.string().min(1),
   SECURE_COOKIES: booleanEnv.default(true),
+  TRUSTED_PROXIES: z.string().default(''),
   RECOVERY_URL: z.url(),
   SMTP_HOST: z.string().trim().min(1).max(253).refine(value => !/[\s/@?#]/.test(value)).optional(),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
@@ -46,6 +48,8 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   // No imprimir valores de entorno: podrían contener credenciales.
   if (!result.success) throw new Error(`Configuración inválida: ${result.error.issues.map(issue => issue.path.join('.')).join(', ')}.`);
   const env = result.data;
+  const trustedProxies = env.TRUSTED_PROXIES ? env.TRUSTED_PROXIES.split(',').map(value => value.trim()) : [];
+  if (trustedProxies.some(value => !['127.0.0.1', '::1'].includes(value))) throw new Error('TRUSTED_PROXIES admite únicamente el proxy local 127.0.0.1 o ::1.');
   const allowedOrigins = env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim());
   for (const origin of allowedOrigins) {
     const url = URL.parse(origin);
@@ -61,7 +65,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   return {
     nodeEnv: env.NODE_ENV, host: env.HOST, port: env.PORT, databaseUrl: env.DATABASE_URL,
     jwtSecret: env.JWT_SECRET, jwtIssuer: env.JWT_ISSUER, jwtAudience: env.JWT_AUDIENCE,
-    allowedOrigins, secureCookies: env.SECURE_COOKIES, recoveryUrl: env.RECOVERY_URL,
+    allowedOrigins, secureCookies: env.SECURE_COOKIES, recoveryUrl: env.RECOVERY_URL, trustedProxies,
     smtp: env.SMTP_HOST ? { host: env.SMTP_HOST, port: env.SMTP_PORT, user: env.SMTP_USER, pass: env.SMTP_PASS, from: env.SMTP_FROM!, secure: env.SMTP_SECURE } : undefined,
     attachments: { directory: env.ATTACHMENT_DIRECTORY, command: env.CLAMAV_COMMAND, database: env.CLAMAV_DATABASE_DIR, timeoutMs: env.CLAMAV_TIMEOUT_MS, maxSignatureAgeDays: env.CLAMAV_MAX_SIGNATURE_AGE_DAYS, concurrency: env.ATTACHMENT_CONCURRENCY },
   };

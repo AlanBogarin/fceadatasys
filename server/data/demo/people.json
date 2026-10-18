@@ -1,0 +1,65 @@
+{
+  "accounts": [
+    {
+      "name": "Administrador de demostración",
+      "ci": "90000001",
+      "email": "admin@demo.example.test",
+      "username": "demo.admin",
+      "role": "ADMINISTRADOR",
+      "active": true
+    },
+    {
+      "name": "Gestión de Biblioteca",
+      "ci": "90000002",
+      "email": "biblioteca@demo.example.test",
+      "username": "demo.digitador",
+      "role": "DIGITADOR",
+      "active": true
+    },
+    {
+      "name": "Consulta de demostración",
+      "ci": "90000003",
+      "email": "consulta@demo.example.test",
+      "username": "demo.publico",
+      "role": "PUBLICO",
+      "active": true
+    }
+  ],
+  "authors": [
+    "Lucía Benítez",
+    "Mateo Acosta",
+    "Camila Rojas",
+    "Bruno Villalba",
+    "Sofía Cabrera",
+    "Nicolás Vera",
+    "Valentina Duarte",
+    "Diego González",
+    "Martina López",
+    "Tomás Fernández",
+    "Emilia Gómez",
+    "Joaquín Ortiz",
+    "Paula Méndez",
+    "Agustín Núñez"
+  ],
+  "tutors": [
+    "Laura Martínez",
+    "Andrés Giménez",
+    "Carolina Sosa",
+    "Gabriel Paredes",
+    "Daniela Aquino",
+    "Sebastián Leiva",
+    "Patricia Franco",
+    "Miguel Espínola",
+    "Adriana Cáceres",
+    "Hugo Valdez",
+    "Claudia Ramírez",
+    "Ricardo Ayala"
+  ],
+  "levels": ["Grado", "Especialización", "Maestría"],
+  "types": [
+    "Trabajo de grado",
+    "Artículo científico",
+    "Monografía",
+    "Proyecto de investigación"
+  ]
+}

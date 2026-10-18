@@ -1,0 +1,20 @@
+{
+  "profile": "production",
+  "administrator": {
+    "name": "Administrador",
+    "ci": "0000000",
+    "username": "admin",
+    "role": "ADMINISTRADOR",
+    "active": true
+  },
+  "settings": {
+    "summaryWordLimit": 300,
+    "maxPdfSizeMb": 10,
+    "allowedFormats": ["pdf"]
+  },
+  "catalogs": [],
+  "authors": [],
+  "tutors": [],
+  "publications": [],
+  "attachments": []
+}

@@ -1,12 +1,26 @@
-export type ClientConfig = { mode: "mock" | "api"; apiBaseUrl: string };
+export type ClientConfig = {
+  mode: "api";
+  apiBaseUrl: string;
+  profile: "demo" | "production";
+};
+export type RuntimeConfig = { apiBaseUrl?: string; profile?: string };
+declare global {
+  interface Window {
+    __FCEA_CONFIG__?: RuntimeConfig;
+  }
+}
 export function clientConfig(
   environment: { VITE_DATA_MODE?: string; VITE_API_BASE_URL?: string } = {},
+  runtime: RuntimeConfig = {},
 ): ClientConfig {
-  const mode = environment.VITE_DATA_MODE ?? "mock";
-  if (mode !== "mock" && mode !== "api")
-    throw Error("VITE_DATA_MODE debe ser mock o api.");
+  if (environment.VITE_DATA_MODE && environment.VITE_DATA_MODE !== "api")
+    throw Error(
+      "El backend simulado fue retirado. El cliente requiere la API real.",
+    );
   const url = new URL(
-    environment.VITE_API_BASE_URL ?? "http://127.0.0.1:3000/api/v1",
+    runtime.apiBaseUrl ??
+      environment.VITE_API_BASE_URL ??
+      "http://127.0.0.1:3000/api/v1",
   );
   if (
     !["http:", "https:"].includes(url.protocol) ||
@@ -16,11 +30,11 @@ export function clientConfig(
     url.hash
   )
     throw Error("La URL base de API no es válida.");
-  return { mode, apiBaseUrl: url.href.replace(/\/$/, "") };
-}
-export function assertMockMode(config: ClientConfig) {
-  if (config.mode !== "mock")
-    throw Error(
-      "El modo API todavía no está habilitado. Usá VITE_DATA_MODE=mock para abrir la demostración local.",
-    );
+  if (runtime.profile && !["demo", "production"].includes(runtime.profile))
+    throw Error("Perfil de despliegue inválido.");
+  return {
+    mode: "api",
+    apiBaseUrl: url.href.replace(/\/$/, ""),
+    profile: runtime.profile === "demo" ? "demo" : "production",
+  };
 }

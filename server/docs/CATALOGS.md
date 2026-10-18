@@ -1,6 +1,6 @@
 # Contrato API de catálogos
 
-Base `/api/v1/catalogos/:catalog`. Valores de `catalog`: `autores`, `tutores`, `carreras`, `facultades`, `filiales`, `tipos`, `niveles`. Todos los endpoints exigen Bearer y sesión vigente. Complementa [API.md](API.md), incluidos transporte, paginación y Problem Details. `client/` conserva su persistencia local; esta entrega no conecta sus pantallas.
+Base `/api/v1/catalogos/:catalog`. Valores de `catalog`: `autores`, `tutores`, `carreras`, `facultades`, `filiales`, `tipos`, `niveles`. Todos los endpoints exigen Bearer y sesión vigente. Complementa [API.md](API.md), incluidos transporte, paginación y Problem Details. Desde el 18/10, el modo API de `client/` conecta los siete catálogos; el simulador conserva su persistencia independiente. La [ampliación 11–15](../../docs/IMPLEMENTACION-CONEXION-PASOS-11-15-2026-10-18.md) documenta su comprobación sin modificar este contrato.
 
 | Método y ruta relativa | Respuesta | Permiso |
 | --- | --- | --- |

@@ -77,6 +77,12 @@ export type ReportFilters = {
   author?: string;
   tutor?: string;
   active?: string;
+  branchId?: string;
+  source?: string;
+  search?: string;
+  code?: string;
+  authorId?: string;
+  tutorId?: string;
 };
 export const emptyReportFilters: ReportFilters = {
   from: "",

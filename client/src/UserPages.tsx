@@ -19,6 +19,7 @@ import { auditFailure } from "./auditSignals";
 import { useDataClient } from "./data/context";
 import { userDto, type UserDto as User } from "./data/contracts";
 import { useQuery } from "./data/useQuery";
+import { useActionVersion } from "./data/useActionVersion";
 import { useVersionedDraft, VersionReview } from "./data/useVersionedDraft";
 import type { ViewState as State } from "./data/view";
 import {
@@ -51,7 +52,7 @@ export function UsersPage({
   user,
   notify,
 }: {
-  state: State;
+  state?: State;
   user: User;
   notify: (text: string) => void;
 }) {
@@ -66,15 +67,21 @@ export function UsersPage({
   const [toggle, setToggle] = useState<VersionedUser | null>(null);
   const [passwordUser, setPasswordUser] = useState<User | null>(null);
   const [error, setError] = useState("");
+  const actionVersion = useActionVersion<User>(
+    `${toggle?.id ?? ""}:${deleting?.id ?? ""}`,
+  );
   const request = useQuery(
-    () =>
-      client.users.list({
-        search: query,
-        role,
-        active: status ? String(status === "active") : "",
-        page,
-        pageSize: 6,
-      }),
+    (signal) =>
+      client.users.list(
+        {
+          search: query,
+          role,
+          active: status ? String(status === "active") : "",
+          page,
+          pageSize: 6,
+        },
+        signal,
+      ),
     [state, query, role, status, page],
   );
   const filtered = request.data?.data ?? [];
@@ -106,7 +113,9 @@ export function UsersPage({
           <div>
             <p>Total de usuarios</p>
             <strong>
-              {String(request.data?.summary.total ?? 0).padStart(2, "0")}
+              {request.data
+                ? String(request.data.summary.total).padStart(2, "0")
+                : "—"}
             </strong>
           </div>
         </div>
@@ -117,7 +126,9 @@ export function UsersPage({
           <div>
             <p>Cuentas activas</p>
             <strong>
-              {String(request.data?.summary.active ?? 0).padStart(2, "0")}
+              {request.data
+                ? String(request.data.summary.active).padStart(2, "0")
+                : "—"}
             </strong>
           </div>
         </div>
@@ -128,10 +139,9 @@ export function UsersPage({
           <div>
             <p>Administradores activos</p>
             <strong>
-              {String(request.data?.summary.administrators ?? 0).padStart(
-                2,
-                "0",
-              )}
+              {request.data
+                ? String(request.data.summary.administrators).padStart(2, "0")
+                : "—"}
             </strong>
           </div>
         </div>
@@ -143,7 +153,7 @@ export function UsersPage({
             <p>Consultá y mantené las cuentas institucionales.</p>
           </div>
           <span className="badge blue">
-            {request.data?.summary.total ?? 0} usuarios
+            {request.data?.summary.total ?? "—"} usuarios
           </span>
         </div>
         <div className="filter-bar">
@@ -273,7 +283,12 @@ export function UsersPage({
                       <button
                         className="icon-btn"
                         aria-label={`Ver ${account.username}`}
-                        onClick={() => setDetail(account)}
+                        onClick={() => {
+                          void client.users
+                            .get(account.id)
+                            .then((result) => setDetail(result.data))
+                            .catch((error) => setError(errorText(error)));
+                        }}
                       >
                         <Eye size={17} />
                       </button>
@@ -350,7 +365,7 @@ export function UsersPage({
           </table>
           {request.loading && <p role="status">Consultando usuarios…</p>}
           <Alert text={request.error ? errorText(request.error) : ""} />
-          {!request.loading && !rows.length && (
+          {!request.loading && !request.error && !rows.length && (
             <div className="no-results">
               <Search size={28} />
               <h3>No se encontraron usuarios</h3>
@@ -362,7 +377,11 @@ export function UsersPage({
           <span>
             {filtered.length
               ? `Mostrando ${(actualPage - 1) * 6 + 1}–${Math.min(actualPage * 6, total)} de ${total} usuarios`
-              : "0 usuarios"}
+              : request.data
+                ? "0 usuarios"
+                : request.loading
+                  ? "Consultando…"
+                  : "Sin datos disponibles"}
           </span>
           <div className="pagination">
             <button
@@ -398,6 +417,7 @@ export function UsersPage({
       {deleting && (
         <Modal title="Eliminar usuario" close={() => setDeleting(null)}>
           <div className="modal-body">
+            {actionVersion.review}
             <Alert text={error} />
             <p>
               ¿Querés eliminar la cuenta de <strong>{deleting.name}</strong>?
@@ -414,6 +434,7 @@ export function UsersPage({
             </button>
             <button
               className="primary"
+              disabled={actionVersion.blocked}
               onClick={async () => {
                 try {
                   await client.users.remove(deleting.id, {
@@ -423,6 +444,14 @@ export function UsersPage({
                   setDeleting(null);
                   setError("");
                 } catch (error) {
+                  actionVersion.failed(
+                    error,
+                    () => client.users.get(deleting.id),
+                    (result) => {
+                      setDeleting({ ...result.data, etag: result.etag });
+                      setError("");
+                    },
+                  );
                   auditFailure("Usuarios", "Operación rechazada", error);
                   setError(errorText(error));
                 }
@@ -488,6 +517,7 @@ export function UsersPage({
           close={() => setToggle(null)}
         >
           <div className="modal-body">
+            {actionVersion.review}
             <Alert text={error} />
             <p>
               ¿Querés {toggle.active ? "inactivar" : "activar"} la cuenta de{" "}
@@ -505,11 +535,12 @@ export function UsersPage({
             </button>
             <button
               className="primary"
+              disabled={actionVersion.blocked}
               onClick={async () => {
                 try {
                   await client.users.update(
                     toggle.id,
-                    { ...userInput(toggle), active: !toggle.active },
+                    { active: !toggle.active },
                     { ifMatch: toggle.etag },
                   );
                   notify(
@@ -517,6 +548,14 @@ export function UsersPage({
                   );
                   setToggle(null);
                 } catch (error) {
+                  actionVersion.failed(
+                    error,
+                    () => client.users.get(toggle.id),
+                    (result) => {
+                      setToggle({ ...result.data, etag: result.etag });
+                      setError("");
+                    },
+                  );
                   auditFailure("Usuarios", "Operación rechazada", error);
                   setError(errorText(error));
                 }
@@ -538,7 +577,7 @@ export function AdminPasswordForm({
   close,
   notify,
 }: {
-  state: State;
+  state?: State;
   actor: User;
   target: User;
   close: () => void;
@@ -635,7 +674,7 @@ export function UserForm({
   close,
   notify,
 }: {
-  state: State;
+  state?: State;
   actor: User;
   editing: VersionedUser | "new";
   close: () => void;
@@ -646,15 +685,19 @@ export function UserForm({
   const version = useVersionedDraft(
     person ? userDto(person) : null,
     person?.etag,
+    person ? () => client.users.get(person.id) : undefined,
   );
-  const currentPerson = person
-    ? state.users.find((user) => user.id === person.id)
-    : undefined;
+  const currentPerson =
+    version.latest?.data ??
+    (person ? state?.users.find((user) => user.id === person.id) : undefined);
   const [selectedRole, setSelectedRole] = useState<Role>(
     person?.role || "PUBLICO",
   );
   const nameReadOnly = Boolean(
-    person && (person.role === "PUBLICO" || selectedRole === "PUBLICO"),
+    person &&
+    (person.role === "PUBLICO" ||
+      currentPerson?.role === "PUBLICO" ||
+      selectedRole === "PUBLICO"),
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -666,7 +709,7 @@ export function UserForm({
     const element = event.currentTarget;
     const data = new FormData(element);
     try {
-      guardAdmin(state, actor.id);
+      if (state) guardAdmin(state, actor.id);
       const input: UserInput = {
         name: String(data.get("name")),
         ci: String(data.get("ci")),
@@ -716,7 +759,11 @@ export function UserForm({
       <form onSubmit={submit}>
         <div className="modal-body">
           <Alert text={error} />
-          {version.conflict && currentPerson && (
+          <Alert text={version.reviewError} />
+          {version.conflict && !version.latest && !version.reviewError && (
+            <p role="status">Consultando la versión actual…</p>
+          )}
+          {version.conflict && version.latest && currentPerson && (
             <VersionReview
               values={{
                 Nombre: currentPerson.name,
@@ -727,13 +774,8 @@ export function UserForm({
                 Estado: currentPerson.active ? "Activo" : "Inactivo",
               }}
               onReviewed={() => {
-                void client.users
-                  .get(currentPerson.id)
-                  .then((result) => {
-                    version.review(result.data, result.etag);
-                    setError("");
-                  })
-                  .catch((error) => setError(errorText(error)));
+                version.acceptLatest();
+                setError("");
               }}
             />
           )}
@@ -873,7 +915,7 @@ export function Profile({
   user,
   notify,
 }: {
-  state: State;
+  state?: State;
   user: User;
   notify: (value: string) => void;
 }) {
@@ -998,7 +1040,7 @@ export function ChangePassword({
   user,
   onDone,
 }: {
-  state: State;
+  state?: State;
   user: User;
   onDone: () => void;
 }) {

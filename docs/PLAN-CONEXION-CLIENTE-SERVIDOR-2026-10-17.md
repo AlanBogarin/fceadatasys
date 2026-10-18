@@ -1,6 +1,8 @@
 # Plan de conexión cliente–servidor por ventanas — 17/10/2026
 
-**Estado:** plan propuesto; no habilita la conexión ni ejecuta migraciones. Parte de `4680937` y de la documentación consolidada del 17/10. H1, H2 y H3 están resueltos. El trabajo principal corresponde al cliente: implementar transporte, composición, sesión y lecturas reales sobre los endpoints existentes.
+**Estado al 18/10/2026:** los pasos **1–22 están implementados y verificados en integración local** contra API/PostgreSQL. Auditoría e Inicio cierran la conexión; la regresión completa pasó con 113 pruebas del cliente y 37 de API, tipos y build. Evidencias y límites en las notas de [conexión 1–10](IMPLEMENTACION-CONEXION-PASOS-1-10-2026-10-18.md), [catálogos 11–15](IMPLEMENTACION-CONEXION-PASOS-11-15-2026-10-18.md), [archivos/publicaciones 16–20](IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md) y [cierre 21–22](IMPLEMENTACION-CONEXION-PASOS-21-22-2026-10-18.md). La conexión local está terminada; la validación en navegadores y condiciones institucionales y el despliegue conservan el alcance operativo documentado.
+
+El plan parte de `4680937` y de la documentación consolidada del 17/10. H1, H2 y H3 están resueltos. La implementación conserva los endpoints y las siete migraciones existentes; se aplicaron únicamente a una base nueva y exclusiva del cliente para las pruebas.
 
 Referencias: [contrato maestro](../AGENTS.md), [revisión de preparación](REVISION-PREPARACION-INTEGRACION-2026-10-17.md), [API](../server/docs/API.md), [integración](../server/docs/CLIENT-INTEGRATION.md) y [adaptaciones del cliente](../client/docs/ADAPTACIONES-CLIENTE.md).
 
@@ -183,6 +185,8 @@ No se prevén endpoints nuevos ni migraciones por anticipado. Una diferencia de 
 
 ### 16. Carga de archivos
 
+**Estado:** verificado en integración local; evidencias y límites en la [entrega 16–20](IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md).
+
 **UI:** `#archivos`, `AttachmentPage.tsx` y `attachmentService.ts`. **Depende de:** 1, 8 y ClamAV operativo.
 
 **Endpoints:** GET/POST `/adjuntos`, GET `/adjuntos/:id`, GET `/publicaciones/:id/adjunto`.
@@ -192,6 +196,8 @@ No se prevén endpoints nuevos ni migraciones por anticipado. Una diferencia de 
 **Cierre:** PDF inicial y TXT habilitado, duplicados, archivo inválido y fallo de ClamAV con rechazo seguro. Digitador ve su alcance; Público no carga/descarga. Cancelar el formulario posterior conserva la carga confirmada. Descargar un archivo vinculado se valida con fixtures y se repite desde UI después del paso 17.
 
 ### 17. Publicaciones — gestión bibliográfica
+
+**Estado:** verificado en integración local; evidencias y límites en la [entrega 16–20](IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md).
 
 **UI:** `#gestion-publicaciones`, listado, registro, detalle, edición e inactivación en `PublicationPages.tsx`. **Depende de:** 8–11 y 13–16; Facultades no es una dependencia del formulario.
 
@@ -203,6 +209,8 @@ No se prevén endpoints nuevos ni migraciones por anticipado. Una diferencia de 
 
 ### 18. Catálogo bibliográfico
 
+**Estado:** verificado en integración local; evidencias y límites en la [entrega 16–20](IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md).
+
 **UI:** `#publicaciones`, modo básico de `BibliographicPage.tsx`. **Depende de:** 1 y 17 para probar datos creados desde UI.
 
 **Endpoints:** GET `/publicaciones`, GET `/publicaciones/:id` y descarga autorizada de adjunto cuando corresponda.
@@ -212,6 +220,8 @@ No se prevén endpoints nuevos ni migraciones por anticipado. Una diferencia de 
 **Cierre:** los tres roles consultan; Público no recibe metadatos/descarga del adjunto. Admin puede consultar históricas; Digitador/Público solo activas. Recargar/detallar funciona sin haber abierto Gestión y sin datos locales previos.
 
 ### 19. Búsqueda avanzada
+
+**Estado:** verificado en integración local; evidencias y límites en la [entrega 16–20](IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md).
 
 **UI:** `#busqueda`, modo avanzado de `BibliographicPage.tsx`. **Depende de:** 18.
 
@@ -223,6 +233,8 @@ No se prevén endpoints nuevos ni migraciones por anticipado. Una diferencia de 
 
 ### 20. Reporte de investigaciones
 
+**Estado:** verificado en integración local; evidencias y límites en la [entrega 16–20](IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md).
+
 **UI:** `#reportes`, `PublicationReportsPage` en `PublicationPages.tsx`. **Depende de:** 17 y 19.
 
 **Endpoints:** GET `/reportes/publicaciones` y `/reportes/publicaciones/exportar`.
@@ -233,6 +245,8 @@ No se prevén endpoints nuevos ni migraciones por anticipado. Una diferencia de 
 
 ### 21. Auditoría
 
+**Estado:** verificado en integración local; resultados y límites en la [entrega 21–22](IMPLEMENTACION-CONEXION-PASOS-21-22-2026-10-18.md).
+
 **UI:** `#auditoria`, `AuditPage.tsx`. **Depende de:** 3–20 para verificar eventos de los recorridos reales.
 
 **Endpoints:** GET `/auditoria`, `/auditoria/:id` y `/auditoria/exportar`; GET `/usuarios` para opciones autorizadas de actores.
@@ -242,6 +256,8 @@ No se prevén endpoints nuevos ni migraciones por anticipado. Una diferencia de 
 **Cierre:** Admin consulta, filtra, detalla y exporta; rol histórico y SIN_IDENTIFICAR se respetan. Eventos de acceso, cambios, rechazos, archivos y reportes aparecen con contexto del servidor y sin duplicación local. Probar snapshot conflictivo, límite, vacío y fallo de auditoría. Nunca añadir PATCH/DELETE de logs.
 
 ### 22. Inicio
+
+**Estado:** verificado en integración local; resultados y límites en la [entrega 21–22](IMPLEMENTACION-CONEXION-PASOS-21-22-2026-10-18.md).
 
 **UI:** `#dashboard`, `Dashboard` en `App.tsx`. **Depende de:** todas las ventanas de destino.
 

@@ -19,7 +19,7 @@ import {
 } from "../publications";
 import { INACTIVITY_MS } from "../security";
 import { settingsOf, updateSettings } from "../settings";
-import { assertMockMode, clientConfig } from "./config";
+import { clientConfig } from "./config";
 import { createMockClient } from "./mockClient";
 import {
   ClientProblem,
@@ -172,13 +172,27 @@ function input(state: State, suffix = "adaptación"): PublicationInput {
   };
 }
 
-test("Configuración: mock por defecto, URL base validada y API bloqueada sin transporte", () => {
-  assert.equal(clientConfig().mode, "mock");
-  assert.doesNotThrow(() => assertMockMode(clientConfig()));
+test("Configuración: únicamente API real y configuración de dominio en ejecución", () => {
+  assert.equal(clientConfig().mode, "api");
   assert.throws(
-    () => assertMockMode(clientConfig({ VITE_DATA_MODE: "api" })),
-    /no está habilitado/,
+    () => clientConfig({ VITE_DATA_MODE: "mock" }),
+    /simulado fue retirado/,
   );
+  assert.equal(
+    clientConfig(
+      {},
+      { apiBaseUrl: "https://catalogo.example.org/api/v1", profile: "demo" },
+    ).profile,
+    "demo",
+  );
+  assert.equal(
+    clientConfig(
+      { VITE_API_BASE_URL: "http://localhost:3000/api/v1" },
+      { apiBaseUrl: "https://catalogo.example.org/api/v1" },
+    ).apiBaseUrl,
+    "https://catalogo.example.org/api/v1",
+  );
+  assert.throws(() => clientConfig({}, { profile: "mock" }));
   for (const url of [
     "javascript:alert(1)",
     "https://user:secret@example.org/api/v1",
@@ -739,6 +753,7 @@ test("Reportes: filtros por año/tipo/nombres y snapshot; vacío no genera archi
     author: first.authors[0].name,
   };
   const result = await f.client.reports.list(filters, 1, 1);
+  assert.ok(result.report.snapshot);
   assert.ok(result.pagination.total > 0);
   assert.equal(result.data.length, 1);
   assert.equal(result.report.exportable, true);
@@ -760,6 +775,7 @@ test("Reportes: filtros por año/tipo/nombres y snapshot; vacío no genera archi
     isProblem(409, "REPORT_VERSION_CONFLICT"),
   );
   const current = await f.client.reports.list(emptyReportFilters);
+  assert.ok(current.report.snapshot);
   f.setState({
     ...f.state,
     publications: Array.from({ length: 501 }, (_, index) => ({
@@ -781,6 +797,7 @@ test("Reportes: filtros por año/tipo/nombres y snapshot; vacío no genera archi
 test("Exportación auditada: PDF/Excel reales, selección completa y cancelación si falla la auditoría", async () => {
   const f = await fixture();
   const query = await f.client.reports.list(emptyReportFilters, 1, 1);
+  assert.ok(query.report.snapshot);
   const xlsx = await f.client.reports.export(
     emptyReportFilters,
     "xlsx",
@@ -790,6 +807,7 @@ test("Exportación auditada: PDF/Excel reales, selección completa y cancelació
   if ("bytes" in xlsx)
     assert.equal(new TextDecoder().decode(xlsx.bytes.slice(0, 2)), "PK");
   const audit = await f.client.audit.list(emptyAuditFilters, 1, 1);
+  assert.ok(audit.export.snapshot);
   assert.equal(audit.data.length, 1);
   assert.ok(audit.pagination.total > audit.data.length);
   const pdf = await f.client.audit.export(
@@ -801,6 +819,7 @@ test("Exportación auditada: PDF/Excel reales, selección completa y cancelació
   if ("bytes" in pdf)
     assert.equal(new TextDecoder().decode(pdf.bytes.slice(0, 4)), "%PDF");
   const latest = await f.client.reports.list(emptyReportFilters);
+  assert.ok(latest.report.snapshot);
   f.failAudit();
   await assert.rejects(
     f.client.reports.export(emptyReportFilters, "pdf", latest.report.snapshot),

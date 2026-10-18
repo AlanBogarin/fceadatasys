@@ -1,13 +1,29 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { canonical } from "./versions";
 import { ClientProblem, problem } from "./problems";
+import { useDataEnvironment } from "./context";
+import type { Versioned } from "./contracts";
 
-export function useVersionedDraft<T>(initial: T, initialEtag?: string) {
+export function useVersionedDraft<T>(
+  initial: T,
+  initialEtag?: string,
+  readCurrent?: () => Promise<Versioned<T>>,
+) {
+  const { mode } = useDataEnvironment();
+  const reader = useRef(readCurrent);
+  reader.current = readCurrent;
+  const [latest, setLatest] = useState<Versioned<T>>();
+  const [reviewError, setReviewError] = useState("");
   const base = useRef({ value: initial, etag: initialEtag });
   const [conflict, setConflict] = useState(false);
   const [ready, setReady] = useState(!!initialEtag);
   async function check(current: T, code?: string) {
-    if (canonical(current) !== canonical(base.current.value)) {
+    if (conflict)
+      throw Error("Revisá la versión actual antes de volver a guardar.");
+    if (
+      mode === "mock" &&
+      canonical(current) !== canonical(base.current.value)
+    ) {
       setConflict(true);
       throw problem(
         412,
@@ -40,7 +56,41 @@ export function useVersionedDraft<T>(initial: T, initialEtag?: string) {
     if (error instanceof ClientProblem && error.status === 412)
       setConflict(true);
   }
-  return { check, conflict, review, initialize, ready, failed };
+  useEffect(() => {
+    if (!conflict || !reader.current) return;
+    let active = true;
+    setLatest(undefined);
+    setReviewError("");
+    void reader
+      .current()
+      .then((value) => {
+        if (active) setLatest(value);
+      })
+      .catch((error) => {
+        if (active)
+          setReviewError(
+            error instanceof Error
+              ? error.message
+              : "No se pudo consultar la versión actual.",
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [conflict]);
+  return {
+    check,
+    conflict,
+    review,
+    initialize,
+    ready,
+    failed,
+    latest,
+    reviewError,
+    acceptLatest: () => {
+      if (latest) review(latest.data, latest.etag);
+    },
+  };
 }
 
 export function VersionReview({

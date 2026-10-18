@@ -16,7 +16,7 @@ import { registerAuditRoutes } from './auditing/routes.js';
 
 export interface AppOptions { logger?: boolean; security?: SecurityOptions; attachments?: AttachmentOptions; reports?: ReportOptions; confirmation?: (request: import('fastify').FastifyRequest) => Promise<void> }
 export async function createApp(config: AppConfig, prisma: PrismaClient, options: AppOptions = {}) {
-  const app = Fastify({ logger: options.logger === false ? false : { level: 'info', redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers.x-confirmation-password', 'res.headers.set-cookie'], serializers: { req: request => ({ method: request.method, id: request.id }) } }, logController: new LogController({ disableRequestLogging: true }), trustProxy: false, bodyLimit: 64 * 1024 });
+  const app = Fastify({ logger: options.logger === false ? false : { level: 'info', redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers.x-confirmation-password', 'res.headers.set-cookie'], serializers: { req: request => ({ method: request.method, id: request.id }) } }, logController: new LogController({ disableRequestLogging: true }), trustProxy: config.trustedProxies?.length ? config.trustedProxies : false, bodyLimit: 64 * 1024 });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   installErrorHandler(app, prisma);

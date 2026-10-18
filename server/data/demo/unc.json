@@ -1,0 +1,98 @@
+{
+  "universidad": "Universidad Nacional de Concepción",
+  "sigla": "UNC",
+  "pais": "Paraguay",
+  "facultades": [
+    {
+      "facultad": "Facultad de Ciencias Económicas y Administrativas",
+      "sigla": "FCEA",
+      "carreras": [
+        "Ingeniería Comercial",
+        "Ingeniería en Informática Empresarial",
+        "Licenciatura en Administración",
+        "Contaduría Pública"
+      ],
+      "filiales": ["Concepción (Sede Central)", "Horqueta"]
+    },
+    {
+      "facultad": "Facultad de Humanidades y Ciencias de la Educación",
+      "sigla": "FHyCE",
+      "carreras": [
+        "Licenciatura en Psicología",
+        "Licenciatura en Ciencias de la Educación",
+        "Licenciatura en Ciencias de la Comunicación Social",
+        "Licenciatura en Psicopedagogía",
+        "Licenciatura en Trabajo Social",
+        "Profesorado en Educación Escolar Básica"
+      ],
+      "filiales": ["Concepción (Sede Central)"]
+    },
+    {
+      "facultad": "Facultad de Ciencias Agrarias",
+      "sigla": "FCA",
+      "carreras": [
+        "Ingeniería Agronómica",
+        "Licenciatura en Administración Agropecuaria",
+        "Licenciatura en Administración en Agronegocios"
+      ],
+      "filiales": ["Concepción (Sede Central)"]
+    },
+    {
+      "facultad": "Facultad de Ciencias Exactas y Tecnológicas",
+      "sigla": "FACET",
+      "carreras": [
+        "Ingeniería Civil",
+        "Licenciatura en Ciencias Matemáticas Aplicadas"
+      ],
+      "filiales": ["Concepción (Sede Central)"]
+    },
+    {
+      "facultad": "Facultad de Medicina",
+      "sigla": "FMUNC",
+      "carreras": ["Medicina"],
+      "filiales": ["Concepción (Sede Central)"]
+    },
+    {
+      "facultad": "Facultad de Odontología",
+      "sigla": "FOUNC",
+      "carreras": ["Odontología", "Licenciatura en Prótesis Dental"],
+      "filiales": ["Concepción (Sede Central)"]
+    }
+  ],
+  "filiales_globales": [
+    {
+      "nombre": "Concepción",
+      "tipo": "Sede Central",
+      "facultades_presentes": [
+        "FCEA",
+        "FHyCE",
+        "FCA",
+        "FACET",
+        "Medicina",
+        "Odontología"
+      ]
+    },
+    {
+      "nombre": "Horqueta",
+      "tipo": "Filial",
+      "facultades_presentes": ["FCEA"]
+    },
+    {
+      "nombre": "Yby Yaú",
+      "tipo": "Filial",
+      "facultades_presentes": [
+        "Programas de extensión y unidades de desarrollo"
+      ]
+    },
+    {
+      "nombre": "Vallemí",
+      "tipo": "Filial",
+      "facultades_presentes": ["Programas académicos complementarios"]
+    },
+    {
+      "nombre": "Fuerte Olimpo",
+      "tipo": "Filial",
+      "facultades_presentes": ["Aulas de extensión y soporte de grado"]
+    }
+  ]
+}

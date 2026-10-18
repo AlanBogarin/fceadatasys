@@ -13,12 +13,11 @@ import { useEffect, useRef, useState } from "react";
 import "./administration.css";
 import {
   emptyAuditFilters,
-  type AuditEvent,
   type AuditFilters,
   type AuditIntent,
 } from "./audit";
 import { auditFailure } from "./auditSignals";
-import { useDataClient } from "./data/context";
+import { useDataClient, useDataEnvironment } from "./data/context";
 import type { UserDto as User } from "./data/contracts";
 import { useQuery } from "./data/useQuery";
 import type { ViewState as State } from "./data/view";
@@ -30,31 +29,47 @@ export function AuditPage({
   state,
   user,
   assertActive,
-  recordAudit,
 }: {
-  state: State;
+  state?: State;
   user: User;
-  assertActive: () => void;
-  recordAudit: (intent: AuditIntent) => void;
+  assertActive?: () => void;
+  recordAudit?: (intent: AuditIntent) => void;
 }) {
   const [filters, setFilters] = useState<AuditFilters>({
     ...emptyAuditFilters,
   });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [detail, setDetail] = useState<AuditEvent>();
+  const [detailId, setDetailId] = useState<string>();
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const exporting = useRef(false);
-  const current = useRef(state);
-  current.current = state;
   const open = useRef(true);
   const client = useDataClient();
+  const api = useDataEnvironment().mode === "api";
+  const allowed = api
+    ? user.active && user.role === "ADMINISTRADOR"
+    : state?.users.some(
+        (account) =>
+          account.id === user.id &&
+          account.active &&
+          account.role === "ADMINISTRADOR",
+      );
   const request = useQuery(
-    () => client.audit.list(filters, page, pageSize),
+    (signal) => {
+      if (!allowed)
+        throw Error("Solo Administrador puede consultar auditoría.");
+      return client.audit.list(filters, page, pageSize, signal);
+    },
     [state, filters, page, pageSize],
   );
+  const detailRequest = useQuery(
+    async (signal) =>
+      detailId && allowed ? client.audit.get(detailId, signal) : undefined,
+    [detailId, allowed],
+  );
+  const detail = detailRequest.data;
   useEffect(() => {
     const lastPage = Math.max(1, request.data?.pagination.totalPages ?? 1);
     if (request.data && page > lastPage) setPage(lastPage);
@@ -65,14 +80,7 @@ export function AuditPage({
       open.current = false;
     };
   }, []);
-  if (
-    !state.users.some(
-      (account) =>
-        account.id === user.id &&
-        account.active &&
-        account.role === "ADMINISTRADOR",
-    )
-  ) {
+  if (!allowed) {
     return (
       <section className="empty-module">
         <ShieldCheck size={39} />
@@ -107,15 +115,16 @@ export function AuditPage({
     setError("");
     setNotice("");
     try {
-      assertActive();
-      if (!request.data) throw Error("Esperá a que termine la consulta.");
+      assertActive?.();
+      if (!request.data?.export.snapshot)
+        throw Error("Consultá una selección exportable antes de descargar.");
       const report = await client.audit.export(
         filters,
         format,
         request.data.export.snapshot,
       );
       if (!open.current) return;
-      assertActive();
+      assertActive?.();
       if ("data" in report) {
         setNotice("No hay eventos para exportar. No se generó un archivo.");
         return;
@@ -125,7 +134,7 @@ export function AuditPage({
         `Reporte ${format.toUpperCase()} generado con ${total} ${total === 1 ? "evento" : "eventos"}.`,
       );
     } catch (caught) {
-      auditFailure("Auditoría", "Exportar auditoría", caught);
+      if (!api) auditFailure("Auditoría", "Exportar auditoría", caught);
       if (open.current) setError(errorText(caught));
     } finally {
       exporting.current = false;
@@ -151,7 +160,7 @@ export function AuditPage({
           </span>
           <div>
             <p>Eventos registrados</p>
-            <strong>{allTotal}</strong>
+            <strong>{request.data ? allTotal : "—"}</strong>
           </div>
         </div>
         <div className="stat">
@@ -160,7 +169,7 @@ export function AuditPage({
           </span>
           <div>
             <p>Coinciden con los filtros</p>
-            <strong>{total}</strong>
+            <strong>{request.data ? total : "—"}</strong>
           </div>
         </div>
         <div className="stat">
@@ -169,11 +178,11 @@ export function AuditPage({
           </span>
           <div>
             <p>Operaciones fallidas</p>
-            <strong>{request.data?.summary.failed ?? 0}</strong>
+            <strong>{request.data?.summary.failed ?? "—"}</strong>
           </div>
         </div>
       </div>
-      <section className="panel" aria-busy={busy}>
+      <section className="panel" aria-busy={busy || request.loading}>
         <div className="panel-heading">
           <div>
             <h2>Bitácora de operaciones</h2>
@@ -218,14 +227,19 @@ export function AuditPage({
               onChange={(event) => change("actorId", event.target.value)}
             >
               <option value="">Todos</option>
+              {filters.actorId && !actors.has(filters.actorId) && (
+                <option value={filters.actorId}>ID: {filters.actorId}</option>
+              )}
               {[...actors].map(([identifier, name]) => {
-                const account = state.users.find(
-                  (entry) => entry.id === identifier,
-                );
+                const account =
+                  state?.users.find((entry) => entry.id === identifier) ??
+                  request.data?.summary.actors.find(
+                    (entry) => entry.id === identifier,
+                  );
                 return (
                   <option key={identifier} value={identifier}>
                     {account
-                      ? `${account.name} · @${account.username}`
+                      ? `${account.name} · ${account.username ? `@${account.username}` : `ID: ${identifier}`}`
                       : `${name} · ID: ${identifier}`}
                   </option>
                 );
@@ -252,7 +266,11 @@ export function AuditPage({
               onChange={(event) => change("module", event.target.value)}
             >
               <option value="">Todos</option>
-              {(request.data?.summary.modules ?? []).sort().map((name) => (
+              {filters.module &&
+                !request.data?.summary.modules.includes(filters.module) && (
+                  <option value={filters.module}>{filters.module}</option>
+                )}
+              {(request.data?.summary.modules ?? []).map((name) => (
                 <option key={name}>{name}</option>
               ))}
             </select>
@@ -263,7 +281,13 @@ export function AuditPage({
               onChange={(event) => change("operation", event.target.value)}
             >
               <option value="">Todas</option>
-              {(request.data?.summary.operations ?? []).sort().map((name) => (
+              {filters.operation &&
+                !request.data?.summary.operations.includes(
+                  filters.operation,
+                ) && (
+                  <option value={filters.operation}>{filters.operation}</option>
+                )}
+              {(request.data?.summary.operations ?? []).map((name) => (
                 <option key={name}>{name}</option>
               ))}
             </select>
@@ -326,7 +350,10 @@ export function AuditPage({
           <button
             className="secondary"
             disabled={busy || request.loading}
-            onClick={request.reload}
+            onClick={() => {
+              client.audit.invalidateOptions?.();
+              request.reload();
+            }}
           >
             Actualizar resultados
           </button>
@@ -353,6 +380,7 @@ export function AuditPage({
                   <td>{auditDate(event.createdAt)}</td>
                   <td>
                     <strong>{event.actorName}</strong>
+                    {event.username && <small>@{event.username}</small>}
                     <small>
                       {event.actorRole
                         ? roleLabel[event.actorRole]
@@ -383,7 +411,7 @@ export function AuditPage({
                       className="icon-btn"
                       title={`Ver detalle: ${event.operation}`}
                       aria-label={`Ver detalle de ${event.operation}, evento ${event.id}`}
-                      onClick={() => setDetail(event)}
+                      onClick={() => setDetailId(event.id)}
                     >
                       <Eye size={18} />
                     </button>
@@ -410,9 +438,13 @@ export function AuditPage({
         )}
         <div className="table-footer audit-pagination">
           <span role="status">
-            {total
-              ? `Mostrando ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, total)} de ${total}`
-              : "0 eventos"}
+            {request.loading
+              ? "Consultando eventos…"
+              : filterError
+                ? "Resultados no disponibles"
+                : total
+                  ? `Mostrando ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, total)} de ${total}`
+                  : "0 eventos"}
           </span>
           <label className="audit-page-size">
             Eventos por página
@@ -434,7 +466,7 @@ export function AuditPage({
             <button
               className="icon-btn"
               aria-label="Página anterior"
-              disabled={currentPage === 1}
+              disabled={request.loading || currentPage === 1}
               onClick={() => setPage(currentPage - 1)}
             >
               <ChevronLeft />
@@ -445,7 +477,7 @@ export function AuditPage({
             <button
               className="icon-btn"
               aria-label="Página siguiente"
-              disabled={currentPage === pages}
+              disabled={request.loading || currentPage === pages}
               onClick={() => setPage(currentPage + 1)}
             >
               <ChevronRight />
@@ -454,81 +486,115 @@ export function AuditPage({
         </div>
       </section>
       <p className="audit-scope">
-        Bitácora local de demostración. Los registros anteriores conservan
-        únicamente los datos que estaban disponibles; no se inventan actividades
-        pasadas ni direcciones IP.
+        {api ? (
+          "Bitácora del servidor. Los eventos son inmutables y el rol corresponde al momento de la operación."
+        ) : (
+          <>
+            Bitácora local de demostración. Los registros anteriores conservan
+            únicamente los datos que estaban disponibles; no se inventan
+            actividades pasadas ni direcciones IP.
+          </>
+        )}
       </p>
-      {detail && (
+      {detailId && (
         <Modal
           title="Detalle de auditoría"
           eyebrow="Trazabilidad institucional"
-          close={() => setDetail(undefined)}
+          close={() => setDetailId(undefined)}
         >
-          <div className="modal-body audit-detail">
-            <div className="audit-detail-heading">
-              <h3>{detail.operation}</h3>
-              <span
-                className={`badge audit-status ${detail.status === "EXITO" ? "audit-success" : "audit-failure"}`}
-              >
-                {detail.status === "EXITO" ? "Éxito" : "Fallido"}
-              </span>
+          {detailRequest.loading && <p role="status">Consultando detalle…</p>}
+          {Boolean(detailRequest.error) && (
+            <div className="modal-body">
+              <Alert text={errorText(detailRequest.error)} />
+              <button className="secondary" onClick={detailRequest.reload}>
+                Volver a consultar
+              </button>
             </div>
-            <dl>
-              {[
-                ["ID", detail.id],
-                ["Fecha y hora", auditDate(detail.createdAt)],
-                ["Usuario", detail.actorName],
-                ["ID usuario", detail.actorId],
-                [
-                  "Rol",
-                  detail.actorRole
-                    ? roleLabel[detail.actorRole]
-                    : "Sin identificar",
-                ],
-                ["Operación", detail.operation],
-                ["Módulo", detail.module],
-                ["Recurso", detail.resourceName],
-                ["ID recurso", detail.resourceId],
-                ["Publicación", detail.publicationId],
-                ["Resultado", detail.status === "EXITO" ? "Éxito" : "Fallido"],
-                ["Detalle", detail.detail],
-                ["ID sesión", detail.sessionId],
-                ["IP", detail.ip ?? "No disponible en esta versión local"],
-                ["Navegador", detail.userAgent],
-                [
-                  "Origen",
-                  detail.origin === "ACTUAL"
-                    ? "Registrado por este módulo"
-                    : "Bitácora de una versión anterior",
-                ],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <dt>{label}</dt>
-                  <dd>{value || "No registrado"}</dd>
-                </div>
-              ))}
-            </dl>
-            <div className="audit-snapshots">
-              <section>
-                <h3>Valores anteriores</h3>
-                <pre>
-                  {detail.before
-                    ? JSON.stringify(detail.before, null, 2)
-                    : "No corresponde o no fue registrado."}
-                </pre>
-              </section>
-              <section>
-                <h3>Valores nuevos</h3>
-                <pre>
-                  {detail.after
-                    ? JSON.stringify(detail.after, null, 2)
-                    : "No corresponde o no fue registrado."}
-                </pre>
-              </section>
+          )}
+          {detail && (
+            <div className="modal-body audit-detail">
+              <div className="audit-detail-heading">
+                <h3>{detail.operation}</h3>
+                <span
+                  className={`badge audit-status ${detail.status === "EXITO" ? "audit-success" : "audit-failure"}`}
+                >
+                  {detail.status === "EXITO" ? "Éxito" : "Fallido"}
+                </span>
+              </div>
+              <dl>
+                {[
+                  ["ID", detail.id],
+                  ["Fecha y hora", auditDate(detail.createdAt)],
+                  ["Usuario", detail.actorName],
+                  ["Nombre de usuario", detail.username],
+                  ["ID usuario", detail.actorId],
+                  [
+                    "Rol",
+                    detail.actorRole
+                      ? roleLabel[detail.actorRole]
+                      : "Sin identificar",
+                  ],
+                  ["Operación", detail.operation],
+                  ["Módulo", detail.module],
+                  ["Recurso", api ? detail.module : detail.resourceName],
+                  ["ID recurso", detail.resourceId],
+                  ["Publicación", detail.publicationId],
+                  [
+                    "Resultado",
+                    detail.status === "EXITO" ? "Éxito" : "Fallido",
+                  ],
+                  ["Detalle", detail.detail],
+                  ["ID sesión", detail.sessionId],
+                  [
+                    "IP",
+                    detail.ip ??
+                      (api
+                        ? "No registrado"
+                        : "No disponible en esta versión local"),
+                  ],
+                  ["Navegador", detail.userAgent],
+                  ...(!api
+                    ? [
+                        [
+                          "Origen",
+                          detail.origin === "ACTUAL"
+                            ? "Registrado por este módulo"
+                            : "Bitácora de una versión anterior",
+                        ],
+                      ]
+                    : []),
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value || "No registrado"}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="audit-snapshots">
+                <section>
+                  <h3>Valores anteriores</h3>
+                  <pre>
+                    {detail.before
+                      ? JSON.stringify(detail.before, null, 2)
+                      : "No corresponde o no fue registrado."}
+                  </pre>
+                </section>
+                <section>
+                  <h3>Valores nuevos</h3>
+                  <pre>
+                    {detail.after
+                      ? JSON.stringify(detail.after, null, 2)
+                      : "No corresponde o no fue registrado."}
+                  </pre>
+                </section>
+              </div>
             </div>
-          </div>
+          )}
           <div className="modal-footer">
-            <button className="secondary" onClick={() => setDetail(undefined)}>
+            <button
+              className="secondary"
+              onClick={() => setDetailId(undefined)}
+            >
               Cerrar detalle
             </button>
           </div>

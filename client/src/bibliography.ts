@@ -21,6 +21,9 @@ export type BibliographicFilters = {
   from: string;
   to: string;
   active?: string;
+  code?: string;
+  authorId?: string;
+  tutorId?: string;
 };
 export const emptyBibliographicFilters: BibliographicFilters = {
   search: "",

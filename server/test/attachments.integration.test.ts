@@ -30,7 +30,7 @@ test('Adjuntos PostgreSQL: carga, descarga, seguridad de archivos, permisos y au
   const userIds: Record<string, string> = {};
   let sequence = 0;
   const send = (input: InjectOptions) => app.inject({ remoteAddress: `192.0.2.${1 + sequence++ % 250}`, ...input });
-  const base = await readFile('../client/public/demo/investigacion-01.pdf');
+  const base = await readFile('data/demo/documents/Educacion-financiera-y-ahorro.pdf');
   const pdf = (label: string = randomUUID()) => Buffer.from(base.toString('latin1').replace('%%EOF', `% ${label}\n%%EOF`), 'latin1');
   const form = (bytes: Buffer, filename = 'tesis.pdf', field = 'file', extra = '') => {
     const boundary = 'boundary-fcea-test';

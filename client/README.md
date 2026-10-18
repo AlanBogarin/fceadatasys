@@ -1,44 +1,47 @@
 # FCEA-Datasys · Cliente
 
-Cliente React + TypeScript + Vite del catálogo bibliográfico FCEA/UNC. **Continúa con backend simulado, sin conexión a server/**.
+Cliente React + TypeScript + Vite del catálogo bibliográfico FCEA/UNC. El punto de entrada consume exclusivamente la API real. El despliegue con backend simulado fue retirado; sus fixtures internos se conservan únicamente para regresiones de reglas y no forman una aplicación seleccionable.
 
-La [revisión conjunta de preparación para la integración](../docs/REVISION-PREPARACION-INTEGRACION-2026-10-17.md) contrasta las pantallas con los endpoints existentes. Las tres diferencias detectadas se corrigieron en la [implementación de H1–H3](../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md), separada del trabajo de conexión futura.
+## Ejecutar el sistema completo
 
-Las adaptaciones para la integración futura están implementadas en servicios asíncronos: DTO seguros, sesión única entre pestañas, plazos y actividad, confirmación de cambios, versiones de registros, errores por campo, consultas paginadas, carga por identificador y exportaciones con snapshot. Incluye edición e inactivación de publicaciones, formatos PDF/TXT configurables y campos opcionales acordes al contrato maestro.
-
-El detalle de la tabla, archivos, contratos, validaciones y límites está en [Adaptaciones del cliente](docs/ADAPTACIONES-CLIENTE.md). Esa guía describe el estado vigente; los documentos anteriores son antecedentes fechados.
-
-## Ejecutar
-
-Requiere Node.js compatible con Vite 7 (el proyecto se comprobó con Node 24).
+Desde la raíz:
 
 ```powershell
-cd client
-npm install
+npm run start:demo
+```
+
+```powershell
+npm run start:production
+```
+
+El lanzador prepara y sirve cliente/API bajo el mismo origen. La configuración pública se obtiene de `/runtime-config.js`; permite cambiar dominio/perfil al reiniciar sin recompilar. Producción exige certificado TLS y credenciales propias. Ver [README raíz](../README.md) y [despliegue](../docs/DEPLOYMENT.md).
+
+## Desarrollo del cliente
+
+Requiere Node 24.11+ (<25) y una API real iniciada con PostgreSQL. Desde `client/`:
+
+```powershell
+npm ci
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 npm run dev
 ```
 
-Abrir la dirección indicada por Vite. No hace falta iniciar el servidor. La configuración de ejemplo está en [.env.example](.env.example); el modo predeterminado es mock. El modo api permanece bloqueado hasta implementar el transporte HTTP.
+Configuración local:
 
-## Cuentas ficticias iniciales
+```dotenv
+VITE_DATA_MODE=api
+VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1
+```
 
-| Usuario   | Rol           | Contraseña de demostración |
-| --------- | ------------- | -------------------------- |
-| admin     | Administrador | Fcea2026!                  |
-| digitador | Digitador     | Fcea2026!                  |
-| publico   | Público       | Fcea2026!                  |
+Autorizar exactamente el origen de Vite (`http://127.0.0.1:5173`) en CORS de la API y usar el mismo host para cookies. El archivo `public/runtime-config.js` es un marcador de desarrollo; el servidor del lanzador lo sustituye por configuración pública real. Vite y el cliente rechazan `VITE_DATA_MODE=mock`.
 
-Son cuentas del simulador, independientes del servidor. En una instalación nueva se incluyen muestras UNC identificadas como demo: personas y trabajos ficticios y PDF estáticos de ejemplo. Inicio permite actualizar las muestras sin reemplazar registros propios.
+La demo del lanzador usa por defecto web en 8080 y API privada en 3001; para desarrollar contra esa API hay que configurar explícitamente su CORS y URL, o usar una instancia de desarrollo separada. No ejecutar Vite como servicio institucional.
 
-Una cuenta activa se comparte entre las pestañas del mismo origen. Cerrar sesión en una la cierra en todas. Tras diez minutos sin interacción se exige autenticación. Tres fallos consecutivos de login bloquean la cuenta por cinco minutos; tres contraseñas de confirmación incorrectas cierran la sesión compartida.
-
-## Datos y permisos
-
-Los metadatos y cuentas ficticias persisten en localStorage; los archivos cargados, en IndexedDB. Mantener el mismo navegador, host y puerto para recuperar los datos. La migración conserva registros anteriores. El almacenamiento local sigue siendo manipulable y no constituye seguridad de producción.
+## Permisos y datos
 
 Administrador mantiene usuarios, publicaciones, catálogos, parámetros, reportes y auditoría. Digitador registra/edita publicaciones y mantiene autores/tutores. Público consulta metadatos de publicaciones activas y no descarga adjuntos. La evaluación académica ocurre fuera del sistema.
 
-Las altas piden confirmación visual; modificar/inactivar/eliminar requiere la contraseña vigente del actor. Cancelar conserva el formulario. Los conflictos de versión exigen revisar los valores actuales antes de volver a guardar. Los reportes vacíos no generan archivos.
+Los datos y archivos proceden del servidor. El access token vive en memoria; las cookies de sesión son HttpOnly. Las señales entre pestañas no incluyen credenciales ni datos de negocio. La demo UNC también utiliza estos controles y descarga autenticada; no publica archivos de muestra en `public/demo`.
 
 ## Validación
 
@@ -47,12 +50,6 @@ npm test
 npm run build
 ```
 
-Suite actual: **87 pruebas**. La guía de adaptaciones incluye el recorrido verificado en dos pestañas y los límites que corresponden al futuro adaptador HTTP.
+`npm run test:api` requiere su base exclusiva, SMTP de pruebas y ClamAV según la [entrega 1–10](../docs/IMPLEMENTACION-CONEXION-PASOS-1-10-2026-10-18.md). El fixture PDF se obtiene de `server/data/demo/documents/`, no de un directorio web público.
 
-## Documentación anterior
-
-- [Auditoría y parámetros](docs/AUDITORIA-Y-PARAMETROS.md)
-- [Carga de archivos](docs/CARGA-DE-ARCHIVOS.md)
-- [Transacción y reporte](docs/TRANSACCION-Y-REPORTE.md)
-- [Datos de demostración](docs/DATOS-DE-DEMOSTRACION.md)
-- [Usuarios y seguridad](docs/usuarios-seguridad/Casos-de-uso-y-reglas.md)
+Los [22 pasos de conexión](../docs/PLAN-CONEXION-CLIENTE-SERVIDOR-2026-10-17.md) están implementados. Sus entregas conservan evidencia histórica: [1–10](../docs/IMPLEMENTACION-CONEXION-PASOS-1-10-2026-10-18.md), [11–15](../docs/IMPLEMENTACION-CONEXION-PASOS-11-15-2026-10-18.md), [16–20](../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md) y [21–22](../docs/IMPLEMENTACION-CONEXION-PASOS-21-22-2026-10-18.md). Las instrucciones antiguas del simulador en documentos anteriores describen una modalidad de despliegue retirada.

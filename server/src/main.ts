@@ -6,12 +6,16 @@ const config = loadConfig();
 const prisma = createPrisma(config.databaseUrl);
 const app = await createApp(config, prisma);
 let closing = false;
-for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, async () => {
+async function shutdown() {
   if (closing) return;
   closing = true;
   await app.close();
   await prisma.$disconnect();
-});
+  if (process.connected) process.disconnect();
+}
+for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, shutdown);
+process.on('message', message => { if (message === 'shutdown') void shutdown(); });
+if (process.send) process.once('disconnect', () => { void shutdown(); });
 try {
   await prisma.$connect();
   await app.listen({ host: config.host, port: config.port });

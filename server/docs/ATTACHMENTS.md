@@ -1,6 +1,8 @@
 # Contrato de carga y descarga de adjuntos
 
-Contrato vigente del servidor al 17/10/2026. El cliente conserva IndexedDB y su simulación independiente, con DTO adaptado a las reservas históricas; todavía falta el transporte HTTP. Complementa API.md, PUBLICATIONS.md, PUBLICATION-MANAGEMENT.md y SECURITY.md. Reportes PDF/Excel implementados en REPORTS.md.
+**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador permanece independiente.
+
+Contrato vigente del servidor al 17/10/2026. El cliente conserva IndexedDB y su simulación independiente, con DTO adaptado a las reservas históricas; el transporte HTTP está conectado para el alcance indicado arriba. Complementa API.md, PUBLICATIONS.md, PUBLICATION-MANAGEMENT.md y SECURITY.md. Reportes PDF/Excel implementados en REPORTS.md.
 
 ## Rutas
 

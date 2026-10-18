@@ -17,6 +17,7 @@
     "start": "node --env-file-if-exists=.env dist/src/main.js",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "node --import tsx --test test/unit/*.test.ts",
+    "test:initial-data": "node --import tsx --test test/initial-data.integration.test.ts",
     "test:typecheck": "tsc -p tsconfig.test.json",
     "test:unit:coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=src/**/*.ts --test-coverage-exclude=src/main.ts test/unit/*.test.ts",
     "test:integration": "node --env-file-if-exists=.env.test --import tsx --test --test-concurrency=1 test/security.test.ts test/users.integration.test.ts test/profile.integration.test.ts test/catalogs.integration.test.ts test/publications.integration.test.ts test/publication-queries.integration.test.ts test/attachments.integration.test.ts test/reports.integration.test.ts test/connection.integration.test.ts",
@@ -25,7 +26,11 @@
     "db:generate": "prisma generate",
     "db:migrate": "node --env-file-if-exists=.env node_modules/prisma/build/index.js migrate deploy",
     "db:dev": "node --env-file-if-exists=.env node_modules/prisma/build/index.js migrate dev",
-    "db:bootstrap": "node --env-file-if-exists=.env --import tsx scripts/bootstrap-admin.ts"
+    "db:bootstrap": "node --env-file-if-exists=.env --import tsx scripts/bootstrap-admin.ts",
+    "db:init:demo": "node --env-file=.env.demo --import tsx scripts/initialize-data.ts demo",
+    "db:init:production": "node --env-file=.env.production --import tsx scripts/initialize-data.ts production",
+    "dev:demo": "node --env-file=.env.demo --import tsx src/main.ts",
+    "start:production": "node --env-file=.env.production dist/src/main.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

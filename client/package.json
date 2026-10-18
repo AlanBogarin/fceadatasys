@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:demo": "vite --host 127.0.0.1 --mode demo --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "tsx --test src/*.test.ts src/data/*.test.ts"
+    "test": "tsx --test src/*.test.ts src/data/*.test.ts",
+    "test:api": "tsx --test --test-concurrency=1 test/*.integration.test.ts",
+    "dev:api:test": "tsx test/serve-api.ts"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

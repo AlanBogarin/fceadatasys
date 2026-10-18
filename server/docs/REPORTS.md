@@ -1,6 +1,8 @@
 # Consultar reportes y exportar PDF/Excel
 
-La API consulta PostgreSQL y genera ambos documentos en **server**. El client mantiene su demo local, sin conexión real. Las rutas requieren Bearer y rol ADMINISTRADOR vigente. DIGITADOR/PUBLICO reciben 403 y las solicitudes anónimas 401. Las respuestas tienen `Cache-Control: no-store`.
+**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador permanece independiente.
+
+La API consulta PostgreSQL y genera ambos documentos en **server**. El cliente admite API y simulador como modos independientes. Las rutas requieren Bearer y rol ADMINISTRADOR vigente. DIGITADOR/PUBLICO reciben 403 y las solicitudes anónimas 401. Las respuestas tienen `Cache-Control: no-store`.
 
 ## Consulta
 
@@ -24,7 +26,7 @@ Con resultados, `data` contiene los DTO administrativos seguros documentados en 
 
 `GET /api/v1/reportes/publicaciones/exportar?format=pdf&snapshot=...`
 
-Enviar **los mismos filtros** de la consulta, `format=pdf|xlsx` y su `snapshot`. `page`/`pageSize` no se aceptan: se exporta el conjunto filtrado completo. No se envían publicaciones, nombres ni contenido generado desde el navegador. El frontend futuro debe usar fetch autenticado, comprobar Content-Type, procesar JSON vacío/Problem Details o descargar el Blob; CORS ya expone Content-Disposition.
+Enviar **los mismos filtros** de la consulta, `format=pdf|xlsx` y su `snapshot`. `page`/`pageSize` no se aceptan: se exporta el conjunto filtrado completo. No se envían publicaciones, nombres ni contenido generado desde el navegador. El adaptador usa fetch autenticado, comprobar Content-Type, procesar JSON vacío/Problem Details o descargar el Blob; CORS ya expone Content-Disposition.
 
 Con resultados: 200 binario, Content-Length y Content-Disposition attachment con nombre fijo seguro `reporte-publicaciones.pdf` o `.xlsx`. MIME PDF `application/pdf`; Excel `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
 

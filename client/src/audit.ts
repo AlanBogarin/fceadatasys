@@ -9,11 +9,12 @@ export type AuditEvent = {
   createdAt: string;
   actorId: string | null;
   actorName: string;
+  username?: string | null;
   actorRole: Role | null;
   operation: string;
   module: string;
   resourceId: string | null;
-  resourceName: string;
+  resourceName?: string;
   publicationId: string | null;
   status: AuditStatus;
   detail: string;
@@ -23,7 +24,7 @@ export type AuditEvent = {
   ip: string | null;
   userAgent: string | null;
   sourceId?: string;
-  origin: "ACTUAL" | "ANTERIOR";
+  origin?: "ACTUAL" | "ANTERIOR";
 };
 export type AuditIntent = Pick<AuditEvent, "operation" | "module" | "status"> &
   Partial<

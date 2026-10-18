@@ -2,6 +2,7 @@ import { Check, CircleHelp, Eye, EyeOff, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ClientProblem } from "./data/problems";
 export function errorText(error: unknown): string {
+  if (error instanceof DOMException && error.name === "AbortError") return "";
   if (error instanceof ClientProblem)
     return [
       ...new Set([
@@ -20,7 +21,9 @@ export function applyFieldProblems(form: HTMLFormElement, error: unknown) {
     HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | undefined;
   for (const field of error.problem.invalid_params ?? []) {
     const name = field.name.split(".").at(-1)!;
-    const element = form.elements.namedItem(name);
+    const element = form.elements.namedItem(
+      name === "currentPassword" ? "current" : name,
+    );
     if (!(
       element instanceof HTMLInputElement ||
       element instanceof HTMLSelectElement ||

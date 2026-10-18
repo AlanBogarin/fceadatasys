@@ -46,7 +46,7 @@ export type MutationOptions = {
   confirmationPassword?: string;
 };
 export type ExportMetadata = {
-  snapshot: string;
+  snapshot: string | null;
   exportable: boolean;
   maxRecords: number;
 };
@@ -72,6 +72,7 @@ export type AttachmentDto = {
     active: boolean;
   } | null;
 };
+export type AttachmentDetailDto = Omit<AttachmentDto, "status" | "publication">;
 export type SettingsDto = {
   summaryWordLimit: number;
   maxPdfSizeMb: number;

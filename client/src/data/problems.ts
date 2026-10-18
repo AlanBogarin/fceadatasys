@@ -67,6 +67,11 @@ export function parseProblem(
           typeof candidate.title === "string"
             ? candidate.title
             : "Operación rechazada",
+        timestamp:
+          typeof candidate.timestamp === "string"
+            ? candidate.timestamp
+            : undefined,
+        path: typeof candidate.path === "string" ? candidate.path : undefined,
         invalid_params: Array.isArray(candidate.invalid_params)
           ? candidate.invalid_params.filter(
               (field): field is { name: string; reason: string } =>

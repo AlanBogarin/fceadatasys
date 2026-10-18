@@ -1,6 +1,8 @@
 # Edición, inactivación y formatos de publicaciones
 
-Contrato consolidado al 17/10/2026. Complementa API.md, PUBLICATIONS.md, PUBLICATION-QUERIES.md, ATTACHMENTS.md y [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md). El cliente tiene pantallas y simulador preparados, todavía sin transporte HTTP. Consulta, detalle y exportación de auditoría ya están implementados para Admin; las escrituras de auditoría siguen siendo obligatorias.
+**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador permanece independiente.
+
+Contrato consolidado al 17/10/2026. Complementa API.md, PUBLICATIONS.md, PUBLICATION-QUERIES.md, ATTACHMENTS.md y [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md). El cliente tiene transporte HTTP para estas pantallas y conserva el simulador como modo separado. Consulta, detalle y exportación de auditoría ya están implementados para Admin; las escrituras de auditoría siguen siendo obligatorias.
 
 ## Rutas y precarga
 

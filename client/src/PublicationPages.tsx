@@ -15,7 +15,7 @@ import type { AuditIntent } from "./audit";
 import { auditFailure } from "./auditSignals";
 import { bibliographicRecord, emptyBibliographicFilters } from "./bibliography";
 import { catalogConfig, normalizeCatalog, type CatalogKey } from "./catalogs";
-import { useDataClient } from "./data/context";
+import { useDataClient, useDataEnvironment } from "./data/context";
 import type { UserDto as User } from "./data/contracts";
 import { useQuery } from "./data/useQuery";
 import { useVersionedDraft, VersionReview } from "./data/useVersionedDraft";
@@ -217,16 +217,19 @@ export function AttachmentDownload({
   attachment: providedAttachment,
   state,
   user,
-  assertActive,
+  assertActive = () => {},
+  publicationId,
 }: {
   publication?: Publication;
   attachment?: Publication["attachment"];
-  state: State;
+  state?: State;
   user: User;
-  assertActive: () => void;
+  assertActive?: () => void;
+  publicationId?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const client = useDataClient();
+  const { mode } = useDataEnvironment();
   const [error, setError] = useState("");
   const latestState = useRef(state);
   const pageOpen = useRef(true);
@@ -249,13 +252,17 @@ export function AttachmentDownload({
       assertActive();
       const attachment = providedAttachment ?? publication?.attachment;
       if (!attachment) throw Error("No se encontró el adjunto registrado.");
-      const result = await client.attachments.download(attachment.id);
+      const result = await client.attachments.download(
+        attachment.id,
+        publication?.id ?? publicationId,
+      );
       if (!pageOpen.current) return;
       assertActive();
       if ("data" in result) throw Error("El adjunto no está disponible.");
       downloadReport(result);
     } catch (caught) {
-      auditFailure("Publicaciones", "Operación rechazada", caught);
+      if (mode === "mock")
+        auditFailure("Publicaciones", "Operación rechazada", caught);
       if (pageOpen.current) setError(errorText(caught));
     } finally {
       running.current = false;
@@ -288,16 +295,16 @@ export function AttachmentDownload({
   );
 }
 
-function PublicationDetail({
+export function PublicationDetail({
   publication,
   state,
   user,
-  assertActive,
+  assertActive = () => {},
 }: {
-  publication: Publication;
-  state: State;
+  publication: Publication & { hasAttachment?: boolean };
+  state?: State;
   user: User;
-  assertActive: () => void;
+  assertActive?: () => void;
 }) {
   return (
     <article className="publication-detail">
@@ -369,6 +376,12 @@ function PublicationDetail({
         >
           {publication.externalUrl}
         </a>
+      ) : publication.hasAttachment ? (
+        <p>
+          {user.role === "PUBLICO"
+            ? "Tu rol permite consultar los metadatos bibliográficos. La descarga del adjunto está restringida."
+            : "El adjunto no está disponible para descargar."}
+        </p>
       ) : (
         <p>Publicación local sin copia digital obligatoria en Biblioteca.</p>
       )}
@@ -1207,7 +1220,8 @@ export function PublicationReportsPage({
     try {
       // Paso 1: comprobar sesión y permisos antes de preparar el archivo.
       assertActive();
-      if (!request.data) throw Error("Esperá a que termine la consulta.");
+      if (!request.data?.report.snapshot)
+        throw Error("Consultá una selección exportable antes de descargar.");
       const report = await client.reports.export(
         filters,
         format,

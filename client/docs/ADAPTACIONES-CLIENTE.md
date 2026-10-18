@@ -1,5 +1,9 @@
 # Adaptaciones del cliente — 17/10/2026
 
+**Actualización 18/10/2026:** el punto de entrada del simulador fue retirado. El despliegue consume solo API real mediante el [lanzador](../../docs/DEPLOYMENT.md). Las referencias al adaptador local siguientes corresponden al diseño y regresiones históricas, no a una modalidad ejecutable.
+
+**Actualización del 18/10/2026:** esta guía conserva la evidencia del simulador al 17/10. El adaptador HTTP y las 22 ventanas están implementados en modo API; `App.tsx` selecciona `ApiApp` o `MockApp`. Las notas de [conexión 1–10](../../docs/IMPLEMENTACION-CONEXION-PASOS-1-10-2026-10-18.md), [catálogos 11–15](../../docs/IMPLEMENTACION-CONEXION-PASOS-11-15-2026-10-18.md), [archivos/publicaciones 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md) y [cierre 21–22](../../docs/IMPLEMENTACION-CONEXION-PASOS-21-22-2026-10-18.md) sustituyen las afirmaciones siguientes de transporte pendiente. Auditoría usa eventos y archivos del servidor; Inicio usa identidad/totales autorizados y no carga muestras.
+
 Implementación de la tabla del análisis de integración y de los pendientes funcionales del cliente. El cliente **continúa usando el backend simulado**. No envía solicitudes a `server/`, no usa sus cuentas ni envía correos. El contrato de referencia es [CLIENT-INTEGRATION.md](../../server/docs/CLIENT-INTEGRATION.md), junto con [API.md](../../server/docs/API.md) y el `AGENTS.md` maestro.
 
 ## Matriz de implementación

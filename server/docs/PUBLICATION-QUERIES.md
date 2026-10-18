@@ -1,6 +1,8 @@
 # Contrato API de listado y consulta de publicaciones
 
-Complementa [API.md](API.md) y [PUBLICATIONS.md](PUBLICATIONS.md). Contrato de consulta vigente al 17/10/2026; el cliente sigue usando su simulación. Edición/inactivación, reportes y carga/descarga están implementados en rutas separadas, documentadas en PUBLICATION-MANAGEMENT.md, REPORTS.md y ATTACHMENTS.md.
+**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador permanece independiente.
+
+Complementa [API.md](API.md) y [PUBLICATIONS.md](PUBLICATIONS.md). Contrato de consulta vigente al 17/10/2026; el cliente admite consulta por API y simulación independiente. Edición/inactivación, reportes y carga/descarga están implementados en rutas separadas, documentadas en PUBLICATION-MANAGEMENT.md, REPORTS.md y ATTACHMENTS.md.
 
 ## Rutas y permisos
 
@@ -59,7 +61,7 @@ Se busca en título, resumen, abstract y palabras clave como documento bibliogr�
 
 Usa plainto_tsquery: interpreta texto como datos y combina términos por AND dentro de cada configuración, sin aceptar operadores SQL/tsquery del usuario. Las configuraciones se combinan por OR. Puntuación o stop words pueden desaparecer; por ejemplo, "1=1" es una búsqueda del lexema numérico 1, no una instrucción. Una consulta sin lexemas devuelve vacío; search vacío omite la búsqueda. Código completo INV-00001 enviado en search también consulta el número exacto.
 
-La simulación del client filtraba subcadenas de código/título/autores. Este contrato usa términos completos/raíces FTS y amplía campos: no garantiza subcadenas arbitrarias como "eco" ni códigos parciales. El adaptador futuro debe usar estos parámetros sin enviar el State local; `code` cubre el código exacto y authorId/tutorId filtran por identidad, mientras author/tutor permiten subcadenas normalizadas de nombres.
+La simulación del client filtraba subcadenas de código/título/autores. Este contrato usa términos completos/raíces FTS y amplía campos: no garantiza subcadenas arbitrarias como "eco" ni códigos parciales. El adaptador usa estos parámetros sin enviar el State local; `code` cubre el código exacto y authorId/tutorId filtran por identidad, mientras author/tutor permiten subcadenas normalizadas de nombres.
 
 Índices GIN sobre documento bibliográfico y nombres de autores/tutores; ramas UNION de IDs independientes permiten usarlos y deduplican publicaciones con varios participantes. Los índices de expresión reflejan renombrados sin mantener copias manuales de nombres. Índice adicional estado/fecha/número y los índices de relaciones existentes soportan filtros y orden. El plan de la consulta completa se comprueba mediante EXPLAIN ANALYZE sin forzar enable_seqscan.
 

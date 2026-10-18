@@ -2,8 +2,6 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
-  ChevronDown,
-  CircleHelp,
   LockKeyhole,
   Mail,
   ShieldCheck,
@@ -11,7 +9,6 @@ import {
 import { useState, type FormEvent } from "react";
 import { auditFailure } from "./auditSignals";
 import { useDataClient } from "./data/context";
-import { DEMO_PASSWORD } from "./model";
 import { INACTIVITY_MINUTES } from "./security";
 import {
   Alert,
@@ -42,7 +39,6 @@ export function Auth({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [token, setToken] = useState(initialToken ?? "");
-  const [credentials, setCredentials] = useState(false);
   const switchMode = (value: typeof mode) => {
     setMode(value);
     setError("");
@@ -71,7 +67,7 @@ export function Auth({
       if (mode === "recover") {
         const email = String(form.get("email"));
         const result = await client.auth.requestRecovery(email);
-        setToken(client.auth.demoRecoveryToken(email));
+
         setMessage(result.message);
       }
       if (mode === "reset") {
@@ -96,7 +92,13 @@ export function Auth({
     <div className="auth-page">
       <header className="auth-header">
         <Brand onNavigate={() => switchMode("login")} />
-        <span className="demo-chip">Demostración local</span>
+        <span className="demo-chip">
+          {(typeof window !== "undefined" &&
+            window.__FCEA_CONFIG__?.profile === "demo") ||
+          import.meta.env?.MODE === "demo"
+            ? "Demostración conectada"
+            : "Acceso institucional"}
+        </span>
       </header>
       <main className="auth-main">
         <section className="institution-panel">
@@ -283,26 +285,6 @@ export function Auth({
               <ArrowRight size={18} />
             </button>
           </form>
-          {mode === "recover" && token && (
-            <div className="recovery-demo">
-              <strong>Recorrido de demostración</strong>
-              <p>
-                No se envían correos en esta versión. Podés continuar aquí para
-                probar el cambio de contraseña de la cuenta local.
-              </p>
-              <button
-                className="secondary full"
-                onClick={() => {
-                  setMode("reset");
-                  setMessage("");
-                  setError("");
-                }}
-              >
-                Continuar con la recuperación
-                <ArrowRight size={16} />
-              </button>
-            </div>
-          )}
           {mode !== "login" && (
             <button
               className="text-button back-link"
@@ -312,53 +294,18 @@ export function Auth({
               Volver al inicio de sesión
             </button>
           )}
-          {mode === "login" && (
-            <div className="demo-access">
-              <button
-                className="text-button"
-                onClick={() => setCredentials(!credentials)}
-                aria-expanded={credentials}
-              >
-                <CircleHelp size={16} />
-                {credentials
-                  ? "Ocultar cuentas de prueba"
-                  : "Ver cuentas de prueba"}
-                <ChevronDown size={15} />
-              </button>
-              {credentials && (
-                <div className="demo-accounts">
-                  <p>
-                    Contraseña inicial: <code>{DEMO_PASSWORD}</code>
-                  </p>
-                  <p>
-                    <code>admin</code> · Administrador
-                  </p>
-                  <p>
-                    <code>digitador</code> · Gestión bibliográfica
-                  </p>
-                  <p>
-                    <code>publico</code> · Consulta
-                  </p>
-                  <small>
-                    Son cuentas ficticias. Si cambiás una contraseña, usá la
-                    nueva.
-                  </small>
-                </div>
-              )}
-            </div>
-          )}
           <div className="auth-note">
             <ShieldCheck size={18} />
             <p>
-              Prototipo para presentación académica. Los datos se guardan
-              únicamente en este navegador.
+              Ingresá con la cuenta asignada por el administrador de la
+              institución.
             </p>
           </div>
         </section>
       </main>
       <footer className="auth-footer">
         <span>FCEA-Datasys · Universidad Nacional de Concepción</span>
-        <span>Primera entrega · Interfaz de usuario</span>
+        <span>Catálogo bibliográfico digital</span>
       </footer>
     </div>
   );

@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LatestQuery } from "./query";
+import { useDataEnvironment } from "./context";
 
 export function useQuery<T>(
   query: (signal: AbortSignal) => Promise<T>,
   dependencies: readonly unknown[],
 ) {
   const [revision, setRevision] = useState(0);
-  const key = useMemo(() => ({}), [...dependencies, revision]);
+  const environment = useDataEnvironment();
+  const key = useMemo(
+    () => ({}),
+    [...dependencies, revision, environment.revision],
+  );
   const [result, setResult] = useState<{
     key: object;
     data?: T;

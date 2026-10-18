@@ -1,9 +1,10 @@
 import { FileCheck, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import "./administration.css";
 import { auditFailure } from "./auditSignals";
 import { useDataClient } from "./data/context";
-import type { UserDto as User } from "./data/contracts";
+import type { SettingsDto, Versioned, UserDto as User } from "./data/contracts";
+import { useQuery } from "./data/useQuery";
 import { useVersionedDraft, VersionReview } from "./data/useVersionedDraft";
 import type { ViewState as State } from "./data/view";
 import { defaultSettings, settingsOf } from "./settings";
@@ -14,27 +15,48 @@ export function SettingsPage({
   user,
   notify,
 }: {
-  state: State;
+  state?: State;
   user: User;
   notify: (message: string) => void;
 }) {
-  const current = settingsOf(state);
   const client = useDataClient();
-  const version = useVersionedDraft(current);
-  useEffect(() => {
-    let open = true;
-    void client.settings
-      .get()
-      .then((result) => {
-        if (open) version.initialize(result.data, result.etag);
-      })
-      .catch((error) => {
-        if (open) setError(errorText(error));
-      });
-    return () => {
-      open = false;
-    };
-  }, [client]);
+  const request = useQuery((signal) => client.settings.get(signal), [client]);
+  const [initial, setInitial] = useState<Versioned<SettingsDto>>();
+  if (!initial && request.data) setInitial(request.data);
+  if (!initial)
+    return (
+      <section className="panel panel-body">
+        {request.loading && <p role="status">Consultando parámetros…</p>}
+        <Alert text={request.error ? errorText(request.error) : ""} />
+        {Boolean(request.error) && (
+          <button className="secondary" onClick={request.reload}>
+            Volver a consultar
+          </button>
+        )}
+      </section>
+    );
+  return (
+    <SettingsForm initial={initial} state={state} user={user} notify={notify} />
+  );
+}
+function SettingsForm({
+  initial,
+  state,
+  user,
+  notify,
+}: {
+  initial: Versioned<SettingsDto>;
+  state?: State;
+  user: User;
+  notify: (message: string) => void;
+}) {
+  const client = useDataClient();
+  const [saved, setSaved] = useState(initial.data);
+  const current = state ? settingsOf(state) : saved;
+  const version = useVersionedDraft(initial.data, initial.etag, () =>
+    client.settings.get(),
+  );
+  const reviewed = version.latest?.data;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   if (user.role !== "ADMINISTRADOR")
@@ -60,8 +82,16 @@ export function SettingsPage({
         return;
       }
       // Paso 3: esperar la contraseña y la escritura conjunta con la auditoría.
-      const saved = await client.settings.update(next, { ifMatch: etag });
-      version.review(saved.data, saved.etag);
+      const changed = Object.fromEntries(
+        Object.entries(next).filter(
+          ([key, value]) =>
+            JSON.stringify(value) !==
+            JSON.stringify(current[key as keyof SettingsDto]),
+        ),
+      ) as Partial<SettingsDto>;
+      const result = await client.settings.update(changed, { ifMatch: etag });
+      setSaved(result.data);
+      version.review(result.data, result.etag);
       notify(
         "Parámetros actualizados. Se aplican a las nuevas cargas y registros.",
       );
@@ -99,21 +129,21 @@ export function SettingsPage({
           <form onSubmit={submit}>
             <div className="panel-body">
               <Alert text={error} />
-              {version.conflict && (
+              {version.reviewError && <Alert text={version.reviewError} />}
+              {version.conflict && !reviewed && !version.reviewError && (
+                <p role="status">Consultando la versión actual…</p>
+              )}
+              {version.conflict && reviewed && (
                 <VersionReview
                   values={{
-                    "Palabras del resumen": String(current.summaryWordLimit),
-                    "Tamaño máximo (MiB)": String(current.maxPdfSizeMb),
-                    Formatos: current.allowedFormats.join(", ").toUpperCase(),
+                    "Palabras del resumen": String(reviewed.summaryWordLimit),
+                    "Tamaño máximo (MiB)": String(reviewed.maxPdfSizeMb),
+                    Formatos: reviewed.allowedFormats.join(", ").toUpperCase(),
                   }}
                   onReviewed={() => {
-                    void client.settings
-                      .get()
-                      .then((result) => {
-                        version.review(result.data, result.etag);
-                        setError("");
-                      })
-                      .catch((error) => setError(errorText(error)));
+                    version.acceptLatest();
+                    setSaved(reviewed);
+                    setError("");
                   }}
                 />
               )}

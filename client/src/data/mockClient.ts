@@ -454,7 +454,11 @@ export function createMockClient(context: Context) {
         return { state: next, value: userDto(next.users.at(-1)!) };
       });
     },
-    async update(id: string, input: UserInput, options: MutationOptions) {
+    async update(
+      id: string,
+      input: Partial<UserInput>,
+      options: MutationOptions,
+    ) {
       return mutate(async (state) => {
         const current = state.users.find((user) => user.id === id);
         await assertVersion(
@@ -462,7 +466,11 @@ export function createMockClient(context: Context) {
           options.ifMatch,
           "USER_VERSION_CONFLICT",
         );
-        const next = requireResult(editUser(state, actor(), id, input));
+        if (!current)
+          throw problem(404, "USER_NOT_FOUND", "No se encontró la cuenta.");
+        const next = requireResult(
+          editUser(state, actor(), id, { ...current, ...input }),
+        );
         return {
           state: next,
           value: userDto(next.users.find((user) => user.id === id)!),
@@ -482,6 +490,9 @@ export function createMockClient(context: Context) {
           value: undefined,
         };
       });
+    },
+    async me() {
+      return (await sessionDto()).user;
     },
     async profile(input: Pick<UserInput, "name" | "email" | "username">) {
       return mutate((state) => {
@@ -762,6 +773,19 @@ export function createMockClient(context: Context) {
         ),
       };
     },
+    async get(id: string) {
+      const state = read();
+      const row = attachmentRecords(state, actor()).find(
+        (file) => file.attachment.id === id,
+      );
+      if (!row) throw Error("No se encontró el adjunto.");
+      return {
+        ...row.attachment,
+        createdAt: row.createdAt,
+        createdBy: row.createdBy,
+        reservedPublicationId: row.reservedPublicationId ?? null,
+      };
+    },
     async upload(
       file: File,
       onStage?: (stage: "validating" | "saving") => void,
@@ -841,10 +865,13 @@ export function createMockClient(context: Context) {
       bibliographicActor(state, actor());
       return versioned(settingsOf(state));
     },
-    async update(input: SettingsDto, options: MutationOptions) {
+    async update(input: Partial<SettingsDto>, options: MutationOptions) {
       return mutate(async (state) => {
         await assertVersion(settingsOf(state), options.ifMatch);
-        const next = updateSettings(state, actor(), input);
+        const next = updateSettings(state, actor(), {
+          ...settingsOf(state),
+          ...input,
+        });
         return { state: next, value: await versioned(settingsOf(next)) };
       });
     },
@@ -1037,6 +1064,7 @@ export function createMockClient(context: Context) {
     },
   };
   const demo = {
+    recoveryToken: auth.demoRecoveryToken,
     async load(baseUrl: string) {
       return mutate((state) => {
         const { state: next, ...counts } = buildDemoData(
@@ -1052,7 +1080,7 @@ export function createMockClient(context: Context) {
     Object.fromEntries(
       Object.entries(service).map(([key, method]) => [
         key,
-        key === "demoRecoveryToken"
+        key === "demoRecoveryToken" || key === "recoveryToken"
           ? method
           : async (...args: unknown[]) => {
               try {
@@ -1075,4 +1103,4 @@ export function createMockClient(context: Context) {
     demo: guarded(demo),
   };
 }
-export type DataClient = ReturnType<typeof createMockClient>;
+export type { DataClient } from "./client";

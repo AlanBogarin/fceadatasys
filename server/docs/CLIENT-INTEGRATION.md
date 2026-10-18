@@ -1,6 +1,8 @@
 # Contrato para integrar el cliente — 17/10/2026
 
-El servidor implementa este contrato y el cliente tiene adaptaciones de servicios/DTO descritas en [ADAPTACIONES-CLIENTE.md](../../client/docs/ADAPTACIONES-CLIENTE.md). `client/` conserva su backend simulado y todavía no tiene adaptador HTTP. Este documento forma parte de API.md y sustituye las restricciones anteriores sobre auditoría, adjuntos, confirmación, parámetros y sesión de navegador.
+El servidor implementa este contrato. Desde el 18/10, `client/` selecciona simulador o adaptador HTTP: los 22 pasos están conectados y verificados en integración local. Alcance, pruebas y límites en las notas de [conexión 1–10](../../docs/IMPLEMENTACION-CONEXION-PASOS-1-10-2026-10-18.md), [catálogos 11–15](../../docs/IMPLEMENTACION-CONEXION-PASOS-11-15-2026-10-18.md) y [cierre 21–22](../../docs/IMPLEMENTACION-CONEXION-PASOS-21-22-2026-10-18.md); antecedentes del simulador en [ADAPTACIONES-CLIENTE.md](../../client/docs/ADAPTACIONES-CLIENTE.md). Este documento forma parte de API.md y sustituye las restricciones anteriores sobre auditoría, adjuntos, confirmación, parámetros y sesión de navegador. No se modificaron los contratos del servidor para conectar estas ventanas.
+
+**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador permanece independiente.
 
 ## Una sesión por navegador
 
@@ -78,6 +80,8 @@ Exclusivamente Administrador:
 Filtros: `from`, `to` (días inclusivos de America/Asuncion), `actorId`, `role=ADMINISTRADOR|DIGITADOR|PUBLICO|SIN_IDENTIFICAR`, `module` (recurso del servidor), `operation`, `status=EXITO|FALLIDO`, `search`, `page`, `pageSize`. Se rechazan fechas/rangos inválidos. Búsqueda literal normalizada por ID, actor actual, operación, recurso, publicación, sesión y detalle/valores registrados. El rol es el histórico del evento.
 
 DTO: `{id,createdAt,actorId,actorName,username,actorRole,operation,module,resourceId,publicationId,ip,userAgent,sessionId,status,detail,before,after}`. Omite credenciales, tokens, hashes y rutas privadas, también en JSON anidado. No existen PATCH/DELETE de auditoría.
+
+El adaptador del cliente conserva este DTO sin inventar `origin`/`resourceName` del simulador. Obtiene total global y fallidos con consultas independientes (`pageSize=1`, segunda con `status=FALLIDO`). Las opciones globales recorren todas las páginas de auditoría y usuarios, con caché compartida solo en memoria y conservación de actores de eventos históricos; se invalida por sesión, mutaciones, señales entre pestañas y actualización manual. Si la cardinalidad cambia durante el recorrido, informa que es necesario actualizar en lugar de presentar opciones parciales. Inicio consulta `/me`, un total de publicaciones dentro del alcance del actor y, exclusivamente Admin, los totales de usuarios. No existe un endpoint Dashboard.
 
 El listado agrega `export:{snapshot,exportable,maxRecords:500}`. Exportar requiere los mismos filtros, `format=pdf|xlsx` y ese snapshot. El archivo incluye todos los resultados, no solo la página; máximo 500 eventos/2 millones de caracteres, PDF de hasta 20 MiB. Excel conserva textos extensos en segmentos en la hoja Detalles. Sin resultados: 200 `{data:[],total:0}`, sin archivo. Los exportadores no registran credenciales. Se revalida sesión/rol y se confirma `AUDITORIA_EXPORTADA` antes de entregar bytes; si falla auditoría no se entrega el documento.
 

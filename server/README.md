@@ -1,8 +1,14 @@
 # Servidor FCEA Datasys
 
+**Actualización 18/10/2026:** el arranque recomendado es el [lanzador de la raíz](../README.md), con perfiles demo/production, web y API reales. El despliegue simulado fue retirado. La configuración local del lanzador es independiente de los archivos manuales descritos debajo.
+
 La [revisión conjunta de preparación para la integración — 17/10/2026](../docs/REVISION-PREPARACION-INTEGRACION-2026-10-17.md) distingue cobertura funcional y trabajo futuro de conexión. Sus tres diferencias de reglas/DTO se corrigieron en la [implementación de H1–H3](../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md), sin migraciones ni nuevos grants.
 
-Servidor Fastify/TypeScript, PostgreSQL/Prisma, autenticación, usuarios/perfil, siete catálogos, registro/listado/consulta/edición/inactivación de publicaciones con búsqueda FTS, formatos administrables PDF/TXT con ClamAV y reportes bibliográficos PDF/Excel generados en servidor. El frontend conserva su simulador, con adaptaciones de servicios/DTO y H3, y todavía no consume estos endpoints. Consulta, detalle y exportación de auditoría también están implementados. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
+Servidor Fastify/TypeScript, PostgreSQL/Prisma, autenticación, usuarios/perfil, siete catálogos, registro/listado/consulta/edición/inactivación de publicaciones con búsqueda FTS, formatos administrables PDF/TXT con ClamAV y reportes bibliográficos PDF/Excel generados en servidor. Las 22 ventanas del cliente consumen estos endpoints en modo API; el simulador se conserva como modo independiente. Consulta, detalle y exportación de auditoría también están implementados. Contrato HTTP en [docs/API.md](docs/API.md), persistencia/permisos en [docs/DATABASE.md](docs/DATABASE.md).
+
+## Datos por entorno
+
+La [guía de conjuntos iniciales](docs/INITIAL-DATA.md) separa fixtures del desarrollador, demostración UNC legible y producción mínima. Demo: `scripts/prepare-demo.ps1`, `npm run db:init:demo` y `npm run dev:demo`, con base/archivos/configuración propios. Producción: `npm run db:init:production`, un Administrador `admin` / CI `0000000`, correo y contraseña obligatorios configurados localmente, parámetros predeterminados y ningún dato de muestra. Las plantillas `.env.demo.example` y `.env.production.example` no contienen secretos de producción.
 
 ## Preparación
 
@@ -41,9 +47,9 @@ El backend admite login, consulta de identidad/plazos mediante `GET /api/v1/auth
 
 Primero inicializar `POST /api/v1/auth/browser` con cookies y origen permitido; el contexto admite una sesión compartida entre pestañas y `GET /auth/session` puede restaurarla mediante refresh. Coordinar las pestañas antes de login/refresh; ver [docs/CLIENT-INTEGRATION.md](docs/CLIENT-INTEGRATION.md).
 
-La integración futura debe guardar el access token solo en memoria, enviar Bearer en operaciones protegidas y `credentials:"include"` para transportar el refresh HttpOnly. Login/refresh/logout necesitan origen permitido. El logout puede cerrar con la cookie aun con JWT expirado o sesión inactiva; credenciales que identifican sesiones distintas se rechazan. Reautenticar usa el mismo login y crea una sesión nueva. El contrato completo, incluidos errores y finalización auditada, está en [docs/API.md](docs/API.md).
+El adaptador HTTP del cliente guarda el access token solo en memoria, envía Bearer en operaciones protegidas y `credentials:"include"` para transportar el refresh HttpOnly. Login/refresh/logout necesitan origen permitido. El logout puede cerrar con la cookie aun con JWT expirado o sesión inactiva; credenciales que identifican sesiones distintas se rechazan. Reautenticar usa el mismo login y crea una sesión nueva. El contrato completo, incluidos errores y finalización auditada, está en [docs/API.md](docs/API.md).
 
-`client/` conserva su demostración local. Todavía requiere un adaptador HTTP para consumir este ciclo de servidor; estos endpoints no conectan automáticamente sus pantallas.
+`client/` selecciona explícitamente modo API o simulador. La demostración nueva usa el modo API y su base propia; la entrega inicial de producción no importa muestras de ninguno de los otros entornos.
 
 ## Mantenimiento de usuarios
 
@@ -131,7 +137,7 @@ Pruebas de DB/roles, migración y recuperación del esquema se describen en DATA
 
 Prisma 7.10, Fastify 5, Zod 4/type provider 6, pg/adapter-pg, Argon2id y JWT. Lockfile versionado para `npm ci`. Se fijan overrides de `deepmerge-ts=8.0.2` y `mysql2=3.24.5` por vulnerabilidades transitivas de Prisma; `nodemailer=10.0.16` es una versión corregida elegible bajo la política temporal npm. Validar generación/migración/build/pruebas al actualizar Prisma u overrides.
 
-`GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes de operación: integración frontend, retención de tokens/logs, backups operacionales y alertas externas. La comprobación SMTP se recupera automáticamente; no existe entrega durable de correos (ver EMAIL.md). Los siete catálogos, registro N:M/FKs, listado/consulta, búsqueda FTS y carga/descarga PDF/TXT con ClamAV están implementados. Adjuntos requiere su base exclusiva de pruebas y CLAMAV_TEST_ENABLED=1 para validar el motor real; la prueba positiva usa una firma propia inocua en una copia temporal de las firmas oficiales, sin modificar Defender ni generar EICAR.
+`GET /api/v1/status` permite al Administrador consultar disponibilidad SMTP sin revelar configuración. Pendientes de operación: validación del despliegue institucional, retención de tokens/logs, backups operacionales y alertas externas. La comprobación SMTP se recupera automáticamente; no existe entrega durable de correos (ver EMAIL.md). Los siete catálogos, registro N:M/FKs, listado/consulta, búsqueda FTS y carga/descarga PDF/TXT con ClamAV están implementados. Adjuntos requiere su base exclusiva de pruebas y CLAMAV_TEST_ENABLED=1 para validar el motor real; la prueba positiva usa una firma propia inocua en una copia temporal de las firmas oficiales, sin modificar Defender ni generar EICAR.
 
 ## Reportes PDF/Excel
 

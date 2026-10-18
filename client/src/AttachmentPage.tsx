@@ -15,7 +15,7 @@ import {
 } from "./attachmentService";
 import { attachmentAccept } from "./attachments";
 import "./attachments.css";
-import { useDataClient } from "./data/context";
+import { useDataClient, useDataEnvironment } from "./data/context";
 import type { UserDto as User } from "./data/contracts";
 import { useQuery } from "./data/useQuery";
 import type { ViewState as State } from "./data/view";
@@ -26,12 +26,12 @@ import { Alert, Field, errorText } from "./ui";
 export function AttachmentPage({
   state,
   user,
-  assertActive,
+  assertActive = () => {},
   register,
 }: {
-  state: State;
+  state?: State;
   user: User;
-  assertActive: () => void;
+  assertActive?: () => void;
   register: (attachmentId: string) => void;
 }) {
   const [file, setFile] = useState<File>();
@@ -47,6 +47,12 @@ export function AttachmentPage({
   const mounted = useRef(true);
   const latest = useRef(state);
   const client = useDataClient();
+  const { mode } = useDataEnvironment();
+  const settingsRequest = useQuery(
+    (signal) => client.settings.get(signal),
+    [client, state],
+  );
+  const settings = state ? settingsOf(state) : settingsRequest.data?.data;
   latest.current = state;
   useEffect(() => {
     mounted.current = true;
@@ -56,13 +62,16 @@ export function AttachmentPage({
   }, []);
 
   const request = useQuery(
-    () =>
-      client.attachments.list({
-        search: query,
-        status: filter === "all" ? undefined : filter,
-        page,
-        pageSize: 8,
-      }),
+    (signal) =>
+      client.attachments.list(
+        {
+          search: query,
+          status: filter === "all" ? undefined : filter,
+          page,
+          pageSize: 8,
+        },
+        signal,
+      ),
     [state, query, filter, page],
   );
   const records = request.data?.data ?? [];
@@ -157,9 +166,13 @@ export function AttachmentPage({
           <h2>Nuevo archivo</h2>
           <p>
             Un documento por carga ·{" "}
-            {settingsOf(state).allowedFormats.join(" / ").toUpperCase()} de
-            hasta {settingsOf(state).maxPdfSizeMb} MiB
+            {settings
+              ? `${settings.allowedFormats.join(" / ").toUpperCase()} de hasta ${settings.maxPdfSizeMb} MiB`
+              : "Consultando formatos y tamaño permitidos…"}
           </p>
+          <Alert
+            text={settingsRequest.error ? errorText(settingsRequest.error) : ""}
+          />
           <div
             className={`upload-dropzone${dragging ? " dragging" : ""}`}
             onDragOver={(event) => {
@@ -190,8 +203,12 @@ export function AttachmentPage({
               <input
                 ref={input}
                 type="file"
-                accept={attachmentAccept(settingsOf(state).allowedFormats)}
-                disabled={busy}
+                accept={
+                  settings
+                    ? attachmentAccept(settings.allowedFormats)
+                    : undefined
+                }
+                disabled={busy || !settings}
                 onChange={(event) => {
                   selectFiles(event.target.files);
                   event.target.value = "";
@@ -226,10 +243,14 @@ export function AttachmentPage({
               {stage === "validating"
                 ? "Comprobando el archivo y buscando duplicados…"
                 : stage === "saving"
-                  ? "Guardando el archivo…"
+                  ? "Analizando y guardando el archivo…"
                   : "El archivo se vincula al confirmar la publicación."}
             </span>
-            <button className="primary" type="submit" disabled={!file || busy}>
+            <button
+              className="primary"
+              type="submit"
+              disabled={!file || busy || !settings}
+            >
               <UploadCloud size={18} />
               {busy ? "Cargando…" : "Cargar archivo"}
             </button>
@@ -251,10 +272,15 @@ export function AttachmentPage({
             </li>
           </ul>
           <div className="upload-demo-note">
-            <strong>Demostración local</strong>
+            <strong>
+              {mode === "api"
+                ? "Documentos en el servidor"
+                : "Demostración local"}
+            </strong>
             <p>
-              Los archivos quedan en este navegador. Esta versión no realiza
-              análisis antivirus.
+              {mode === "api"
+                ? "Cada archivo se valida y analiza con antivirus antes de quedar disponible. Cancelar el registro de la publicación conserva el archivo cargado."
+                : "Los archivos quedan en este navegador. Esta versión no realiza análisis antivirus."}
             </p>
           </div>
         </aside>
@@ -285,7 +311,15 @@ export function AttachmentPage({
           <div>
             <h2 id="upload-library-title">Archivos cargados</h2>
             <p>
-              {available} disponibles · {request.data?.summary.VINCULADO ?? 0}{" "}
+              {request.loading
+                ? "Consultando"
+                : request.error
+                  ? "Sin datos"
+                  : available}{" "}
+              disponibles ·{" "}
+              {request.loading || request.error
+                ? "—"
+                : request.data?.summary.VINCULADO}{" "}
               vinculados a publicaciones
             </p>
           </div>
@@ -365,13 +399,20 @@ export function AttachmentPage({
                         <p>{entry.publication.title}</p>
                       </>
                     ) : (
-                      <small>Pendiente de registrar su publicación</small>
+                      <small>
+                        {entry.status === "RESERVADO"
+                          ? "Reservado por su publicación original"
+                          : entry.status === "DISPONIBLE"
+                            ? "Pendiente de registrar su publicación"
+                            : "No disponible para vincular"}
+                      </small>
                     )}
                   </td>
                   <td>
                     {entry.publication && entry.status === "VINCULADO" ? (
                       <AttachmentDownload
                         attachment={entry}
+                        publicationId={entry.publication.id}
                         state={state}
                         user={user}
                         assertActive={assertActive}
@@ -381,11 +422,10 @@ export function AttachmentPage({
                         className="secondary"
                         disabled={
                           busy ||
-                          !settingsOf(state).allowedFormats.includes(
+                          !settings ||
+                          !settings.allowedFormats.includes(
                             entry.mime === "text/plain" ? "txt" : "pdf",
-                          ) ||
-                          entry.size >
-                            settingsOf(state).maxPdfSizeMb * 1024 * 1024
+                          )
                         }
                         onClick={() => register(entry.id)}
                       >
@@ -403,7 +443,7 @@ export function AttachmentPage({
           </table>
           {request.loading && <p role="status">Buscando archivos…</p>}
           <Alert text={request.error ? errorText(request.error) : ""} />
-          {!request.loading && !matches.length && (
+          {!request.loading && !request.error && !matches.length && (
             <div className="publication-empty">
               <FolderOpen size={32} />
               <h3>
@@ -421,8 +461,11 @@ export function AttachmentPage({
         </div>
         <div className="people-pagination">
           <span role="status">
-            {request.data?.pagination.total ?? 0} archivo(s) · Página {current}{" "}
-            de {pages}
+            {request.data
+              ? `${request.data.pagination.total} archivo(s) · Página ${current} de ${pages}`
+              : request.loading
+                ? "Consultando archivos…"
+                : "Sin datos disponibles"}
           </span>
           <div className="publication-actions">
             <button

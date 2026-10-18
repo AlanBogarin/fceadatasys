@@ -1,5 +1,7 @@
 # Contrato API de registro de publicaciones
 
+**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador permanece independiente.
+
 Este contrato describe el alta bibliográfica en `server/`; `client/` conserva su simulación independiente. Complementa [API.md](API.md). Listado/búsqueda/detalle: [PUBLICATION-QUERIES.md](PUBLICATION-QUERIES.md); carga/descarga/ClamAV: [ATTACHMENTS.md](ATTACHMENTS.md); edición/inactivación/formatos: [PUBLICATION-MANAGEMENT.md](PUBLICATION-MANAGEMENT.md); reportes: [REPORTS.md](REPORTS.md).
 
 ## Registrar un trabajo aprobado

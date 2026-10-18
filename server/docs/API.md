@@ -176,4 +176,6 @@ El [contrato de reportes](REPORTS.md), parte de esta API, incorpora `GET /api/v1
 
 ## Integración del cliente · 17/10/2026
 
+Actualización de despliegue del 18/10/2026: el cliente desplegado consume únicamente la API real mediante el [lanzador](../../docs/DEPLOYMENT.md). Su gateway conserva las respuestas de negocio y añade `GATEWAY_ERROR` exclusivamente para errores de infraestructura en rutas `/api/v1`: HTTP 400/404 (ruta inválida), 413 (cuerpo demasiado grande), 421 (Host incompatible), 500 (fallo interno del gateway) o 502 (API no disponible). Responde `application/problem+json` con `status`, `code`, `title`, `detail`, `timestamp` y `path` sin query. No modifica los códigos de negocio ni crea endpoints adicionales.
+
 El contrato vigente de auditoría consultable/exportable, listado de adjuntos, confirmación por contraseña, ETags de catálogos/parámetros, tamaño configurable, filtros por nombres y sesión compartida de navegador está en [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md). Sustituye los pendientes históricos de esos módulos. El cliente conserva su simulación y no se conecta en este hito.
