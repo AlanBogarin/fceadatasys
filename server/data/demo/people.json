@@ -4,7 +4,7 @@
       "name": "Administrador de demostración",
       "ci": "90000001",
       "email": "admin@demo.example.test",
-      "username": "demo.admin",
+      "username": "admin",
       "role": "ADMINISTRADOR",
       "active": true
     },
@@ -12,7 +12,7 @@
       "name": "Gestión de Biblioteca",
       "ci": "90000002",
       "email": "biblioteca@demo.example.test",
-      "username": "demo.digitador",
+      "username": "digitador",
       "role": "DIGITADOR",
       "active": true
     },
@@ -20,7 +20,7 @@
       "name": "Consulta de demostración",
       "ci": "90000003",
       "email": "consulta@demo.example.test",
-      "username": "demo.publico",
+      "username": "publico",
       "role": "PUBLICO",
       "active": true
     }

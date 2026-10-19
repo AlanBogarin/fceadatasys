@@ -57,9 +57,9 @@ Datos: **6 facultades, 18 carreras, 5 filiales, 14 autores, 12 tutores y 8 publi
 
 | Usuario | Rol | Contraseña inicial de ejemplo |
 | --- | --- | --- |
-| `demo.admin` | Administrador | `DemoAdmin2026!` |
-| `demo.digitador` | Digitador | `DemoBiblioteca2026!` |
-| `demo.publico` | Público | `DemoConsulta2026!` |
+| `admin` | Administrador | `Fcea2026!` |
+| `digitador` | Digitador | `Fcea2026!` |
+| `publico` | Público | `Fcea2026!` |
 
 Las contraseñas se pueden configurar antes de la primera carga. Repetir el preparador conserva registros, contraseñas e historial. Si se cambiaron credenciales o se editaron muestras, usar el arranque `--start-only` para evitar reanudar la carga de ejemplos.
 

@@ -31,9 +31,9 @@ Se conservan todas las carreras del YAML: cuatro FCEA, seis FHyCE, tres FCA, dos
 
 | Usuario | Rol | Contraseña de ejemplo exclusiva de demo |
 | --- | --- | --- |
-| `demo.admin` | ADMINISTRADOR | `DemoAdmin2026!` |
-| `demo.digitador` | DIGITADOR | `DemoBiblioteca2026!` |
-| `demo.publico` | PUBLICO | `DemoConsulta2026!` |
+| `admin` | ADMINISTRADOR | `Fcea2026!` |
+| `digitador` | DIGITADOR | `Fcea2026!` |
+| `publico` | PUBLICO | `Fcea2026!` |
 
 Se leen de `DEMO_ADMIN_PASSWORD`, `DEMO_DIGITADOR_PASSWORD` y `DEMO_PUBLICO_PASSWORD` en `.env.demo`. Pueden cambiarse antes de la primera carga; repetir no cambia credenciales. Correos `*.example.test` y CI de estas cuentas son sintéticos. Manifiesto de personas/cuentas: [people.json](../data/demo/people.json).
 
@@ -74,7 +74,7 @@ cd client
 npm run dev:demo
 ```
 
-Abrir **http://127.0.0.1:5173**, entrar con `demo.admin` y comprobar la cabecera **Demostración conectada**. Mantener ambas terminales abiertas y el mismo host para cookies/CORS. Al terminar: Ctrl+C en ambas y, si no se utiliza para otro trabajo, `pg_ctl stop -D '.\server\.tmp\postgres-data' -m fast -w` desde la raíz.
+Abrir **http://127.0.0.1:5173**, entrar con `admin` y comprobar la cabecera **Demostración conectada**. Mantener ambas terminales abiertas y el mismo host para cookies/CORS. Al terminar: Ctrl+C en ambas y, si no se utiliza para otro trabajo, `pg_ctl stop -D '.\server\.tmp\postgres-data' -m fast -w` desde la raíz.
 
 Para otra instalación: copiar [server/.env.demo.example](../.env.demo.example) a `.env.demo`, configurar URL de una base local exclusiva terminada en `_demo`, nombre esperado, JWT, CORS, almacenamiento y ClamAV; preparar migraciones/grants según [DATABASE.md](DATABASE.md). Copiar [client/.env.api.example](../../client/.env.api.example) a `client/.env.demo`.
 

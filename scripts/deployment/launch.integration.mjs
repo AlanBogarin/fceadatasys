@@ -181,9 +181,9 @@ for (const [profile, variable] of [
       const users =
         profile === "demo"
           ? [
-              ["demo.admin", config.DEMO_ADMIN_PASSWORD, "ADMINISTRADOR"],
-              ["demo.digitador", config.DEMO_DIGITADOR_PASSWORD, "DIGITADOR"],
-              ["demo.publico", config.DEMO_PUBLICO_PASSWORD, "PUBLICO"],
+              ["admin", config.DEMO_ADMIN_PASSWORD, "ADMINISTRADOR"],
+              ["digitador", config.DEMO_DIGITADOR_PASSWORD, "DIGITADOR"],
+              ["publico", config.DEMO_PUBLICO_PASSWORD, "PUBLICO"],
             ]
           : [
               [
