@@ -93,23 +93,49 @@ export async function ensureManagedPostgres(root, config) {
   const admin = new URL(owner);
   admin.pathname = "/postgres";
   const connection = databaseClient(root, admin.href);
+  let verificationError;
+  connection.on("error", (error) => {
+    verificationError ??= error;
+  });
   try {
     await connection.connect();
-    const { rows } = await connection.query("SHOW data_directory");
-    if (resolve(rows[0].data_directory) !== directory)
+    // Windows can report non-ASCII data_directory paths in the system code page.
+    // Compare cluster identifiers instead of decoding that path as UTF-8.
+    const control = await run(
+      pgTool(config, "pg_controldata"),
+      ["-D", directory],
+      { ...settings, env: { LC_ALL: "C" }, label: "Identidad de PostgreSQL demo" },
+    );
+    const systemIdentifier = control.match(
+      /^Database system identifier:\s*(\d+)\s*$/m,
+    )?.[1];
+    if (!systemIdentifier)
+      throw Error("No se pudo leer la identidad del clúster PostgreSQL demo.");
+    const { rows } = await connection.query(
+      "SELECT system_identifier::text AS system_identifier FROM pg_control_system()",
+    );
+    if (rows[0]?.system_identifier !== systemIdentifier)
       throw Error(
         "El puerto PostgreSQL no pertenece al clúster demo configurado.",
       );
   } catch (error) {
+    verificationError ??= error;
+  } finally {
+    // Disconnect before stopping the server, preserving the original failure.
+    try {
+      await connection.end();
+    } catch (error) {
+      verificationError ??= error;
+    }
+  }
+  if (verificationError) {
     if (started)
       await run(
         pgTool(config, "pg_ctl"),
         ["stop", "-D", directory, "-m", "fast", "-w"],
         settings,
       );
-    throw error;
-  } finally {
-    await connection.end();
+    throw verificationError;
   }
   return async () => {
     if (started)

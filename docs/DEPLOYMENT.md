@@ -9,7 +9,7 @@ Configura/instala/prepara/arranca el sistema con `npm start`, `npm run start:dem
 ## Componentes
 
 - `scripts/deployment/config.mjs`: valores iniciales, archivos `.env` privados, validación de perfiles/destinos, traducción a configuración API y redacción de secretos. Se filtran variables heredadas para no mezclar configuraciones de otros entornos.
-- `database.mjs`: clúster demo SCRAM aislado, creación de roles/base si faltan, propietario/migraciones, grants y comprobación real de runtime sin privilegios ni membresía de propietario. Las contraseñas existentes no se cambian. La base existente debe pertenecer al propietario configurado.
+- `database.mjs`: clúster demo SCRAM aislado, creación de roles/base si faltan, propietario/migraciones, grants y comprobación real de runtime sin privilegios ni membresía de propietario. Las contraseñas existentes no se cambian. La base existente debe pertenecer al propietario configurado. La identidad del clúster demo se comprueba comparando `pg_controldata` con `pg_control_system()`, sin depender de la codificación de rutas Windows con caracteres como `ñ`. Si falla la comprobación, se cierra la conexión antes de detener el clúster iniciado por el lanzador, conservando el error original.
 - `processes.mjs`: ejecución sin shell, salidas acotadas/redactadas, tiempos máximos y compatibilidad con procesos PostgreSQL de Windows.
 - `gateway.mjs`: HTTP demo o HTTPS con certificado/clave PEM, cliente compilado, configuración pública en ejecución y proxy acotado `/api/v1`. La API permanece en `127.0.0.1`.
 - `server/src/main.ts`: cierre ordenado mediante señales y canal IPC del lanzador; desconectar el padre cierra la API hija.
@@ -74,3 +74,21 @@ npm run test:deployment:integration
 El archivo QA debe apuntar a `https://127.0.0.1:PUERTO`, base `fceadatasys_launch_delivery_<ejecución>` y certificado de pruebas correspondiente. El test confía explícitamente en ese certificado para su conexión, sin desactivar la validación TLS global. No utilizar el entorno institucional para esta suite. Los tests sin sus archivos se omiten; las tres ejecuciones declaradas aprobadas se realizaron con sus destinos configurados.
 
 Al cerrar las verificaciones se detuvieron web/API y ambos clústeres de QA iniciados por esta tarea. No quedaron listeners de prueba en 8080, 8443, 3001, 3002, 55439 ni 55440. Las bases, adjuntos, configuración privada y auditoría se conservaron.
+
+## Corrección de rutas Windows con caracteres Unicode — 21/10/2026
+
+Se reprodujo en PostgreSQL 18.3 para Windows que `SHOW data_directory` devuelve una ruta con `año` usando bytes de la página de códigos del sistema. Al interpretarla como UTF-8, `pg` recibe `a�o`; la comparación textual anterior rechazaba el propio clúster. Además, el lanzador detenía PostgreSQL antes de cerrar esa conexión y podía terminar con un evento `error` sin manejar (`57P01`), ocultando el rechazo inicial.
+
+La comprobación usa ahora el identificador del clúster: compara la salida de `pg_controldata` con `pg_control_system()`. Requiere `pg_controldata` junto a las demás herramientas PostgreSQL. La conexión se cierra antes de detener un clúster iniciado por el lanzador y sus errores se conservan. Esta corrección no cambia migraciones, credenciales ni contratos HTTP.
+
+Para aplicar la corrección en otra computadora, copiar la versión actualizada de `scripts/deployment/database.mjs` y ejecutar `npm run start:demo` desde la raíz, conservando `.local/deploy/demo.env`, el clúster y los adjuntos existentes.
+
+Regresión reproducible con clústeres temporales exclusivos (no requiere configurar una base de negocio):
+
+```powershell
+$env:DEPLOYMENT_PG_BIN_DIRECTORY='C:/Program Files/PostgreSQL/18/bin'
+node --test scripts/deployment/database.integration.mjs
+npm run test:deployment
+```
+
+Resultado: cuatro escenarios PostgreSQL aprobados (ruta con `ñ` y espacios, rechazo de otro clúster conservando ambos activos, cierre antes de detener tras fallo, evento de conexión manejado conservando su causa), más las ocho pruebas del lanzador. Los dos clústeres temporales se detuvieron y sus directorios de prueba se retiraron. La primera reproducción dentro del sandbox no pudo conectarse por `EACCES` de loopback; la reproducción y regresión aprobadas se ejecutaron con acceso local autorizado.

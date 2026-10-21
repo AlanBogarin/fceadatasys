@@ -27,7 +27,7 @@ El lanzador instala dependencias cuando es necesario, compila cliente/API, prepa
 ## Requisitos
 
 - Node.js 24.11+ (<25), con npm y acceso al registro de dependencias en la primera instalación.
-- PostgreSQL 18 instalado, incluyendo `initdb`, `pg_ctl` y `psql`.
+- PostgreSQL 18 instalado, incluyendo `initdb`, `pg_ctl`, `pg_controldata` y `psql`.
 - ClamAV instalado y firmas vigentes. En Windows, desde la raíz: `./server/scripts/update-clamav.ps1`.
 - Producción: servicio PostgreSQL disponible, dominio/DNS y certificado/clave TLS PEM propios.
 - SMTP si se requiere entregar correos de recuperación.
