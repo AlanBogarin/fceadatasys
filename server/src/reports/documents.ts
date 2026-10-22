@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
@@ -9,6 +9,15 @@ export const MAX_REPORT_BYTES = 20 * 1024 * 1024;
 export interface ReportDocument { rows: ReportRecord[]; filters: ReportFilters; generatedAt: Date; generatedBy: string; example?: boolean }
 export type ReportGenerator = (input: ReportDocument, format: 'pdf' | 'xlsx') => Promise<Buffer>;
 const burgundy = '590D31', gold = 'C99C50', ink = '292633', muted = '665F69', pale = 'F5F0F3';
+function assetPath(relative: string) {
+  const source = new URL(`../../assets/${relative}`, import.meta.url);
+  return fileURLToPath(existsSync(source) ? source : new URL(`../../../assets/${relative}`, import.meta.url));
+}
+const reportLogos = () => ['unc', 'fcea'].map(name => {
+  const path = assetPath(`branding/logo-${name}.png`);
+  const png = readFileSync(path);
+  return { path, extension: 'png' as const, width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+});
 export const institutionalDate = (value: string | Date) => new Intl.DateTimeFormat('es-PY', { timeZone: 'America/Asuncion', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value));
 const names = (people: { name: string }[]) => people.map(person => person.name).join('; ');
 export function filterLabels(filters: ReportFilters, rows: ReportRecord[]) {
@@ -36,10 +45,9 @@ export const generateReport: ReportGenerator = async (input, format) => {
 };
 
 async function pdfReport(input: ReportDocument): Promise<Buffer> {
-  const relative = '../../assets/fonts/DejaVuSans.ttf';
-  const sourceFont = new URL(relative, import.meta.url);
-  const font = fileURLToPath(existsSync(sourceFont) ? sourceFont : new URL('../../../assets/fonts/DejaVuSans.ttf', import.meta.url));
-  const doc = new PDFDocument({ autoFirstPage: false, size: 'A4', margins: { left: 46, right: 46, top: 94, bottom: 60 }, bufferPages: true, info: { Title: 'Reporte de publicaciones · FCEA UNC', Author: 'FCEA · Universidad Nacional de Concepción', CreationDate: input.generatedAt } });
+  const font = assetPath('fonts/DejaVuSans.ttf');
+  const [unc, fcea] = reportLogos();
+  const doc = new PDFDocument({ autoFirstPage: false, size: 'A4', margins: { left: 46, right: 46, top: 122, bottom: 60 }, bufferPages: true, info: { Title: 'Reporte de publicaciones · FCEA UNC', Author: 'FCEA · Universidad Nacional de Concepción', CreationDate: input.generatedAt } });
   const chunks: Buffer[] = [];
   let size = 0, pages = 0;
   const complete = new Promise<Buffer>((resolve, reject) => {
@@ -52,11 +60,14 @@ async function pdfReport(input: ReportDocument): Promise<Buffer> {
     doc.on('pageAdded', () => {
       if (++pages > 1000) throw new AppError(400, 'REPORT_LIMIT_EXCEEDED', 'El reporte supera 1000 páginas. Reducí los filtros.');
       doc.rect(0, 0, doc.page.width, 7).fill(`#${burgundy}`);
-      doc.fontSize(15).fillColor(`#${burgundy}`).text('FCEA / UNC', 46, 28, { lineBreak: false });
-      doc.fontSize(8).fillColor(`#${muted}`).text('Dirección de Investigación', 330, 31, { width: 220, align: 'right', lineBreak: false });
-      doc.moveTo(46, 61).lineTo(549, 61).strokeColor(`#${gold}`).lineWidth(1).stroke();
-      if (input.example) doc.fontSize(8).fillColor(`#${muted}`).text('EJEMPLO · DATOS FICTICIOS', 46, 71, { lineBreak: false });
-      doc.x = 46; doc.y = 96;
+      doc.image(unc.path, 46, 24, { fit: [56, 56], align: 'center', valign: 'center' });
+      doc.image(fcea.path, 493, 24, { fit: [56, 56], align: 'center', valign: 'center' });
+      doc.fontSize(11).fillColor(`#${burgundy}`).text('Universidad Nacional de Concepción', 114, 27, { width: 367, align: 'center', lineBreak: false });
+      doc.fontSize(8.5).text('Facultad de Ciencias Económicas y Administrativas', 114, 46, { width: 367, align: 'center', lineBreak: false });
+      doc.fontSize(8).fillColor(`#${muted}`).text('Dirección de Investigación', 114, 64, { width: 367, align: 'center', lineBreak: false });
+      doc.moveTo(46, 94).lineTo(549, 94).strokeColor(`#${gold}`).lineWidth(1).stroke();
+      if (input.example) doc.fontSize(8).fillColor(`#${muted}`).text('EJEMPLO · DATOS FICTICIOS', 46, 103, { lineBreak: false });
+      doc.x = 46; doc.y = 122;
     });
     const paragraph = (label: string, value: string, fontSize = 10) => {
       doc.fontSize(8);
@@ -108,22 +119,43 @@ async function excelReport(input: ReportDocument): Promise<Buffer> {
   book.creator = 'FCEA · UNC'; book.created = input.generatedAt; book.modified = input.generatedAt;
   const summary = book.addWorksheet('Resumen', { views: [{ showGridLines: false }] });
   summary.columns = [{ width: 25 }, { width: 34 }, { width: 22 }, { width: 18 }, { width: 17 }];
-  summary.mergeCells('A1:E2'); summary.getCell('A1').value = 'FCEA / UNC · Reporte de publicaciones';
-  summary.getCell('A1').font = { name: 'Calibri', size: 19, bold: true, color: { argb: 'FFFFFFFF' } };
-  summary.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${burgundy}` } };
-  summary.getCell('A1').alignment = { vertical: 'middle' }; summary.getRow(1).height = 25; summary.getRow(2).height = 25;
-  summary.mergeCells('A4:E4'); summary.getCell('A4').value = input.example ? 'Ejemplo de diseño · Datos ficticios' : 'Facultad de Ciencias Económicas y Administrativas';
+  for (const [index, label] of ['Universidad Nacional de Concepción', 'Facultad de Ciencias Económicas y Administrativas', 'Dirección de Investigación'].entries()) {
+    const row = index + 1;
+    summary.mergeCells(row, 2, row, 4);
+    const cell = summary.getCell(row, 2);
+    cell.value = label;
+    cell.font = { name: 'Calibri', size: index === 0 ? 14 : 11, bold: index < 2, color: { argb: `FF${index < 2 ? burgundy : muted}` } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    summary.getRow(row).height = 25;
+  }
+  for (const [index, logo] of reportLogos().entries()) {
+    const imageId = book.addImage({ filename: logo.path, extension: logo.extension });
+    const scale = 80 / Math.max(logo.width, logo.height);
+    const width = logo.width * scale, height = logo.height * scale;
+    const left = 12 + (80 - width) / 2, top = 7 + (80 - height) / 2;
+    const anchor = (row: number, x: number, y: number) => ({ nativeCol: index === 0 ? 0 : 4, nativeColOff: Math.round(x * 9525), nativeRow: row, nativeRowOff: Math.round(y * 9525) }) as ExcelJS.Anchor;
+    // Two-cell anchors avoid ExcelJS 4.4's invalid editAs attribute on one-cell anchors.
+    summary.addImage(imageId, { tl: anchor(0, left, top), br: anchor(2, left + width, top + height - 2 * 25 * 96 / 72), editAs: 'absolute' });
+  }
+  summary.mergeCells('A4:E4'); summary.getRow(4).height = 8;
+  summary.getCell('A4').border = { bottom: { style: 'thin', color: { argb: `FF${gold}` } } };
+  summary.mergeCells('A6:E7'); summary.getCell('A6').value = 'FCEA / UNC · Reporte de publicaciones';
+  summary.getCell('A6').font = { name: 'Calibri', size: 19, bold: true, color: { argb: 'FFFFFFFF' } };
+  summary.getCell('A6').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${burgundy}` } };
+  summary.getCell('A6').alignment = { vertical: 'middle' }; summary.getRow(6).height = 25; summary.getRow(7).height = 25;
+  summary.mergeCells('A9:E9'); summary.getCell('A9').value = input.example ? 'Ejemplo de diseño · Datos ficticios' : 'Facultad de Ciencias Económicas y Administrativas';
   const criteria: [string, string | number | Date][] = [['Publicaciones', input.rows.length], ['Fecha de emisión', excelDate(input.generatedAt)], ['Generado por', input.generatedBy], ...filterLabels(input.filters, input.rows)];
   for (const [i, [label, value]] of criteria.entries()) {
-    const n = i + 6; summary.getCell(n, 1).value = label; summary.mergeCells(n, 2, n, 5); summary.getCell(n, 2).value = value;
+    const n = i + 11; summary.getCell(n, 1).value = label; summary.mergeCells(n, 2, n, 5); summary.getCell(n, 2).value = value;
     summary.getCell(n, 1).font = { bold: true, color: { argb: `FF${burgundy}` } }; summary.getCell(n, 2).alignment = { wrapText: true, vertical: 'middle' };
     summary.getRow(n).height = Math.max(25, Math.ceil(String(value).length / 100) * 16);
     if (value instanceof Date) summary.getCell(n, 2).numFmt = 'dd/mm/yyyy';
   }
-  const noteRow = criteria.length + 8;
+  const noteRow = criteria.length + 13;
   summary.mergeCells(noteRow, 1, noteRow + 1, 5);
   summary.getCell(noteRow, 1).value = 'Investigaciones contiene los metadatos y permite ordenar y filtrar. Textos conserva el resumen y el abstract completos, identificados por código. Las fechas de registro corresponden a America/Asuncion.';
   summary.getCell(noteRow, 1).alignment = { wrapText: true, vertical: 'middle' };
+  summary.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 1, printArea: `A1:E${noteRow + 1}` };
   const data = book.addWorksheet('Investigaciones', { views: [{ state: 'frozen', ySplit: 1, xSplit: 2, showGridLines: false }] });
   const headers = ['Código', 'Título', 'Autores', 'Tutores / orientadores', 'Carrera', 'Nivel académico', 'Tipo', 'Filial', 'Año', 'Fecha de registro', 'Registrado por', 'Palabras clave', 'Estado', 'Origen', 'Documento / URL'];
   const widths = [18, 62, 36, 36, 30, 23, 26, 24, 10, 21, 30, 42, 14, 14, 66];
