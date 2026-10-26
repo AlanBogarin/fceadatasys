@@ -14,6 +14,7 @@ export interface AppConfig {
   recoveryUrl: string;
   smtp?: { host: string; port: number; user?: string; pass?: string; from: string; secure: boolean };
   attachments?: { directory: string; command: string; database?: string; timeoutMs: number; maxSignatureAgeDays: number; concurrency: number };
+  backups?: { configFile: string };
 }
 
 const booleanEnv = z.enum(['true', 'false']).transform(value => value === 'true');
@@ -41,6 +42,7 @@ const environmentSchema = z.object({
   CLAMAV_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(120000),
   CLAMAV_MAX_SIGNATURE_AGE_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   ATTACHMENT_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
+  BACKUP_CONFIG_FILE: z.string().min(1).optional(),
 });
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -64,6 +66,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   if (env.SMTP_HOST && env.SMTP_PORT === 465 && !env.SMTP_SECURE) throw new Error('SMTP_PORT 465 requiere SMTP_SECURE=true.');
   return {
     nodeEnv: env.NODE_ENV, host: env.HOST, port: env.PORT, databaseUrl: env.DATABASE_URL,
+    backups: env.BACKUP_CONFIG_FILE ? { configFile: env.BACKUP_CONFIG_FILE } : undefined,
     jwtSecret: env.JWT_SECRET, jwtIssuer: env.JWT_ISSUER, jwtAudience: env.JWT_AUDIENCE,
     allowedOrigins, secureCookies: env.SECURE_COOKIES, recoveryUrl: env.RECOVERY_URL, trustedProxies,
     smtp: env.SMTP_HOST ? { host: env.SMTP_HOST, port: env.SMTP_PORT, user: env.SMTP_USER, pass: env.SMTP_PASS, from: env.SMTP_FROM!, secure: env.SMTP_SECURE } : undefined,

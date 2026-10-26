@@ -30,6 +30,31 @@ export type ListQuery = {
 };
 // Frontera de servicios compartida. No depende de la implementación del simulador.
 export interface DataClient {
+  permissions?: {
+    get(
+      signal?: AbortSignal,
+    ): Promise<
+      import("./contracts").Versioned<import("./contracts").AccessPolicyDto>
+    >;
+    users(
+      search: string,
+      page: number,
+      signal?: AbortSignal,
+    ): Promise<Page<UserDto>>;
+    update(
+      input: Pick<import("./contracts").AccessPolicyDto, "roles" | "users">,
+      options: MutationOptions,
+    ): Promise<
+      import("./contracts").Versioned<import("./contracts").AccessPolicyDto>
+    >;
+  };
+  backups?: {
+    list(
+      page: number,
+      signal?: AbortSignal,
+    ): Promise<Page<import("./contracts").BackupDto> & { configured: boolean }>;
+    run(): Promise<import("./contracts").BackupDto>;
+  };
   auth: {
     initializeBrowser(): Promise<void>;
     session(signal?: AbortSignal): Promise<SessionDto>;

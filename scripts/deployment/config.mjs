@@ -5,14 +5,14 @@ import {
   writeFileSync,
   chmodSync,
 } from "node:fs";
-import { dirname, resolve, isAbsolute } from "node:path";
+import { dirname, resolve, isAbsolute, relative } from "node:path";
 import { randomBytes } from "node:crypto";
 import { parseEnv } from "node:util";
 
 export const secret = () => randomBytes(36).toString("base64url");
 export function defaults(root, profile) {
   const demo = profile === "demo";
-  const database = demo ? "fceadatasys_demo" : "fceadatasys_production";
+  const database = demo ? "fceadatasys_demo" : "fceadatasys";
   const port = demo ? 55440 : 5432;
   const owner = demo ? "fcea_demo_owner" : "fcea_production_owner";
   const runtime = demo ? "fcea_demo_app" : "fcea_production_app";
@@ -26,7 +26,7 @@ export function defaults(root, profile) {
     MANAGE_POSTGRES: demo ? "true" : "false",
     PG_BIN_DIRECTORY:
       process.platform === "win32" ? "C:/Program Files/PostgreSQL/18/bin" : "",
-    PG_DATA_DIRECTORY: `.local/deploy/${profile}/postgres-data`,
+    ...(demo ? { PG_DATA_DIRECTORY: ".local/deploy/demo/postgres-data" } : {}),
     DATABASE_URL: `postgresql://${runtime}:${runtimePassword}@127.0.0.1:${port}/${database}`,
     MIGRATION_DATABASE_URL: `postgresql://${owner}:${ownerPassword}@127.0.0.1:${port}/${database}`,
     PG_ADMIN_URL: "",
@@ -56,6 +56,12 @@ export function defaults(root, profile) {
     SMTP_PASS: "",
     SMTP_FROM: "",
     SMTP_SECURE: "false",
+    BACKUP_ENABLED: demo ? "false" : "true",
+    BACKUP_CONFIG_FILE: `.local/backups/${profile}.env`,
+    BACKUP_CONFIGURE_DRIVE: "false",
+    BACKUP_TEST_ON_SETUP: "true",
+    BACKUP_INSTALL_SCHEDULE: "true",
+    BACKUP_TIME: "02:00",
   };
 }
 export function writeConfig(file, values) {
@@ -82,6 +88,15 @@ export function writeConfig(file, values) {
 export const readConfig = (file) => parseEnv(readFileSync(file, "utf8"));
 export const localPath = (root, value) =>
   isAbsolute(value) ? value : resolve(root, value);
+export function assertPrivateLocation(root, value) {
+  const location = localPath(root, value),
+    fromClient = relative(resolve(root, "client"), location);
+  if (!fromClient || (!fromClient.startsWith("..") && !isAbsolute(fromClient)))
+    throw Error(
+      "La configuración, adjuntos y copias deben permanecer fuera del cliente web.",
+    );
+  return location;
+}
 export function validateConfig(root, input, profile, { initial = false } = {}) {
   const required = (key) => {
     if (!input[key]?.trim()) throw Error(`Falta configuración: ${key}.`);
@@ -130,7 +145,9 @@ export function validateConfig(root, input, profile, { initial = false } = {}) {
     if (
       !["postgres:", "postgresql:"].includes(url.protocol) ||
       !/^\/[a-z][a-z0-9_]*$/.test(url.pathname) ||
+      url.pathname.length > 64 ||
       !/^[a-z][a-z0-9_]*$/.test(decodeURIComponent(url.username)) ||
+      decodeURIComponent(url.username).length > 63 ||
       url.search ||
       url.hash
     )
@@ -150,6 +167,17 @@ export function validateConfig(root, input, profile, { initial = false } = {}) {
       "Migraciones y runtime deben apuntar a la misma base con roles distintos.",
     );
   const name = runtime.pathname.slice(1);
+  if (["postgres", "template0", "template1"].includes(name))
+    throw Error("La base de la aplicación no puede ser una base de sistema.");
+  if (
+    input.PG_ADMIN_URL &&
+    [runtime.username, owner.username].includes(
+      new URL(input.PG_ADMIN_URL).username,
+    )
+  )
+    throw Error(
+      "La cuenta administrativa debe ser distinta del propietario y la aplicación.",
+    );
   if (
     profile === "demo" &&
     (!["127.0.0.1", "localhost", "[::1]"].includes(runtime.hostname) ||
@@ -231,6 +259,14 @@ export function apiEnvironment(root, input) {
     INITIAL_DATA_PROFILE: input.PROFILE,
     INITIAL_DATA_DATABASE_NAME: new URL(input.DATABASE_URL).pathname.slice(1),
     ATTACHMENT_DIRECTORY: localPath(root, input.ATTACHMENT_DIRECTORY),
+    ...(input.BACKUP_ENABLED === "false"
+      ? {}
+      : {
+          BACKUP_CONFIG_FILE: localPath(
+            root,
+            input.BACKUP_CONFIG_FILE || `.local/backups/${input.PROFILE}.env`,
+          ),
+        }),
     CLAMAV_COMMAND: input.CLAMAV_COMMAND,
     CLAMAV_DATABASE_DIR: localPath(root, input.CLAMAV_DATABASE_DIR),
   };
@@ -253,7 +289,9 @@ export function redact(value, config) {
         /PASSWORD|SECRET|SMTP_PASS|DATABASE_URL|PG_ADMIN_URL/.test(key),
     )
     .map(([, value]) => value);
-  for (const key of ["DATABASE_URL", "MIGRATION_DATABASE_URL", "PG_ADMIN_URL"])
+  for (const key of Object.keys(config).filter((key) =>
+    /DATABASE_URL$|^PG_ADMIN_URL$/.test(key),
+  ))
     if (config[key])
       try {
         const password = decodeURIComponent(new URL(config[key]).password);
@@ -269,7 +307,7 @@ export function executionEnvironment(values = {}, inherited = process.env) {
   const output = { ...inherited };
   for (const key of Object.keys(output))
     if (
-      /^(NODE_ENV$|HOST$|PORT$|DATABASE_URL$|JWT_|SMTP_|SECURE_COOKIES$|ALLOWED_ORIGINS$|RECOVERY_URL$|ATTACHMENT_|CLAMAV_|TRUSTED_PROXIES$|BOOTSTRAP_ADMIN_|DEMO_|INITIAL_DATA_|MIGRATION_DATABASE_URL$|PG_ADMIN_URL$|PGPASSWORD$|VITE_)/.test(
+      /^(NODE_ENV$|HOST$|PORT$|DATABASE_URL$|JWT_|SMTP_|BACKUP_|SECURE_COOKIES$|ALLOWED_ORIGINS$|RECOVERY_URL$|ATTACHMENT_|CLAMAV_|TRUSTED_PROXIES$|BOOTSTRAP_ADMIN_|DEMO_|INITIAL_DATA_|MIGRATION_DATABASE_URL$|PG_ADMIN_URL$|PGPASSWORD$|VITE_)/.test(
         key,
       )
     )

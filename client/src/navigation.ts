@@ -148,6 +148,13 @@ export const groups: {
         roles: admins,
         ready: true,
       },
+      {
+        id: "respaldos",
+        label: "Copias de seguridad",
+        icon: ShieldCheck,
+        roles: admins,
+        ready: true,
+      },
     ],
   },
 ];

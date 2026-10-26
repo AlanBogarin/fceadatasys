@@ -37,12 +37,12 @@ export function visibleReservation(
 }
 export async function listAttachments(
   prisma: PrismaClient,
-  actor: { userId: string; role: Role },
+  actor: { userId: string; role: Role; permissions?: string[] },
   query: z.infer<typeof attachmentQuery>,
 ) {
   const status = Prisma.sql`CASE WHEN a.estado = 'PENDING' THEN 'PENDIENTE' WHEN a.estado <> 'CLEAN' THEN 'RECHAZADO' WHEN p.id IS NOT NULL THEN 'VINCULADO' WHEN h.adjunto_id IS NOT NULL THEN 'RESERVADO' ELSE 'DISPONIBLE' END`;
   const conditions: Prisma.Sql[] = [];
-  if (actor.role !== "ADMINISTRADOR")
+  if (!(actor.permissions?.includes("attachments.manage") ?? actor.role === "ADMINISTRADOR"))
     conditions.push(
       Prisma.sql`(a.creado_por_id=${actor.userId}::uuid OR p.activo=true)`,
     );
@@ -77,7 +77,7 @@ export async function listAttachments(
         sha256: row.sha256,
         createdAt: row.createdAt.toISOString(),
         createdBy: row.createdBy,
-        reservedPublicationId: visibleReservation(row.assignment, actor.role),
+        reservedPublicationId: visibleReservation(row.assignment, (actor.permissions?.includes("publications.history") ?? actor.role === "ADMINISTRADOR") ? "ADMINISTRADOR" : "DIGITADOR"),
         status:
           row.state !== "CLEAN"
             ? row.state === "PENDING"
@@ -90,7 +90,7 @@ export async function listAttachments(
                 : "DISPONIBLE",
         publication:
           row.publication &&
-          (actor.role === "ADMINISTRADOR" || row.publication.active)
+          ((actor.permissions?.includes("publications.history") ?? actor.role === "ADMINISTRADOR") || row.publication.active)
             ? {
                 id: row.publication.id,
                 code: `INV-${row.publication.number.toString().padStart(5, "0")}`,

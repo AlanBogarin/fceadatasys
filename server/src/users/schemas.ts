@@ -15,7 +15,7 @@ export const userInputSchema = z.object({
 export const createUserSchema = userInputSchema.extend({ password: passwordSchema });
 export const updateUserSchema = userInputSchema.partial().refine(input => Object.keys(input).length > 0, 'Debe enviar al menos un campo.');
 export const profileSchema = userInputSchema.pick({ name: true, email: true, username: true }).partial().refine(input => Object.keys(input).length > 0, 'Debe enviar al menos un campo.');
-export const userDtoSchema = z.object({ id: z.uuid(), name: z.string(), ci: z.string(), email: z.string(), username: z.string(), role: z.enum(roles), active: z.boolean(), createdAt: z.iso.datetime() }).strict();
+export const userDtoSchema = z.object({ id: z.uuid(), name: z.string(), ci: z.string(), email: z.string(), username: z.string(), role: z.enum(roles), active: z.boolean(), createdAt: z.iso.datetime(), permissions: z.array(z.string()).optional() }).strict();
 export const userQuerySchema = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20), search: trimmed.pipe(z.string().max(100)).optional(), role: z.enum(roles).optional(), active: z.enum(['true', 'false']).transform(value => value === 'true').optional() }).strict();
 export const idParamsSchema = z.object({ id: z.uuid() }).strict();
 export type UserInput = z.infer<typeof userInputSchema>;

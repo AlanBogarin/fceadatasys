@@ -22,7 +22,7 @@ npm run start:demo
 npm run start:production
 ```
 
-El lanzador instala dependencias cuando es necesario, compila cliente/API, prepara roles y base de datos, aplica las siete migraciones/permisos, carga el conjunto elegido y arranca el sistema bajo una única dirección. Los comandos funcionan desde PowerShell en Windows y desde una terminal en Linux con las herramientas requeridas.
+El lanzador instala dependencias cuando es necesario, compila cliente/API, prepara roles y base de datos, aplica las migraciones/permisos pendientes, carga el conjunto elegido y arranca el sistema bajo una única dirección. Los comandos funcionan desde PowerShell en Windows y desde una terminal en Linux con las herramientas requeridas.
 
 ## Requisitos
 
@@ -69,17 +69,19 @@ Las contraseñas se pueden configurar antes de la primera carga. Repetir el prep
 npm run start:production
 ```
 
-La primera ejecución solicita dirección HTTPS, URL runtime, URL del propietario para migraciones, conexión administrativa opcional para crear roles/base, certificado y clave, ClamAV, correo/contraseña del Administrador y SMTP. Las entradas secretas no se muestran en pantalla.
+La base predeterminada de producción se llama **`fceadatasys`** y utiliza el servicio PostgreSQL principal (por defecto `127.0.0.1:5432`). El asistente pide host, puerto, usuario y contraseña administrativa, cuentas técnicas, dirección HTTPS, certificados, almacenamiento, ClamAV, identidad del Administrador, SMTP y cada opción de copias de seguridad. Construye las URLs y mantiene ocultas las entradas secretas.
 
-También se puede preparar el archivo sin iniciar:
+Para configurar, guardar solamente o aplicar toda la preparación sin dejar la web iniciada:
 
 ```powershell
 npm run configure -- --profile production
 ```
 
-La configuración se guarda en `.local/deploy/production.env`, ignorada por Git. El asistente genera secretos y URLs iniciales; revisar host, puerto y roles para la instalación real. Si los roles/base todavía no existen, configurar `PG_ADMIN_URL` con una cuenta autorizada a crearlos. Si ya existen, sus contraseñas y propietario deben coincidir: **el script no los restablece ni sustituye**.
+La configuración se guarda en `.local/deploy/production.env`, ignorada por Git. La cuenta administrativa debe existir y poder crear roles/base; el asistente crea los roles técnicos cuando faltan. Si ya existen, sus contraseñas deben coincidir: se comprueba su acceso y no se restablecen. Si existe la base, pregunta **conservar / eliminar y recrear / cancelar**; conservar es la opción predeterminada. Recrear exige una copia local previa verificada, la confirmación exacta `ELIMINAR fceadatasys` y que no haya conexiones activas. Nunca se eliminan roles, adjuntos u otras bases. `--non-interactive` conserva siempre. La base anterior `fceadatasys_production` no se renombra ni se elimina automáticamente al elegir el nuevo nombre.
 
-La primera carga crea únicamente **Administrador / CI `0000000` / usuario `admin`**, parámetros **300 palabras / PDF / 10 MiB** y auditoría. No se cargan muestras UNC. El correo y la contraseña se configuran localmente. La contraseña de bootstrap y la URL administrativa se retiran del archivo después de la preparación exitosa; la API recibe solo sus credenciales runtime.
+La primera carga crea únicamente un Administrador (valores iniciales: **Administrador / CI `0000000` / usuario `admin`**), parámetros **300 palabras / PDF / 10 MiB** y auditoría. La identidad inicial se puede ajustar en el asistente y no se cargan muestras UNC. La contraseña inicial y la URL administrativa se retiran del archivo tras preparar la base; la API recibe solo sus credenciales runtime.
+
+Si se habilitan copias, el asistente guarda `.local/backups/production.env`, provisiona una cuenta PostgreSQL de lectura y permite abrir rclone para autorizar Drive, probar la primera copia y registrar o actualizar la tarea diaria Windows/Linux con la hora elegida. También ofrece deshabilitar una tarea previa cuando se desactiva la programación. Rclone y las herramientas PostgreSQL deben estar instalados. Guía completa y responsabilidades: [INSTALLATION-PRODUCTION.md](docs/INSTALLATION-PRODUCTION.md).
 
 La web escucha por defecto en `0.0.0.0`, puerto HTTPS del `PUBLIC_URL`; la API permanece en loopback. El servidor web incluido entrega `client/dist`, sirve configuración pública en ejecución y dirige `/api/v1` a la API. No es necesario ejecutar Vite ni configurar Nginx para este camino de despliegue.
 
@@ -105,6 +107,11 @@ Editar `.local/deploy/demo.env` o `.local/deploy/production.env`, o usar el asis
 | `CLAMAV_*` | Ejecutable, firmas, timeout y antigüedad máxima. |
 | `BOOTSTRAP_ADMIN_*` | Identidad y credenciales para la primera cuenta de producción. |
 | `SMTP_*` | Transporte para recuperación. Sin SMTP no se envían correos. |
+| `BACKUP_ENABLED` / `BACKUP_CONFIG_FILE` | Habilitar las copias y elegir su archivo privado. |
+| `BACKUP_CONFIGURE_DRIVE` / `BACKUP_TEST_ON_SETUP` | Abrir la autorización de Drive y probar una primera copia durante la preparación. |
+| `BACKUP_INSTALL_SCHEDULE` / `BACKUP_TIME` | Registrar/actualizar la tarea diaria y su hora local `HH:MM`. |
+| `BACKUP_DISABLE_SCHEDULE` | Deshabilitar una tarea anterior si el instalador lo solicitó; se consume al aplicarse. |
+| `INSTALL_BACKUP_DIRECTORY` | Carpeta privada de la copia obligatoria antes de recrear una base. |
 
 Las rutas relativas de este archivo parten de la **raíz del repositorio**. El lanzador traduce la configuración de la API y no sobrescribe `server/.env`, `.env.demo` ni `.env.production` anteriores. Tampoco depende de variables `VITE_*` locales: compila únicamente para API y sirve dominio/perfil en ejecución. Un cambio de dominio requiere reiniciar, no recompilar.
 
@@ -134,6 +141,8 @@ También se puede detener con **Ctrl+C** en la terminal del lanzador. Se cierran
 El proceso permanece en primer plano. Para ejecución después de reiniciar el equipo, registrar el comando `node scripts/run.mjs --profile production --start-only --non-interactive` como servicio mediante el gestor de la institución, con directorio de trabajo del repositorio y permisos sobre configuración, certificados y adjuntos. El lanzador no registra automáticamente servicios globales del sistema operativo.
 
 ## Desarrollo y validación
+
+La ventana Roles y permisos permite configurar acciones por rol y excepciones por cuenta. Auditoría muestra una vista amigable con opciones JSON/raw. Copias de seguridad permite respaldos de PostgreSQL y consulta del estado local/en Google Drive. Preparación y programación Windows/Linux: [BACKUPS.md](docs/BACKUPS.md); accesos: [PERMISSIONS.md](docs/PERMISSIONS.md). Requieren las dos migraciones del 26/10/2026 y los grants actualizados.
 
 El cliente de desarrollo también utiliza API real. Las instrucciones manuales y contratos están en [cliente](client/README.md), [servidor](server/README.md), [API](server/docs/API.md) y [conjuntos iniciales](server/docs/INITIAL-DATA.md).
 

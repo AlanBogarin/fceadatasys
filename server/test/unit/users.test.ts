@@ -5,6 +5,7 @@ import type { Prisma, PrismaClient, Role, User } from '@prisma/client';
 import { createApp } from '../helpers/unit-app.js';
 import type { AppConfig } from '../../src/config.js';
 import { enforceUserRules } from '../../src/users/routes.js';
+import { defaultPermissions } from '../../src/security/permissions.js';
 import { userDto } from '../../src/users/dto.js';
 import { requireUserIfMatch, userEtag } from '../../src/users/concurrency.js';
 import { enforceUserDeletionRules } from '../../src/users/deletion.js';
@@ -222,7 +223,7 @@ test('Perfil HTTP usa identidad y rol revalidados, campos permitidos y recuperac
     child.after(() => app.close());
     const read = await app.inject({ url: '/api/v1/me?actorId=other-user', headers });
     assert.equal(read.statusCode, 200, read.body);
-    assert.deepEqual(read.json(), userDto(user));
+    assert.deepEqual(read.json(), { ...userDto(user), permissions: defaultPermissions[role] });
     assert.equal(read.headers['cache-control'], 'no-store');
     assert.equal(read.body.includes('PRIVATE_HASH'), false);
     const response = await app.inject({ method: 'PATCH', url: '/api/v1/me', headers, payload: { email: ' NEW@example.org ', username: ' ＮＥＷ＿ＵＳＥＲ ', ...(role === 'PUBLICO' ? {} : { name: 'Nombre actualizado' }) } });

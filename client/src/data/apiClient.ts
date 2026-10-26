@@ -252,6 +252,41 @@ export function createApiClient(
     },
     ...createPublicationServices(session, confirm, options, mutate),
     audit: createAuditService(session),
+    permissions: {
+      get: (signal) => http.versioned("/permisos", { signal }),
+      users: (search, page, signal) =>
+        http.get(`/permisos/usuarios${queryString({ search, page })}`, signal),
+      async update(input, value) {
+        const headers = mutationHeaders(
+          await options("Guardar roles y permisos", value),
+        );
+        const result = await http.versioned<
+          import("./contracts").AccessPolicyDto
+        >("/permisos", { method: "PATCH", body: input, headers });
+        await session.session();
+        session.invalidate();
+        return result;
+      },
+    },
+    backups: {
+      list: (page, signal) =>
+        http.get(`/respaldos${queryString({ page })}`, signal),
+      async run() {
+        await confirm({
+          title: "Crear una copia de seguridad local y en Google Drive",
+          password: false,
+        });
+        return mutate(
+          async () =>
+            (
+              await http.request<import("./contracts").BackupDto>(
+                "/respaldos",
+                { method: "POST", body: {} },
+              )
+            ).data,
+        );
+      },
+    },
   };
   // Una sola escritura por pestaña, incluida su espera de confirmación.
   let writing = false;

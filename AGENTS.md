@@ -78,6 +78,8 @@ Dominios principales:
 
 ### Roles
 
+**Ampliación de permisos, autorizada explícitamente por el usuario el 26/10/2026:** los accesos descritos debajo son valores iniciales. Un Administrador con `permissions.manage` puede configurar permisos por rol y excepciones por cuenta (heredar, permitir o denegar), incluyendo ampliar ventanas del Digitador y restringir acciones de otro Administrador. Backend y frontend usan los permisos efectivos. Administrar permisos y ejecutar copias se reservan al rol Administrador con su permiso correspondiente. Debe conservarse al menos un Administrador activo con `permissions.manage`; los cambios son transaccionales y auditados. Un gestor de usuarios sin dicho permiso no puede asignar roles diferentes ni modificar cuentas con permisos superiores. Esta ampliación sustituye las restricciones fijas por rol de auditoría/reportes cuando se delegan explícitamente sus permisos.
+
 #### ADMINISTRADOR
 
 Control total del sistema:

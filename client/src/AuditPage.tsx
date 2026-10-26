@@ -24,6 +24,8 @@ import type { ViewState as State } from "./data/view";
 import { roleLabel, ROLES } from "./model";
 import { downloadReport } from "./publicationExports";
 import { Alert, errorText, Field, Modal } from "./ui";
+import { AuditChanges } from "./AuditChanges";
+import { hasPermission } from "./permissions";
 
 export function AuditPage({
   state,
@@ -49,7 +51,7 @@ export function AuditPage({
   const client = useDataClient();
   const api = useDataEnvironment().mode === "api";
   const allowed = api
-    ? user.active && user.role === "ADMINISTRADOR"
+    ? user.active && hasPermission(user, "audit.read")
     : state?.users.some(
         (account) =>
           account.id === user.id &&
@@ -58,8 +60,7 @@ export function AuditPage({
       );
   const request = useQuery(
     (signal) => {
-      if (!allowed)
-        throw Error("Solo Administrador puede consultar auditoría.");
+      if (!allowed) throw Error("No tenés permiso para consultar auditoría.");
       return client.audit.list(filters, page, pageSize, signal);
     },
     [state, filters, page, pageSize],
@@ -150,7 +151,7 @@ export function AuditPage({
           <p>Consultá las acciones y sus resultados en el repositorio.</p>
         </div>
         <span className="badge blue">
-          <ShieldCheck size={14} /> Solo Administrador · Solo lectura
+          <ShieldCheck size={14} /> Acceso autorizado · Solo lectura
         </span>
       </div>
       <div className="stats-grid">
@@ -320,6 +321,7 @@ export function AuditPage({
           <button
             className="secondary"
             disabled={
+              !hasPermission(user, "audit.export") ||
               busy ||
               request.loading ||
               !request.data?.export.exportable ||
@@ -333,6 +335,7 @@ export function AuditPage({
           <button
             className="secondary"
             disabled={
+              !hasPermission(user, "audit.export") ||
               busy ||
               request.loading ||
               !request.data?.export.exportable ||
@@ -367,7 +370,7 @@ export function AuditPage({
             <thead>
               <tr>
                 <th scope="col">Fecha y hora</th>
-                <th scope="col">Usuario / Rol</th>
+                <th scope="col">Nombre / Usuario / Rol</th>
                 <th scope="col">Operación</th>
                 <th scope="col">Módulo / Recurso</th>
                 <th scope="col">Resultado</th>
@@ -525,8 +528,8 @@ export function AuditPage({
                 {[
                   ["ID", detail.id],
                   ["Fecha y hora", auditDate(detail.createdAt)],
-                  ["Usuario", detail.actorName],
-                  ["Nombre de usuario", detail.username],
+                  ["Nombre completo", detail.actorName],
+                  ["Usuario", detail.username],
                   ["ID usuario", detail.actorId],
                   [
                     "Rol",
@@ -570,24 +573,11 @@ export function AuditPage({
                   </div>
                 ))}
               </dl>
-              <div className="audit-snapshots">
-                <section>
-                  <h3>Valores anteriores</h3>
-                  <pre>
-                    {detail.before
-                      ? JSON.stringify(detail.before, null, 2)
-                      : "No corresponde o no fue registrado."}
-                  </pre>
-                </section>
-                <section>
-                  <h3>Valores nuevos</h3>
-                  <pre>
-                    {detail.after
-                      ? JSON.stringify(detail.after, null, 2)
-                      : "No corresponde o no fue registrado."}
-                  </pre>
-                </section>
-              </div>
+              <AuditChanges
+                key={detail.id}
+                before={detail.before}
+                after={detail.after}
+              />
             </div>
           )}
           <div className="modal-footer">

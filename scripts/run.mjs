@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+import { configureDeployment } from "./deployment/wizard.mjs";
+import {
+  configuredBackups,
+  prepareBackupTools,
+  finishBackupSetup,
+} from "./deployment/backup-setup.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 import {
@@ -23,6 +29,7 @@ import {
   redact,
   localPath,
   executionEnvironment,
+  assertPrivateLocation,
 } from "./deployment/config.mjs";
 import { run, npmCommand, pgTool } from "./deployment/processes.mjs";
 import {
@@ -42,7 +49,7 @@ const help = `FCEA-Datasys — API real con datos demo o producción
   node scripts/run.mjs --profile demo [opciones]
 
 Opciones:
-  --configure       Crear/editar configuración guiada y salir
+  --configure       Asistente completo; permite guardar o aplicar la preparación
   --setup-only      Preparar dependencias, base, compilación y datos; salir
   --start-only      Iniciar una instalación ya preparada; no migrar ni cargar datos
   --stop            Solicitar cierre ordenado del perfil en ejecución
@@ -54,7 +61,8 @@ Opciones:
 Requisitos: Node 24.11+ (<25), PostgreSQL 18 y ClamAV con firmas.
 Producción requiere un servicio PostgreSQL y certificados TLS propios.
 Ctrl+C cierra web/API y el clúster demo iniciado por este proceso.
-No existe modo simulado. No se borran bases ni se restablecen contraseñas.`;
+Las bases existentes se conservan salvo recreación interactiva confirmada, con copia previa.
+Las contraseñas de roles existentes se conservan.`;
 
 async function ask(label, current = "", hidden = false) {
   if (!process.stdin.isTTY || !process.stdout.isTTY)
@@ -102,76 +110,44 @@ async function ask(label, current = "", hidden = false) {
     process.stdin.on("keypress", onKey);
   });
 }
-async function configure(config) {
-  config.PUBLIC_URL = await ask(
-    "Dirección pública (sin barra final)",
-    config.PUBLIC_URL,
-  );
-  config.WEB_HOST = await ask("Dirección de escucha web", config.WEB_HOST);
-  if (config.PROFILE === "production" || config.MANAGE_POSTGRES !== "true") {
-    config.DATABASE_URL = await ask(
-      "URL PostgreSQL runtime",
-      config.DATABASE_URL,
-      true,
-    );
-    config.MIGRATION_DATABASE_URL = await ask(
-      "URL PostgreSQL del propietario (misma base)",
-      config.MIGRATION_DATABASE_URL,
-      true,
-    );
-    config.PG_ADMIN_URL = await ask(
-      "URL administrativa para crear roles/base (opcional si ya existen)",
-      config.PG_ADMIN_URL,
-      true,
-    );
+async function configure(config, configFile) {
+  const result = await configureDeployment(root, config, { ask });
+  if (result.backup) {
+    const file = assertPrivateLocation(root, result.config.BACKUP_CONFIG_FILE);
+    if (file === configFile)
+      throw Error(
+        "El archivo privado de copias debe ser distinto de la configuración de despliegue.",
+      );
+    const base = dirname(file);
+    for (const key of ["BACKUP_DIRECTORY", "RCLONE_CONFIG"])
+      result.backup[key] = assertPrivateLocation(
+        root,
+        resolve(base, result.backup[key]),
+      );
+    writeConfig(file, result.backup);
   }
-  if (config.PUBLIC_URL.startsWith("https:")) {
-    config.TLS_CERT_FILE = await ask(
-      "Ruta del certificado PEM/fullchain",
-      config.TLS_CERT_FILE,
+  return result.config;
+}
+async function interactiveExecute(command, argv, label) {
+  await new Promise((resolveCommand, reject) => {
+    const child = spawn(command, argv, {
+      cwd: root,
+      env: executionEnvironment(),
+      stdio: "inherit",
+      shell: false,
+      windowsHide: true,
+    });
+    child.once("error", () =>
+      reject(
+        Error(`No se pudo ejecutar ${label}. Revisar herramientas y permisos.`),
+      ),
     );
-    config.TLS_KEY_FILE = await ask(
-      "Ruta de la clave privada PEM",
-      config.TLS_KEY_FILE,
+    child.once("exit", (code) =>
+      code === 0
+        ? resolveCommand()
+        : reject(Error(`Falló ${label}. Revisar configuración y permisos.`)),
     );
-  }
-  config.CLAMAV_COMMAND = await ask(
-    "Ejecutable clamscan",
-    config.CLAMAV_COMMAND,
-  );
-  config.CLAMAV_DATABASE_DIR = await ask(
-    "Directorio de firmas ClamAV",
-    config.CLAMAV_DATABASE_DIR,
-  );
-  if (config.PROFILE === "production") {
-    config.BOOTSTRAP_ADMIN_EMAIL = await ask(
-      "Correo del Administrador inicial (solo primera instalación)",
-      config.BOOTSTRAP_ADMIN_EMAIL,
-    );
-    config.BOOTSTRAP_ADMIN_PASSWORD = await ask(
-      "Contraseña del Administrador inicial",
-      config.BOOTSTRAP_ADMIN_PASSWORD,
-      true,
-    );
-  }
-  config.SMTP_HOST = await ask(
-    "Servidor SMTP (vacío: recuperación sin entrega)",
-    config.SMTP_HOST,
-  );
-  if (config.SMTP_HOST) {
-    config.SMTP_FROM = await ask("Remitente SMTP", config.SMTP_FROM);
-    config.SMTP_PORT = await ask("Puerto SMTP", config.SMTP_PORT);
-    config.SMTP_SECURE = await ask(
-      "TLS implícito SMTP: true en puerto 465, false para STARTTLS",
-      config.SMTP_SECURE,
-    );
-    config.SMTP_USER = await ask(
-      "Usuario SMTP (opcional en relay)",
-      config.SMTP_USER,
-    );
-    config.SMTP_PASS = await ask("Contraseña SMTP", config.SMTP_PASS, true);
-  }
-  return config;
+  });
 }
 async function available(port, host) {
   await new Promise((resolve, reject) => {
@@ -210,6 +186,8 @@ async function main() {
     throw Error("Se requiere Node 24.11 o superior de la rama 24.");
   if (options["--start-only"] && options["--setup-only"])
     throw Error("Elegir --start-only o --setup-only.");
+  if (options["--configure"] && (options["--start-only"] || options["--stop"]))
+    throw Error("--configure no se combina con --start-only ni --stop.");
   const profile =
     options["--profile"] || (await ask("Perfil: demo o production", "demo"));
   if (!["demo", "production"].includes(profile))
@@ -237,6 +215,7 @@ async function main() {
     root,
     options["--config"] || `.local/deploy/${profile}.env`,
   );
+  assertPrivateLocation(root, configFile);
   const existed = existsSync(configFile);
   if (options["--start-only"] && !existed)
     throw Error(
@@ -251,17 +230,30 @@ async function main() {
   ) {
     if (options["--non-interactive"])
       throw Error("--configure necesita una terminal interactiva.");
-    config = await configure(config);
+    config = await configure(config, configFile);
   }
   if (!existed || options["--configure"]) writeConfig(configFile, config);
   console.log(`Configuración: ${configFile}`);
   if (options["--configure"]) {
-    console.log(
-      "Configuración guardada. Ejecutar nuevamente para preparar e iniciar.",
-    );
-    return;
+    const apply = options["--setup-only"]
+      ? "si"
+      : await ask(
+          "¿Preparar ahora dependencias, base y copias? si/no (no deja la web iniciada)",
+          "si",
+        );
+    if (!/^(si|sí)$/i.test(apply)) {
+      console.log(
+        "Configuración guardada; la base no se ha inspeccionado ni preparado. Ejecutar la preparación cuando corresponda.",
+      );
+      return;
+    }
+    options["--setup-only"] = true;
   }
   const target = validateConfig(root, config, profile);
+  assertPrivateLocation(root, config.ATTACHMENT_DIRECTORY);
+  const backup = options["--start-only"]
+    ? undefined
+    : configuredBackups(root, config);
   let gateway;
   try {
     gateway = createGateway(root, config);
@@ -387,7 +379,15 @@ async function main() {
       await npm("server", ["run", "build"], "Compilación API");
       await npm("client", ["run", "build"], "Compilación cliente");
       console.log("Preparando base, migraciones y permisos…");
-      const users = await prepareDatabase(root, config, target, execute);
+      const { backupSettings } =
+        await import("../server/dist/src/backups/engine.js");
+      const backupOptions = {
+        execute,
+        interactiveExecute,
+        nonInteractive: Boolean(options["--non-interactive"]),
+        configFile,
+        validateSettings: backupSettings,
+      };
       mkdirSync(target.storage, { recursive: true });
       // Validate actual server configuration before any account/data initialization.
       const { loadConfig } = await import("../server/dist/src/config.js");
@@ -407,6 +407,45 @@ async function main() {
       await createClamScanner(loadConfig(environment).attachments).scan(
         Buffer.from("Comprobación operativa FCEA-Datasys."),
       );
+      if (profile === "production" && config.BOOTSTRAP_ADMIN_PASSWORD) {
+        const { productionInput } =
+          await import("../server/dist/src/initialization/profiles.js");
+        productionInput(environment);
+      }
+      await prepareBackupTools(root, config, backup, backupOptions);
+      const users = await prepareDatabase(root, config, target, execute, {
+        backup,
+        ...(!options["--non-interactive"] && profile === "production"
+          ? {
+              async chooseExisting(info) {
+                console.log(
+                  `Existe la base ${info.name} en ${info.host}:${info.port}; propietario ${info.owner}, conexiones activas ${info.connections}.`,
+                );
+                for (;;) {
+                  const choice = await ask(
+                    "¿Conservar o eliminar y recrear la base? conservar/eliminar/cancelar",
+                    "conservar",
+                  );
+                  if (choice.toLowerCase() === "conservar") return "keep";
+                  if (choice.toLowerCase() === "eliminar") {
+                    validateConfig(root, config, profile, { initial: true });
+                    const { productionInput } =
+                      await import("../server/dist/src/initialization/profiles.js");
+                    productionInput(environment);
+                    return "recreate";
+                  }
+                  if (choice.toLowerCase() === "cancelar") return "cancel";
+                }
+              },
+              async confirmReset(info) {
+                console.log(
+                  `Copia previa verificada: ${info.snapshot}. Recrear eliminará la base ${info.name} y todo su contenido, incluida auditoría, conservado en esa copia. Los adjuntos y otras bases no se eliminan.`,
+                );
+                return ask(`Para confirmar escribí ELIMINAR ${info.name}`, "");
+              },
+            }
+          : {}),
+      });
       if (profile === "demo" || users === 0) {
         validateConfig(root, config, profile, { initial: true });
         console.log(
@@ -429,10 +468,21 @@ async function main() {
         console.log(
           "Producción existente: se conservan usuarios, datos y contraseñas.",
         );
+      if (profile === "production" && config.BOOTSTRAP_ADMIN_PASSWORD) {
+        config.BOOTSTRAP_ADMIN_PASSWORD = "";
+        delete environment.BOOTSTRAP_ADMIN_PASSWORD;
+        writeConfig(configFile, config);
+      }
       if (config.PG_ADMIN_URL) {
         config.PG_ADMIN_URL = "";
         writeConfig(configFile, config);
       }
+      await finishBackupSetup(root, config, backup, {
+        execute,
+        interactiveExecute,
+        nonInteractive: Boolean(options["--non-interactive"]),
+        configFile,
+      });
     }
     if (options["--setup-only"]) {
       console.log(
@@ -546,7 +596,7 @@ async function main() {
 main().catch((error) => {
   console.error(
     error?.message &&
-      /^(Falta configuración|Perfil inválido|PUBLIC_URL|Producción|Demo|MANAGE_|API_PORT|JWT_SECRET|La API|La base|La entrega|El |No |Revisar|Un |Runtime|Se requiere|Faltan|Falta compilación|Falló|Puerto |Ya existe|Configuración |Opción |Migraciones|Completar|Elegir|Certificado)/.test(
+      /^(Falta configuración|Perfil inválido|PUBLIC_URL|Producción|Demo|MANAGE_|API_PORT|JWT_SECRET|La API|La base|La entrega|La contraseña o acceso del rol |La conexión de copias |La cuenta de copias |La configuración, adjuntos y copias |La autorización inicial de Google Drive |El |No |Revisar|Un |Runtime|Se requiere|Faltan|Falta compilación|Falló|Puerto |Ya existe|Configuración |Opción |Migraciones|Completar|Elegir|Certificado|Preparación cancelada|Confirmación incorrecta|Destino rclone|--configure )/.test(
         error.message,
       )
       ? error.message

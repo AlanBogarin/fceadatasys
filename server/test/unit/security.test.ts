@@ -9,6 +9,7 @@ import type { AppConfig } from '../../src/config.js';
 import { authenticate, requireAdmin, requireRoles, validateOrigin } from '../../src/security/index.js';
 import { hashPassword, normalizeIdentity, passwordSchema, randomToken, tokenHash, verifyPassword } from '../../src/security/crypto.js';
 import { createDeliverySlots } from '../../src/security/delivery-slots.js';
+import { initialPolicy } from '../../src/security/permissions.js';
 import { normalizeIdentity as normalizeUserIdentity, userInputSchema } from '../../src/users/schemas.js';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -57,6 +58,7 @@ function guardRequest(options: { session?: StoredSession | null; lockedSession?:
         return options.claims === undefined ? { ...VALID_CLAIMS, role: 'ADMINISTRADOR' } : options.claims;
       } },
       security: { now: () => new Date(NOW), config: { allowedOrigins: [ORIGIN] }, prisma: {
+        accessPolicy: { findUniqueOrThrow: async () => ({ id: 1, policy: initialPolicy() }) },
         session: { async findUnique(query: unknown) { calls.queries.push(query); return session; } },
         auditLog,
         async $transaction(callback: (transaction: typeof tx) => Promise<unknown>) { writes.transactions++; return callback(tx); },

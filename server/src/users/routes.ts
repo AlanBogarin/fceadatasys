@@ -1,3 +1,4 @@
+import { assertRequestPermission, protectUserPrivileges, assertPermissionAdministratorRemains, userPermissions, loadPolicy } from '../security/permissions.js';
 import { Prisma, type PrismaClient, type User } from '@prisma/client';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -5,7 +6,7 @@ import { z } from 'zod';
 import { withTransaction } from '../db.js';
 import { AppError } from '../errors.js';
 import { assertConfirmationCurrent } from '../security/confirmation.js';
-import { audit, authenticate, hashPassword, requireAdmin, revokeUserSessions } from '../security/index.js';
+import { audit, authenticate, hashPassword, requirePermission, revokeUserSessions } from '../security/index.js';
 import { userDto } from './dto.js';
 import { requireUserIfMatch, userEtag } from './concurrency.js';
 import { assertUserUnreferenced, enforceUserDeletionRules } from './deletion.js';
@@ -20,7 +21,7 @@ async function actorInTransaction(tx: Prisma.TransactionClient, request: Fastify
   const session = await tx.session.findUnique({ where: { id: auth.sessionId } });
   const now = request.server.security.now();
   if (!user?.active || !session || session.userId !== user.id || session.revokedAt || session.expiresAt <= now || now.getTime() - session.lastActivityAt.getTime() >= 600000) throw new AppError(401, 'UNAUTHENTICATED', 'La sesión no es válida o ha vencido.');
-  if (admin && user.role !== 'ADMINISTRADOR') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta operación.');
+  if (admin) await assertRequestPermission(tx, request, user);
   assertConfirmationCurrent(request, user);
   return user;
 }
@@ -37,7 +38,7 @@ export function enforceUserRules(before: Pick<User, 'id' | 'name' | 'role' | 'ac
 
 export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const api = app.withTypeProvider<ZodTypeProvider>();
-  api.get('/api/v1/usuarios', { preHandler: requireAdmin, schema: { querystring: userQuerySchema, response: { 200: z.object({ data: z.array(userDtoSchema), pagination: z.object({ page: z.number(), pageSize: z.number(), total: z.number(), totalPages: z.number() }) }) } } }, async request => {
+  api.get('/api/v1/usuarios', { preHandler: requirePermission('users.read'), schema: { querystring: userQuerySchema, response: { 200: z.object({ data: z.array(userDtoSchema), pagination: z.object({ page: z.number(), pageSize: z.number(), total: z.number(), totalPages: z.number() }) }) } } }, async request => {
     const { page, pageSize, search, role, active } = request.query;
     // Prisma contains uses ILIKE; escape PostgreSQL pattern syntax for literal UI searches.
     const literalSearch = search?.replace(/[\\%_]/g, '\\$&');
@@ -45,24 +46,25 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
     const [total, users] = await prisma.$transaction([prisma.user.count({ where }), prisma.user.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], skip: (page - 1) * pageSize, take: pageSize })], { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
     return { data: users.map(userDto), pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
   });
-  api.get('/api/v1/usuarios/:id', { preHandler: requireAdmin, schema: { params: idParamsSchema, response: { 200: userDtoSchema } } }, async (request, reply) => {
+  api.get('/api/v1/usuarios/:id', { preHandler: requirePermission('users.read'), schema: { params: idParamsSchema, response: { 200: userDtoSchema } } }, async (request, reply) => {
     const user = await prisma.user.findUnique({ where: { id: request.params.id } });
     if (!user) throw new AppError(404, 'NOT_FOUND', 'El usuario no existe.');
     return reply.header('ETag', userEtag(user)).send(userDto(user));
   });
-  api.post('/api/v1/usuarios', { preHandler: requireAdmin, schema: { body: createUserSchema, response: { 201: userDtoSchema } } }, async (request, reply) => {
+  api.post('/api/v1/usuarios', { preHandler: requirePermission('users.manage'), schema: { body: createUserSchema, response: { 201: userDtoSchema } } }, async (request, reply) => {
     const { password, ...input } = request.body;
     const passwordHash = await hashPassword(password);
     const created = await withTransaction(prisma, async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(741901)`;
-      await actorInTransaction(tx, request, true);
+      const actor = await actorInTransaction(tx, request, true);
+      await protectUserPrivileges(tx, actor, undefined, input.role);
       const user = await tx.user.create({ data: { ...normalizedFields(input), passwordHash } });
       await audit(tx, request, { operation: 'USUARIO_CREADO', resource: 'usuarios', resourceId: user.id, status: 'EXITO', after: userDto(user) });
       return user;
     });
     return reply.code(201).header('Location', `/api/v1/usuarios/${created.id}`).header('ETag', userEtag(created)).send(userDto(created));
   });
-  api.patch('/api/v1/usuarios/:id', { preHandler: requireAdmin, schema: { params: idParamsSchema, body: updateUserSchema, response: { 200: userDtoSchema } } }, async (request, reply) => {
+  api.patch('/api/v1/usuarios/:id', { preHandler: requirePermission('users.manage'), schema: { params: idParamsSchema, body: updateUserSchema, response: { 200: userDtoSchema } } }, async (request, reply) => {
     const expectedEtag = requireUserIfMatch(request.headers['if-match']);
     const updated = await withTransaction(prisma, async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(741901)`;
@@ -74,10 +76,12 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
       await actorInTransaction(tx, request, true);
       if (expectedEtag !== userEtag(before)) throw new AppError(412, 'USER_VERSION_CONFLICT', 'La cuenta cambió desde que consultaste sus datos. Vuelve a consultarla antes de editar.');
       const input: UserInput = { name: before.name, ci: before.ci, email: before.email, username: before.username, role: before.role, active: before.active, ...request.body };
+      await protectUserPrivileges(tx, await tx.user.findUniqueOrThrow({ where: { id: request.auth!.userId } }), before, input.role);
       const adminCount = await tx.user.count({ where: { role: 'ADMINISTRADOR', active: true } });
       enforceUserRules(before, input, request.auth!.userId, adminCount);
       if (before.active && !input.active) await assertUserCanDeactivate(tx, before.id);
       const user = await tx.user.update({ where: { id: before.id }, data: normalizedFields(input) });
+      if (before.role !== user.role || before.active !== user.active) await assertPermissionAdministratorRemains(tx);
       const roleOrStateChanged = before.role !== user.role || before.active !== user.active;
       if (roleOrStateChanged || before.emailKey !== user.emailKey) {
         const now = request.server.security.now();
@@ -94,7 +98,7 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
     }, Prisma.TransactionIsolationLevel.ReadCommitted);
     return reply.header('ETag', userEtag(updated)).send(userDto(updated));
   });
-  api.delete('/api/v1/usuarios/:id', { preHandler: requireAdmin, schema: { params: idParamsSchema, querystring: z.object({}).strict(), body: z.object({}).strict().nullish() } }, async (request, reply) => {
+  api.delete('/api/v1/usuarios/:id', { preHandler: requirePermission('users.delete'), schema: { params: idParamsSchema, querystring: z.object({}).strict(), body: z.object({}).strict().nullish() } }, async (request, reply) => {
     const expectedEtag = requireUserIfMatch(request.headers['if-match']);
     try {
       await prisma.$transaction(async tx => {
@@ -105,11 +109,18 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
         if (!before) throw new AppError(404, 'NOT_FOUND', 'El usuario no existe.');
         const actor = await actorInTransaction(tx, request, true);
         if (expectedEtag !== userEtag(before)) throw new AppError(412, 'USER_VERSION_CONFLICT', 'La cuenta cambió desde que consultaste sus datos. Vuelve a consultarla antes de eliminar.');
+        await protectUserPrivileges(tx, actor, before);
         enforceUserDeletionRules(before, actor.id, await tx.user.count({ where: { role: 'ADMINISTRADOR', active: true } }));
         await assertUserUnreferenced(tx, before.id);
         await actorInTransaction(tx, request, true);
         await tx.recoveryToken.deleteMany({ where: { userId: before.id } });
         await tx.user.delete({ where: { id: before.id } });
+        const policy = await loadPolicy(tx);
+        if (policy.users[before.id]) {
+          delete policy.users[before.id];
+          await tx.accessPolicy.update({ where: { id: 1 }, data: { policy } });
+        }
+        await assertPermissionAdministratorRemains(tx);
         await audit(tx, request, { operation: 'USUARIO_ELIMINADO', resource: 'usuarios', resourceId: before.id, role: actor.role, status: 'EXITO', before: userDto(before) });
       }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     } catch (error) {
@@ -118,7 +129,7 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
     }
     return reply.code(204).send();
   });
-  api.get('/api/v1/me', { preHandler: authenticate, schema: { response: { 200: userDtoSchema } } }, async request => userDto(request.auth!.user));
+  api.get('/api/v1/me', { preHandler: authenticate, schema: { response: { 200: userDtoSchema } } }, async request => ({ ...userDto(request.auth!.user), permissions: request.auth!.permissions }));
   api.patch('/api/v1/me', { preHandler: authenticate, schema: { body: profileSchema, response: { 200: userDtoSchema } } }, async request => {
     const user = await withTransaction(prisma, async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(741901)`;
@@ -130,6 +141,6 @@ export async function registerUserRoutes(app: FastifyInstance, prisma: PrismaCli
       await audit(tx, request, { operation: 'PERFIL_MODIFICADO', resource: 'usuarios', resourceId: after.id, role: before.role, status: 'EXITO', before: userDto(before), after: userDto(after) });
       return after;
     });
-    return userDto(user);
+    return { ...userDto(user), permissions: await userPermissions(prisma, user) };
   });
 }

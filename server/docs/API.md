@@ -179,3 +179,19 @@ El [contrato de reportes](REPORTS.md), parte de esta API, incorpora `GET /api/v1
 Actualización de despliegue del 18/10/2026: el cliente desplegado consume únicamente la API real mediante el [lanzador](../../docs/DEPLOYMENT.md). Su gateway conserva las respuestas de negocio y añade `GATEWAY_ERROR` exclusivamente para errores de infraestructura en rutas `/api/v1`: HTTP 400/404 (ruta inválida), 413 (cuerpo demasiado grande), 421 (Host incompatible), 500 (fallo interno del gateway) o 502 (API no disponible). Responde `application/problem+json` con `status`, `code`, `title`, `detail`, `timestamp` y `path` sin query. No modifica los códigos de negocio ni crea endpoints adicionales.
 
 El contrato vigente de auditoría consultable/exportable, listado de adjuntos, confirmación por contraseña, ETags de catálogos/parámetros, tamaño configurable, filtros por nombres y sesión compartida de navegador está en [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md). Sustituye los pendientes históricos de esos módulos. El cliente conserva su simulación y no se conecta en este hito.
+# Ampliación 26/10/2026: permisos y respaldos
+
+Los endpoints existentes conservan rutas y cuerpos; su autorización usa permisos efectivos. `UserDto` agrega `permissions?: string[]`, entregado en `/auth/session`, `/me` y actualización del perfil. Los listados de usuarios conservan la proyección sin permisos. Los roles iniciales conservan los accesos anteriores. Ver `docs/PERMISSIONS.md` y `docs/BACKUPS.md` en la raíz.
+
+| Método/ruta bajo `/api/v1` | Permiso | Contrato |
+| --- | --- | --- |
+| GET `/permisos/efectivos` | Sesión válida | `{permissions: string[]}` |
+| GET `/permisos` | `permissions.manage` | `{roles: {ADMINISTRADOR: string[], DIGITADOR: string[], PUBLICO: string[]}, users: {UUID: {permiso: boolean}}, definitions: [{key,label}]}` + ETag |
+| GET `/permisos/usuarios?search=&page=1` | `permissions.manage` | Directorio para excepciones; Page<UserDto>, 20 por página |
+| PATCH `/permisos` | `permissions.manage` | Body `{roles, users}` estricto, contraseña en `X-Confirmation-Password` e `If-Match`; 200 con política/definitions/permisos propios + nuevo ETag |
+| GET `/respaldos?page=1&pageSize=20` | `backups.manage` | `{data: BackupDto[], pagination, configured: boolean}`; configured indica existencia del archivo privado, la primera copia comprueba validez/conexión |
+| POST `/respaldos` | `backups.manage` | Body `{}`; 202 y Location `/api/v1/respaldos`, inicia trabajo y devuelve BackupDto |
+
+`BackupDto`: `{id, createdAt, finishedAt, source, status, filename, localSaved, cloudSaved, detail}`. Fechas ISO UTC; `finishedAt`, `filename` y `detail` pueden ser null. `source`: `MANUAL|PROGRAMADO`; `status`: `EN_CURSO|COMPLETO|PARCIAL|FALLIDO`. `filename` es el nombre sin ruta; no se entregan credenciales, rutas privadas ni bytes del respaldo. `PARCIAL` conserva la copia local si no se verificó Drive. El historial se pagina y no ofrece eliminación/descarga desde la web.
+
+Nuevos Problem Details: `LAST_PERMISSION_ADMIN_REQUIRED` (409, debe quedar un Administrador activo con gestión de permisos), `BACKUP_BUSY` (409, copia en curso), `BACKUP_NOT_CONFIGURED` (503, falta configuración válida). Se reutilizan `FORBIDDEN` (403), `VALIDATION_ERROR` (400), `RESOURCE_VERSION_CONFLICT` (412), `PRECONDITION_REQUIRED` (428), errores de confirmación y `AUDIT_UNAVAILABLE` (503). Los permisos desconocidos/repetidos se rechazan por validación. Política y auditoría se confirman juntas. Eventos: `RESPALDO_INICIADO`, `RESPALDO_LOCAL_AUTORIZADO`, `RESPALDO_NUBE_AUTORIZADO`, `RESPALDO_FINALIZADO`, `RESPALDO_INTERRUMPIDO` y `PERMISOS_MODIFICADOS` (políticas anterior/nueva).

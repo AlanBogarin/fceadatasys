@@ -1,3 +1,4 @@
+import { hasPermission } from "./permissions";
 import {
   ArrowRight,
   BookOpen,
@@ -79,7 +80,7 @@ export function ApiDashboard({
           </span>
           <div>
             <p>
-              {account.role === "ADMINISTRADOR"
+              {hasPermission(account, "users.read")
                 ? "Usuarios registrados"
                 : "Mi cuenta"}
             </p>
@@ -124,7 +125,7 @@ export function ApiDashboard({
             <p>Publicaciones consultables</p>
             <strong>{data?.publications ?? "—"}</strong>
             <small>
-              {account.role === "ADMINISTRADOR"
+              {hasPermission(account, "publications.history")
                 ? "Incluye el historial inactivo"
                 : "Publicaciones activas"}
             </small>
@@ -148,7 +149,7 @@ export function ApiDashboard({
         <span>Herramientas de tu cuenta</span>
       </div>
       <div className="quick-grid">
-        {dashboardLinks(account.role).map((item) => (
+        {dashboardLinks(account).map((item) => (
           <button
             className="quick-card"
             key={item.id}

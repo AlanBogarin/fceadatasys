@@ -1,3 +1,4 @@
+import { hasPermission } from "./permissions";
 import {
   Archive,
   ArrowLeft,
@@ -271,7 +272,7 @@ export function AttachmentDownload({
   }
 
   const attachment = providedAttachment ?? publication?.attachment;
-  if (!attachment || user.role === "PUBLICO") return null;
+  if (!attachment || !hasPermission(user, "attachments.download")) return null;
   let fileSize = `${Math.ceil(attachment.size / 1024)} KB`;
   if (attachment.size >= 1024 * 1024) {
     fileSize = `${(attachment.size / 1024 / 1024).toLocaleString("es-PY", { maximumFractionDigits: 2 })} MiB`;

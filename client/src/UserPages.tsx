@@ -1,3 +1,4 @@
+import { hasPermission } from "./permissions";
 import {
   Check,
   ChevronLeft,
@@ -100,7 +101,11 @@ export function UsersPage({
           <h1>Mantenimiento de usuarios</h1>
           <p>Administrá las cuentas y los permisos de acceso al sistema.</p>
         </div>
-        <button className="primary" onClick={() => setEditing("new")}>
+        <button
+          className="primary"
+          disabled={!hasPermission(user, "users.manage")}
+          onClick={() => setEditing("new")}
+        >
           <Plus size={18} />
           Nuevo usuario
         </button>
@@ -295,6 +300,7 @@ export function UsersPage({
                       <button
                         className="icon-btn"
                         aria-label={`Editar ${account.username}`}
+                        disabled={!hasPermission(user, "users.manage")}
                         onClick={async () => {
                           try {
                             const result = await client.users.get(account.id);
@@ -315,6 +321,10 @@ export function UsersPage({
                         className="icon-btn"
                         title="Cambiar contraseña"
                         aria-label={`Cambiar contraseña de ${account.username}`}
+                        disabled={
+                          account.id !== user.id &&
+                          !hasPermission(user, "users.password")
+                        }
                         onClick={() => {
                           if (account.id === user.id) {
                             location.hash = "password";
@@ -328,7 +338,10 @@ export function UsersPage({
                       <button
                         className="icon-btn"
                         aria-label={`${account.active ? "Inactivar" : "Activar"} ${account.username}`}
-                        disabled={account.id === user.id}
+                        disabled={
+                          account.id === user.id ||
+                          !hasPermission(user, "users.manage")
+                        }
                         onClick={async () => {
                           setError("");
                           try {
@@ -344,7 +357,10 @@ export function UsersPage({
                       <button
                         className="icon-btn"
                         aria-label={`Eliminar ${account.username}`}
-                        disabled={account.id === user.id}
+                        disabled={
+                          account.id === user.id ||
+                          !hasPermission(user, "users.delete")
+                        }
                         onClick={async () => {
                           setError("");
                           try {
@@ -715,7 +731,7 @@ export function UserForm({
         ci: String(data.get("ci")),
         email: String(data.get("email")),
         username: String(data.get("username")),
-        role: String(data.get("role")) as Role,
+        role: selectedRole,
         active: data.get("active") === "true",
       };
       // Paso 2: comprobar que la precarga no quedó desactualizada.
@@ -830,6 +846,7 @@ export function UserForm({
             <Field label="Rol *">
               <select
                 name="role"
+                disabled={!hasPermission(actor, "permissions.manage")}
                 value={selectedRole}
                 onChange={(event) => {
                   setSelectedRole(event.target.value as Role);

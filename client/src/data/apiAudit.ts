@@ -73,17 +73,21 @@ export function createAuditService(session: ApiSession): DataClient["audit"] {
         },
         signal,
       ),
-      walk<UserDto>(
-        "/usuarios",
-        (user) => {
-          current.set(user.id, {
-            id: user.id,
-            name: user.name,
-            username: user.username,
-          });
-        },
-        signal,
-      ),
+      (session
+        .getSnapshot()
+        .session?.user.permissions?.includes("users.read") ?? true)
+        ? walk<UserDto>(
+            "/usuarios",
+            (user) => {
+              current.set(user.id, {
+                id: user.id,
+                name: user.name,
+                username: user.username,
+              });
+            },
+            signal,
+          )
+        : Promise.resolve(),
     ]);
     return {
       modules: [...modules].sort(),

@@ -6,6 +6,26 @@ datasource db {
   provider = "postgresql"
 }
 
+model AccessPolicy {
+  id     Int  @id
+  policy Json @map("politica") @db.JsonB
+  @@map("permisos_sistema")
+}
+
+model BackupRun {
+  id          String    @id @default(uuid()) @db.Uuid
+  createdAt   DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+  finishedAt  DateTime? @map("finalizado_en") @db.Timestamptz(3)
+  source      String    @map("origen") @db.VarChar(20)
+  status      String    @map("estado") @db.VarChar(20)
+  filename    String?   @map("archivo") @db.VarChar(150)
+  localSaved  Boolean   @default(false) @map("copia_local")
+  cloudSaved  Boolean   @default(false) @map("copia_nube")
+  detail      String?   @map("detalle") @db.Text
+  @@index([createdAt, id], map: "respaldos_fecha_idx")
+  @@map("respaldos")
+}
+
 enum Role {
   ADMINISTRADOR
   DIGITADOR

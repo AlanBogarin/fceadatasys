@@ -9,7 +9,9 @@ import {
 } from "lucide-react";
 import { Auth } from "./AuthPage";
 import { AccountMenu } from "./AccountMenu";
-import CatalogPage, { RolesPage } from "./CatalogPage";
+import CatalogPage from "./CatalogPage";
+import { PermissionsPage } from "./PermissionsPage";
+import { BackupsPage } from "./BackupsPage";
 import { ChangePassword, Profile, UsersPage } from "./UserPages";
 import { SettingsPage } from "./SettingsPage";
 import { AttachmentPage } from "./AttachmentPage";
@@ -47,6 +49,7 @@ export const connectedPages = new Set([
   "publicaciones",
   "busqueda",
   "reportes",
+  "respaldos",
 ]);
 function takeRecoveryToken() {
   const url = new URL(location.href);
@@ -158,7 +161,7 @@ export default function ApiApp({ config }: { config: ClientConfig }) {
   };
   function content() {
     if (!user) return null;
-    if (!canOpenPage(user.role, page))
+    if (!canOpenPage(user, page))
       return (
         <section className="empty-module">
           <h1>Acceso restringido</h1>
@@ -196,7 +199,8 @@ export default function ApiApp({ config }: { config: ClientConfig }) {
         />
       );
     if (page === "usuarios") return <UsersPage user={user} notify={setToast} />;
-    if (page === "roles") return <RolesPage />;
+    if (page === "roles") return <PermissionsPage />;
+    if (page === "respaldos") return <BackupsPage />;
     if (page === "parametros")
       return <SettingsPage user={user} notify={setToast} />;
     if (isCatalogKey(page))
@@ -291,8 +295,8 @@ export default function ApiApp({ config }: { config: ClientConfig }) {
             </div>
             <div className="sidebar-nav">
               {groups.map((group) => {
-                const items = group.items.filter(
-                  (item) => !item.roles || item.roles.includes(user.role),
+                const items = group.items.filter((item) =>
+                  canOpenPage(user, item.id),
                 );
                 return (
                   !!items.length && (

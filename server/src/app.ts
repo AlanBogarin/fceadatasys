@@ -13,8 +13,11 @@ import { registerAttachmentRoutes, type AttachmentOptions } from './attachments/
 import { registerReportRoutes, type ReportOptions } from './reports/routes.js';
 import { confirmMutation } from './security/confirmation.js';
 import { registerAuditRoutes } from './auditing/routes.js';
+import { registerPermissionRoutes } from './security/permission-routes.js';
+import { registerBackupRoutes } from './backups/routes.js';
+import type { BackupOptions } from './backups/engine.js';
 
-export interface AppOptions { logger?: boolean; security?: SecurityOptions; attachments?: AttachmentOptions; reports?: ReportOptions; confirmation?: (request: import('fastify').FastifyRequest) => Promise<void> }
+export interface AppOptions { logger?: boolean; security?: SecurityOptions; attachments?: AttachmentOptions; reports?: ReportOptions; backups?: BackupOptions; confirmation?: (request: import('fastify').FastifyRequest) => Promise<void> }
 export async function createApp(config: AppConfig, prisma: PrismaClient, options: AppOptions = {}) {
   const app = Fastify({ logger: options.logger === false ? false : { level: 'info', redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers.x-confirmation-password', 'res.headers.set-cookie'], serializers: { req: request => ({ method: request.method, id: request.id }) } }, logController: new LogController({ disableRequestLogging: true }), trustProxy: config.trustedProxies?.length ? config.trustedProxies : false, bodyLimit: 64 * 1024 });
   app.setValidatorCompiler(validatorCompiler);
@@ -33,6 +36,8 @@ export async function createApp(config: AppConfig, prisma: PrismaClient, options
     }
   });
   await registerSecurity(app, { prisma, config, ...options.security });
+  await registerPermissionRoutes(app, prisma);
+  await registerBackupRoutes(app, prisma, config, options.backups);
   app.get('/api/v1/status', { preHandler: requireAdmin }, async () => ({ status: app.security.mailer.available ? 'ready' : 'degraded', smtp: app.security.mailer.available ? 'ready' : 'unavailable' }));
   await registerUserRoutes(app, prisma);
   await registerCatalogRoutes(app, prisma);

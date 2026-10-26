@@ -1,3 +1,4 @@
+import { assertRequestPermission } from '../security/permissions.js';
 import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient, type StoredAttachment } from '@prisma/client';
 import multipart from '@fastify/multipart';
@@ -6,7 +7,7 @@ import { z } from 'zod';
 import type { AppConfig } from '../config.js';
 import { AppError } from '../errors.js';
 import { listAttachments, attachmentQuery, visibleReservation } from './list.js';
-import { audit, requireRoles } from '../security/index.js';
+import { audit, requirePermission } from '../security/index.js';
 import { createClamScanner, type Scanner } from './scanner.js';
 import { createAttachmentStorage, MAX_PDF_BYTES, sha256, type AttachmentStorage } from './storage.js';
 import { assertFormatEnabled, attachmentFormat, attachmentName, formatMime, isSupportedFile, validateAttachment } from './formats.js';
@@ -24,7 +25,7 @@ async function actorInTransaction(tx: Prisma.TransactionClient, request: Fastify
   const session = await tx.session.findUnique({ where: { id: auth.sessionId } });
   const now = request.server.security.now();
   if (!user?.active || !session || session.userId !== user.id || session.revokedAt || session.expiresAt <= now || now.getTime() - session.lastActivityAt.getTime() >= 600000) throw new AppError(401, 'UNAUTHENTICATED', 'La sesión no es válida o ha vencido.');
-  if (user.role === 'PUBLICO') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para operar con adjuntos.');
+  await assertRequestPermission(tx, request, user);
   return user;
 }
 
@@ -40,7 +41,7 @@ export async function registerAttachmentRoutes(app: FastifyInstance, prisma: Pri
     let released = false;
     return () => { if (!released) { released = true; active--; } };
   };
-  const writers = requireRoles('ADMINISTRADOR', 'DIGITADOR');
+  const writers = requirePermission('attachments.upload');
 
   app.get('/api/v1/adjuntos', { preHandler: writers }, async request => listAttachments(prisma, request.auth!, attachmentQuery.omit({id:true}).parse(request.query)));
   app.post('/api/v1/adjuntos', { preHandler: writers, bodyLimit: MAX_PDF_BYTES + 8192 }, async (request, reply) => {
@@ -120,14 +121,14 @@ export async function registerAttachmentRoutes(app: FastifyInstance, prisma: Pri
     emptyQuery.parse(request.query);
     const file = await prisma.storedAttachment.findUnique({ where: { id }, include: { assignment: { select: { publicationId: true, publication: { select: { active: true } } } } } });
     if (!file) throw new AppError(404, 'NOT_FOUND', 'El adjunto no existe.');
-    const visibleLink = request.auth!.role === 'ADMINISTRADOR' || file.createdById === request.auth!.userId || await prisma.publication.findFirst({ where: { attachmentId: id, active: true } });
+    const visibleLink = request.auth!.permissions.includes('attachments.manage') || file.createdById === request.auth!.userId || await prisma.publication.findFirst({ where: { attachmentId: id, active: true } });
     if (!visibleLink) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para consultar este adjunto.');
     if (file.state !== 'CLEAN' || !file.contentVerified || !file.scannedAt) throw new AppError(409, 'ATTACHMENT_NOT_READY', 'El adjunto no está habilitado.');
     const creator = await prisma.user.findUniqueOrThrow({ where: { id: file.createdById }, select: { id: true, name: true } });
-    return { ...dto(file), createdAt: file.createdAt.toISOString(), createdBy: creator, reservedPublicationId: visibleReservation(file.assignment, request.auth!.role) };
+    return { ...dto(file), createdAt: file.createdAt.toISOString(), createdBy: creator, reservedPublicationId: visibleReservation(file.assignment, request.auth!.permissions.includes('publications.history') ? 'ADMINISTRADOR' : 'DIGITADOR') };
   });
 
-  app.get('/api/v1/publicaciones/:id/adjunto', { preHandler: writers, exposeHeadRoute: false }, async (request, reply) => {
+  app.get('/api/v1/publicaciones/:id/adjunto', { preHandler: requirePermission('attachments.download'), exposeHeadRoute: false }, async (request, reply) => {
     const { id } = idParams.parse(request.params);
     emptyQuery.parse(request.query);
     const release = acquire();
@@ -137,7 +138,7 @@ export async function registerAttachmentRoutes(app: FastifyInstance, prisma: Pri
         const initialActor = await actorInTransaction(tx, request);
         await tx.$queryRaw`SELECT id FROM publicaciones WHERE id = ${id}::uuid FOR SHARE`;
         const publication = await tx.publication.findUnique({ where: { id } });
-        if (!publication || (initialActor.role !== 'ADMINISTRADOR' && !publication.active) || !publication.attachmentId) throw new AppError(404, 'NOT_FOUND', 'La publicación no tiene un adjunto disponible.');
+        if (!publication || (!request.auth!.permissions.includes('publications.history') && !publication.active) || !publication.attachmentId) throw new AppError(404, 'NOT_FOUND', 'La publicación no tiene un adjunto disponible.');
         await tx.$queryRaw`SELECT id FROM adjuntos WHERE id = ${publication.attachmentId}::uuid FOR UPDATE`;
         const file = await tx.storedAttachment.findUniqueOrThrow({ where: { id: publication.attachmentId } });
         if (file.state !== 'CLEAN' || !file.contentVerified || !file.scannedAt || !isSupportedFile(file)) throw new AppError(409, 'ATTACHMENT_NOT_READY', 'El adjunto no está habilitado para descarga.');

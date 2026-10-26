@@ -1,3 +1,4 @@
+import { hasPermission, type PermissionAccount } from "../permissions";
 import { emptyBibliographicFilters } from "../bibliography";
 import { allItems } from "../navigation";
 import { canOpenPage } from "../security";
@@ -8,7 +9,7 @@ export async function loadDashboard(client: DataClient, signal?: AbortSignal) {
   const user = await client.users.me(signal);
   const [publications, users] = await Promise.all([
     client.publications.list({ ...emptyBibliographicFilters }, 1, 1, signal),
-    user.role === "ADMINISTRADOR"
+    hasPermission(user, "users.read")
       ? client.users.list({ pageSize: 1 }, signal)
       : undefined,
   ]);
@@ -19,7 +20,7 @@ export async function loadDashboard(client: DataClient, signal?: AbortSignal) {
   };
 }
 
-export function dashboardLinks(role: Role) {
+export function dashboardLinks(role: Role | PermissionAccount) {
   const destinations = new Set([
     "gestion-publicaciones",
     "archivos",

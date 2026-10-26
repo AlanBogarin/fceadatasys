@@ -1,30 +1,33 @@
-# Lanzador de configuración y despliegue — 18/10/2026
+# Lanzador de configuración y despliegue — actualización 26/10/2026
 
 ## Alcance
 
 `scripts/run.mjs` es el punto de entrada desde la raíz. Soporta Windows y Linux con Node 24, herramientas PostgreSQL y ClamAV instaladas. Dos perfiles explícitos: `demo` y `production`. No selecciona ni compila un backend simulado.
 
-Configura/instala/prepara/arranca el sistema con `npm start`, `npm run start:demo` o `npm run start:production`. `--configure` guarda configuración sin iniciar; `--setup-only` prepara sin dejar servicios; `--start-only` arranca sin instalación/migraciones/datos; `--stop` solicita cierre ordenado al lanzador de ese perfil. `--config` selecciona un archivo explícito; `--non-interactive` evita preguntas; `--skip-install` requiere dependencias existentes.
+Configura/instala/prepara/arranca el sistema con `npm start`, `npm run start:demo` o `npm run start:production`. `--configure` pregunta todas las opciones y permite guardar solamente o aplicar la preparación sin iniciar la web; `--setup-only` prepara sin dejar servicios; `--start-only` arranca sin instalación/migraciones/datos; `--stop` solicita cierre ordenado del perfil. `--config` selecciona un archivo explícito; `--non-interactive` evita preguntas y siempre conserva una base existente; `--skip-install` requiere dependencias existentes.
 
 ## Componentes
 
 - `scripts/deployment/config.mjs`: valores iniciales, archivos `.env` privados, validación de perfiles/destinos, traducción a configuración API y redacción de secretos. Se filtran variables heredadas para no mezclar configuraciones de otros entornos.
-- `database.mjs`: clúster demo SCRAM aislado, creación de roles/base si faltan, propietario/migraciones, grants y comprobación real de runtime sin privilegios ni membresía de propietario. Las contraseñas existentes no se cambian. La base existente debe pertenecer al propietario configurado. La identidad del clúster demo se comprueba comparando `pg_controldata` con `pg_control_system()`, sin depender de la codificación de rutas Windows con caracteres como `ñ`. Si falla la comprobación, se cierra la conexión antes de detener el clúster iniciado por el lanzador, conservando el error original.
+- `database.mjs`: clúster demo SCRAM aislado, creación de roles/base, propietario/migraciones, grants y comprobación de runtime. En producción verifica credenciales técnicas antes de permitir una recreación. Las contraseñas existentes se conservan. La identidad del clúster demo se comprueba con `pg_controldata` y `pg_control_system()`, incluyendo rutas Unicode de Windows.
+- `wizard.mjs`: cuestionario de PostgreSQL principal, red, TLS, cuentas, almacenamiento, antivirus, SMTP y copias. Producción usa `fceadatasys` por defecto, sin un clúster dentro del proyecto.
+- `production-database.mjs`: inspección y decisión sobre una base existente, snapshot obligatorio con índice pg_restore válido y confirmación exacta antes de recrearla. No fuerza desconexiones ni elimina roles/archivos. Registra el procedimiento en `.local/deploy/production/installation-events.jsonl`. También provisiona el lector de copias y sus grants actuales/futuros.
+- `backup-setup.mjs`: comprueba herramientas, ofrece autorizar Drive, valida su configuración, prueba una copia y aplica la tarea diaria o su deshabilitación cuando se elige.
 - `processes.mjs`: ejecución sin shell, salidas acotadas/redactadas, tiempos máximos y compatibilidad con procesos PostgreSQL de Windows.
 - `gateway.mjs`: HTTP demo o HTTPS con certificado/clave PEM, cliente compilado, configuración pública en ejecución y proxy acotado `/api/v1`. La API permanece en `127.0.0.1`.
 - `server/src/main.ts`: cierre ordenado mediante señales y canal IPC del lanzador; desconectar el padre cierra la API hija.
 
-Las siete migraciones y los contratos HTTP de negocio se conservan. Los inicializadores reutilizan la API real y auditoría existentes. Producción existente omite bootstrap; demo puede reanudar la carga por títulos/identificadores normalizados. No hay limpieza automática de datos ni auditoría.
+Se aplican todas las migraciones pendientes y se conservan los contratos HTTP. Producción existente conserva usuarios y omite bootstrap, salvo recreación explícitamente elegida y confirmada. Demo puede reanudar su carga. La copia previa a una recreación conserva también la auditoría de la base anterior.
 
 ## Configuración
 
 Archivo predeterminado `.local/deploy/PERFIL.env`; plantillas en `deployment/.env.*.example`. El asistente genera JWT y contraseñas de base aleatorios, conserva configuraciones existentes y permite entrada oculta de secretos. Archivos creados con permisos 0600 donde el sistema lo soporta; en Windows el operador debe mantener los permisos del directorio de su usuario/servicio. Las rutas relativas parten de la raíz del proyecto.
 
-`PG_ADMIN_URL` solo se necesita para crear roles/base si faltan. Se retira al completar la preparación. `MIGRATION_DATABASE_URL` usa el propietario; `DATABASE_URL`, el runtime. La API hija no recibe credenciales administrativas, de migración ni bootstrap. Tras un bootstrap de producción confirmado se elimina su contraseña del archivo.
+El asistente de producción solicita las credenciales del PostgreSQL principal y construye `PG_ADMIN_URL`. La preparación utiliza esa cuenta para crear base/roles cuando faltan; luego la retira del archivo. Las ejecuciones posteriores pueden usar el propietario si los roles/base ya existen. `MIGRATION_DATABASE_URL` usa el propietario; `DATABASE_URL`, el runtime. La API hija no recibe credenciales administrativas, de migración ni bootstrap. La contraseña inicial también se retira tras preparar la base, incluso cuando se conservó una cuenta existente.
 
-Demo por defecto: web 8080, API 3001, clúster propio en 55440 bajo `.local/deploy/demo/postgres-data`; no modifica el clúster histórico de pruebas 55439. Producción por defecto: web HTTPS 443, API 3000, PostgreSQL externo/local administrado en 5432. La dirección pública determina origen, cookies seguras, URL de recuperación y configuración del navegador.
+Demo por defecto: web 8080, API 3001, clúster propio en 55440 bajo `.local/deploy/demo/postgres-data`. Producción: web HTTPS 443, API 3000, base `fceadatasys` en el PostgreSQL principal configurado (por defecto puerto 5432). La dirección pública determina origen, cookies seguras, URL de recuperación y configuración del navegador.
 
-El script no modifica archivos `server/.env*` anteriores. No lee una `.env` institucional para convertirla en demo. No cambia contraseñas de roles ni propietarios existentes. Un perfil activo bloquea otra instancia de ese perfil; se comprueban los puertos y solo se detiene el clúster demo iniciado por el proceso actual.
+El script conserva archivos `server/.env*`, contraseñas de roles y propietarios existentes. Si se elige conservar una base cuyo propietario no coincide, detiene la preparación para que el operador revise la configuración. Un perfil activo bloquea otra instancia del mismo perfil; un bloqueo PostgreSQL serializa preparaciones de la misma base desde otros directorios. Las conexiones activas impiden recrearla. Solo se detiene el clúster demo iniciado por el proceso actual.
 
 ## Web y seguridad
 
@@ -40,7 +43,7 @@ El punto de entrada `MockApp` y el panel de carga local se retiraron. Vite recha
 
 El script automatiza la configuración del proyecto, dependencias npm, base/migraciones/permisos/datos y procesos web/API. Requiere herramientas del sistema instaladas y permisos PostgreSQL adecuados. No instala paquetes del SO, configura DNS/firewall, obtiene certificados ACME ni registra servicios globales automáticamente.
 
-El lanzador se ejecuta en primer plano. Para operación permanente debe registrarse su comando `--start-only --non-interactive` con el gestor de servicios institucional. También quedan como tareas operativas definir respaldo/restauración programados, retención y alertas; no se presentan como implementadas por este lanzador. La actualización de firmas usa el script existente `server/scripts/update-clamav.ps1` en Windows o FreshClam de la instalación.
+El lanzador se ejecuta en primer plano. Para operación permanente debe registrarse `--start-only --non-interactive` con el gestor de servicios institucional. El asistente integra las copias Windows/Linux y su horario, previa autorización de Drive; también se conservan los comandos independientes de [BACKUPS.md](BACKUPS.md). La retención y revisión operativa siguen a cargo de la institución. La actualización de firmas usa `server/scripts/update-clamav.ps1` en Windows o FreshClam. El detalle actualizado está en [INSTALLATION-PRODUCTION.md](INSTALLATION-PRODUCTION.md). Los resultados del 18/10 siguientes son evidencia histórica anterior a esta ampliación.
 
 ## Validación
 

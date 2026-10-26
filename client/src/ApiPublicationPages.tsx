@@ -1,3 +1,4 @@
+import { hasPermission } from "./permissions";
 import { useEffect, useRef, useState } from "react";
 import { Archive, FileText, Pencil, Plus } from "lucide-react";
 import {
@@ -223,6 +224,7 @@ export function ApiPublicationsPage({
           ) : (
             <button
               className="primary"
+              disabled={!hasPermission(user, "publications.create")}
               onClick={() => {
                 setEditing(undefined);
                 setCreating(true);
@@ -232,7 +234,7 @@ export function ApiPublicationsPage({
               Registrar investigación
             </button>
           )}
-          {user.role === "ADMINISTRADOR" && (
+          {hasPermission(user, "reports.read") && (
             <button
               className="secondary"
               onClick={() => showReport(selectedId)}
@@ -262,11 +264,12 @@ export function ApiPublicationsPage({
               className="secondary"
               disabled={busy}
               onClick={() => read(selectedId, "edit")}
+              hidden={!hasPermission(user, "publications.edit")}
             >
               <Pencil size={16} />
               Editar
             </button>
-            {user.role === "ADMINISTRADOR" && (
+            {hasPermission(user, "publications.inactivate") && (
               <button
                 className="secondary"
                 disabled={busy}
@@ -294,7 +297,7 @@ export function ApiPublicationsPage({
                 }}
               />
             </Field>
-            {user.role === "ADMINISTRADOR" && (
+            {hasPermission(user, "publications.history") && (
               <Field label="Estado">
                 <select
                   value={status}
@@ -348,18 +351,19 @@ export function ApiPublicationsPage({
                         >
                           Ver detalle
                         </button>
-                        {record.active !== false && (
-                          <button
-                            className="icon-btn"
-                            aria-label={`Editar ${record.title}`}
-                            disabled={busy}
-                            onClick={() => read(record.id, "edit")}
-                          >
-                            <Pencil size={16} />
-                          </button>
-                        )}
                         {record.active !== false &&
-                          user.role === "ADMINISTRADOR" && (
+                          hasPermission(user, "publications.edit") && (
+                            <button
+                              className="icon-btn"
+                              aria-label={`Editar ${record.title}`}
+                              disabled={busy}
+                              onClick={() => read(record.id, "edit")}
+                            >
+                              <Pencil size={16} />
+                            </button>
+                          )}
+                        {record.active !== false &&
+                          hasPermission(user, "publications.inactivate") && (
                             <button
                               className="icon-btn"
                               aria-label={`Inactivar ${record.title}`}

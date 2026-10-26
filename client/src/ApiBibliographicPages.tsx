@@ -1,3 +1,4 @@
+import { hasPermission } from "./permissions";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Download, Search } from "lucide-react";
 import {
@@ -81,7 +82,7 @@ function SearchFilters({
                     ? { id, name: names[id] ?? "Referencia seleccionada" }
                     : null
                 }
-                historical={user.role === "ADMINISTRADOR"}
+                historical={hasPermission(user, "publications.history")}
                 onChange={(value) => {
                   if (value)
                     setNames((current) => ({
@@ -152,7 +153,7 @@ function SearchFilters({
             </Field>
           </>
         )}
-        {user.role === "ADMINISTRADOR" && (
+        {hasPermission(user, "publications.history") && (
           <Field label="Estado">
             <select
               value={filters.active ?? ""}
@@ -549,6 +550,7 @@ export function ApiPublicationReportsPage({
           <button
             className="secondary"
             disabled={
+              !hasPermission(user, "reports.export") ||
               busy ||
               querying ||
               conflict ||
@@ -563,6 +565,7 @@ export function ApiPublicationReportsPage({
           <button
             className="primary"
             disabled={
+              !hasPermission(user, "reports.export") ||
               busy ||
               querying ||
               conflict ||

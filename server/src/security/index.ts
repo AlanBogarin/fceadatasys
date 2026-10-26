@@ -10,6 +10,7 @@ import { hashPassword, normalizeIdentity, passwordSchema, randomToken, tokenHash
 import { createMailer, RECOVERY_TTL_MINUTES, type Mailer } from './mailer.js';
 import { createDeliverySlots } from './delivery-slots.js';
 import { assertConfirmationCurrent } from './confirmation.js';
+import { assertAllowed, assertRequestPermission, protectUserPrivileges, userPermissions } from './permissions.js';
 
 export { audit, auditRejection } from './audit.js';
 export { hashPassword, verifyPassword, passwordSchema } from './crypto.js';
@@ -25,7 +26,7 @@ const emptyBody = z.object({}).strict().optional();
 const GENERIC_RECOVERY = 'Si la dirección corresponde a una cuenta registrada y activa, recibirás las instrucciones para restablecer tu contraseña.';
 type Tx = Prisma.TransactionClient;
 interface Claims { sub: string; sid: string; iat: number; exp: number }
-export interface AuthContext { userId: string; sessionId: string; role: Role; user: User; session: Session; checkedAt: Date }
+export interface AuthContext { userId: string; sessionId: string; role: Role; user: User; session: Session; checkedAt: Date; permissions: string[] }
 export interface SecurityOptions { mailer?: Mailer; now?: () => Date }
 interface SecurityRuntime { prisma: PrismaClient; config: AppConfig; mailer: Mailer; now: () => Date; dummyHash: string; drainMail: () => Promise<void> }
 declare module 'fastify' {
@@ -121,7 +122,15 @@ export async function authenticate(request: FastifyRequest): Promise<void> {
     session = refreshed.session;
     checkedAt = refreshed.checkedAt;
   }
-  request.auth = { userId: session.userId, sessionId: session.id, role: session.user.role, user: session.user, session, checkedAt };
+  request.auth = { userId: session.userId, sessionId: session.id, role: session.user.role, user: session.user, session, checkedAt, permissions: await userPermissions(prisma, session.user) };
+}
+
+export function requirePermission(...keys: string[]): preHandlerHookHandler {
+  return async request => {
+    await authenticate(request);
+    request.requiredPermissions = keys;
+    for (const key of keys) assertAllowed(request.auth!.permissions, key);
+  };
 }
 
 export function requireRoles(...roles: Role[]): preHandlerHookHandler {
@@ -294,11 +303,11 @@ export async function registerSecurity(app: FastifyInstance, input: PrismaClient
     const time=now();
     if (!token || token.consumedAt || token.revokedAt || token.expiresAt<=time || !validSession(token.session,token.session.user,time)) throw unauthorized();
     const session=token.session;
-    request.auth={userId:session.userId,sessionId:session.id,role:session.user.role,user:session.user,session,checkedAt:time};
+    request.auth={userId:session.userId,sessionId:session.id,role:session.user.role,user:session.user,session,checkedAt:time,permissions:await userPermissions(prisma,session.user)};
     request.restoredAccessToken=app.jwt.sign({sub:session.userId,sid:session.id},{expiresIn:ACCESS_SECONDS});
   } }, async request => {
     const { user, session, checkedAt } = request.auth!;
-    return { ...(request.restoredAccessToken ? { accessToken: request.restoredAccessToken, tokenType: 'Bearer', expiresIn: ACCESS_SECONDS } : {}), user: safeUser(user), session: { id: session.id, createdAt: session.createdAt.toISOString(), lastActivityAt: session.lastActivityAt.toISOString(),
+    return { ...(request.restoredAccessToken ? { accessToken: request.restoredAccessToken, tokenType: 'Bearer', expiresIn: ACCESS_SECONDS } : {}), user: { ...safeUser(user), permissions: await userPermissions(prisma, user) }, session: { id: session.id, createdAt: session.createdAt.toISOString(), lastActivityAt: session.lastActivityAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(), idleExpiresAt: new Date(session.lastActivityAt.getTime() + INACTIVITY_MS).toISOString() }, serverTime: checkedAt.toISOString() };
   });
 
@@ -437,7 +446,7 @@ export async function registerSecurity(app: FastifyInstance, input: PrismaClient
     return sendTokens(reply, config, tokens);
   });
 
-  app.patch('/api/v1/usuarios/:id/password', { preHandler: requireAdmin }, async (request, reply) => {
+  app.patch('/api/v1/usuarios/:id/password', { preHandler: requirePermission('users.password') }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = z.object({ newPassword: passwordSchema }).strict().parse(request.body);
     if (id === request.auth!.userId) throw new AppError(400, 'SELF_ADMIN_PASSWORD_CHANGE', 'Usa el cambio de contraseña personal para tu propia cuenta.');
@@ -445,14 +454,15 @@ export async function registerSecurity(app: FastifyInstance, input: PrismaClient
     await prisma.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(741901)`;
       const initialActor = await lockedSession(tx, request.auth!.userId, request.auth!.sessionId, now, request);
-      if (initialActor.user.role !== 'ADMINISTRADOR') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta operación.');
+      await assertRequestPermission(tx, request, initialActor.user);
       const exists = await tx.user.findUnique({ where: { id } });
       if (!exists) throw new AppError(404, 'NOT_FOUND', 'El usuario no existe.');
       const target = await lockUser(tx, id);
+      await protectUserPrivileges(tx, initialActor.user, target);
       // The target lock can outlive the actor's session deadline.
       const actor = await lockedSession(tx, request.auth!.userId, request.auth!.sessionId, now, request);
       const time = actor.time;
-      if (actor.user.role !== 'ADMINISTRADOR') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta operación.');
+      await assertRequestPermission(tx, request, actor.user);
       if (await verifyPassword(target.passwordHash, body.newPassword)) throw new AppError(400, 'PASSWORD_UNCHANGED', 'La nueva contraseña debe ser diferente de la actual.');
       await tx.user.update({ where: { id }, data: { passwordHash, failures: 0, lockedUntil: null } });
       await tx.recoveryToken.updateMany({ where: { userId: id, consumedAt: null }, data: { consumedAt: time } });

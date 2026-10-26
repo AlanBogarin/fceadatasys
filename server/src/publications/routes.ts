@@ -1,10 +1,11 @@
+import { assertRequestPermission } from '../security/permissions.js';
 import { Prisma, type PrismaClient, type StoredAttachment } from '@prisma/client';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { AppError } from '../errors.js';
 import { assertConfirmationCurrent } from '../security/confirmation.js';
 import { contentEtag, requireIfMatch, assertVersion } from '../concurrency.js';
-import { audit, authenticate, requireAdmin, requireRoles } from '../security/index.js';
+import { audit, authenticate, requirePermission } from '../security/index.js';
 import { getCatalog, lockCatalog } from '../catalogs/store.js';
 import type { CatalogKey } from '../catalogs/schemas.js';
 import { countWords, institutionYear, publicationDetailQuerySchema, publicationDtoSchema, publicationHash, publicationIdParams, publicationListSchema, publicationQuerySchema, publicationReadSchema, registrationSchema, settingsSchema, settingsPatchSchema, publicationPatchSchema, publicationStateSchema, type RegistrationInput } from './schemas.js';
@@ -20,7 +21,7 @@ async function lockedActor(tx: Prisma.TransactionClient, request: FastifyRequest
   const session = await tx.session.findUnique({ where: { id: auth.sessionId } });
   const now = request.server.security.now();
   if (!user?.active || !session || session.userId !== user.id || session.revokedAt || session.expiresAt <= now || now.getTime() - session.lastActivityAt.getTime() >= 600000) throw new AppError(401, 'UNAUTHENTICATED', 'La sesión no es válida o ha vencido.');
-  if (admin ? user.role !== 'ADMINISTRADOR' : user.role === 'PUBLICO') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta operación.');
+  await assertRequestPermission(tx, request, user);
   assertConfirmationCurrent(request, user);
   return user;
 }
@@ -51,10 +52,11 @@ async function checkDuplicates(tx: Prisma.TransactionClient, input: Registration
   if (fields.size) throw duplicateError([...fields]);
 }
 export async function registerPublicationRoutes(app: FastifyInstance, prisma: PrismaClient) {
+  const readRole = (request: FastifyRequest) => request.auth!.permissions.includes('publications.history') ? 'ADMINISTRADOR' as const : request.auth!.permissions.includes('attachments.download') ? 'DIGITADOR' as const : 'PUBLICO' as const;
   const api = app.withTypeProvider<ZodTypeProvider>();
-  api.get('/api/v1/publicaciones', { preHandler: authenticate, schema: { querystring: publicationQuerySchema, response: { 200: publicationListSchema } } }, async request => listPublications(prisma, request.query, request.auth!.role));
+  api.get('/api/v1/publicaciones', { preHandler: authenticate, schema: { querystring: publicationQuerySchema, response: { 200: publicationListSchema } } }, async request => listPublications(prisma, request.query, readRole(request)));
   api.get('/api/v1/publicaciones/:id', { preHandler: authenticate, schema: { params: publicationIdParams, querystring: publicationDetailQuerySchema, response: { 200: publicationReadSchema } } }, async (request, reply) => {
-    const dto = await readPublication(prisma, request.params.id, request.auth!.role);
+    const dto = await readPublication(prisma, request.params.id, readRole(request));
     return reply.header('ETag', publicationEtag(dto)).send(dto);
   });
   const settingsPath = '/api/v1/parametros/publicaciones';
@@ -63,7 +65,7 @@ export async function registerPublicationRoutes(app: FastifyInstance, prisma: Pr
     const dto = settingsSchema.parse({ summaryWordLimit: settings.summaryWordLimit, allowedFormats: settings.allowedFormats, maxPdfSizeMb: settings.maxPdfSizeMb });
     return reply.header('ETag', contentEtag(dto)).send(dto);
   });
-  api.patch(settingsPath, { preHandler: requireAdmin, schema: { body: settingsPatchSchema, querystring: publicationDetailQuerySchema, response: { 200: settingsSchema } } }, async (request, reply) => {
+  api.patch(settingsPath, { preHandler: requirePermission('settings.manage'), schema: { body: settingsPatchSchema, querystring: publicationDetailQuerySchema, response: { 200: settingsSchema } } }, async (request, reply) => {
     const expected = requireIfMatch(request.headers['if-match']);
     const result = await prisma.$transaction(async tx => {
     await lockedActor(tx, request, true);
@@ -78,7 +80,7 @@ export async function registerPublicationRoutes(app: FastifyInstance, prisma: Pr
     return reply.header('ETag', contentEtag(result)).send(result);
   });
 
-  api.post('/api/v1/publicaciones', { preHandler: requireRoles('ADMINISTRADOR', 'DIGITADOR'), schema: { body: registrationSchema, response: { 201: publicationDtoSchema } } }, async (request, reply) => {
+  api.post('/api/v1/publicaciones', { preHandler: requirePermission('publications.create'), schema: { body: registrationSchema, response: { 201: publicationDtoSchema } } }, async (request, reply) => {
     const input = request.body;
     try {
       const dto = await prisma.$transaction(async tx => {
@@ -110,7 +112,7 @@ export async function registerPublicationRoutes(app: FastifyInstance, prisma: Pr
           validateStoredAttachment(file, settings.allowedFormats);
         }
         const actor = await lockedActor(tx, request);
-        if (file && actor.role !== 'ADMINISTRADOR' && file.createdById !== actor.id) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para vincular este adjunto.');
+        if (file && !request.auth!.permissions.includes('attachments.manage') && file.createdById !== actor.id) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para vincular este adjunto.');
         await checkDuplicates(tx, input, file?.sha256);
         const created = await tx.publication.create({ data: {
           title: input.title, summary: input.summary, abstract: input.abstract, keywords: input.keywords, ...hashes(input),
@@ -146,7 +148,7 @@ export async function registerPublicationRoutes(app: FastifyInstance, prisma: Pr
     }
   });
 
-  api.patch('/api/v1/publicaciones/:id', { preHandler: requireRoles('ADMINISTRADOR', 'DIGITADOR'), schema: { params: publicationIdParams, querystring: publicationDetailQuerySchema, body: publicationPatchSchema, response: { 200: publicationReadSchema } } }, async (request, reply) => {
+  api.patch('/api/v1/publicaciones/:id', { preHandler: requirePermission('publications.edit'), schema: { params: publicationIdParams, querystring: publicationDetailQuerySchema, body: publicationPatchSchema, response: { 200: publicationReadSchema } } }, async (request, reply) => {
     const expected = requirePublicationIfMatch(request.headers['if-match']);
     const id = request.params.id;
     try {
@@ -158,7 +160,7 @@ export async function registerPublicationRoutes(app: FastifyInstance, prisma: Pr
         let actor = await lockedActor(tx, request);
         const row = await tx.publication.findUnique({ where: { id }, include: { authors: { orderBy: { position: 'asc' } }, tutors: { orderBy: { position: 'asc' } } } });
         if (!row) throw new AppError(404, 'NOT_FOUND', 'La publicación no existe.');
-        const before = publicationReadDto((await tx.publication.findUniqueOrThrow({ where: { id }, select: readSelect(actor.role) })), actor.role);
+        const before = publicationReadDto((await tx.publication.findUniqueOrThrow({ where: { id }, select: readSelect(readRole(request)) })), readRole(request));
         if (publicationEtag(before) !== expected) throw new AppError(412, 'PRECONDITION_FAILED', 'La publicación cambió. Consultá su detalle antes de volver a editarla.');
         if (!row.active) throw new AppError(404, 'NOT_FOUND', 'La publicación está inactiva.');
         const input = registrationSchema.parse({
@@ -194,7 +196,7 @@ export async function registerPublicationRoutes(app: FastifyInstance, prisma: Pr
           if (input.attachmentId !== row.attachmentId) validateStoredAttachment(file, settings.allowedFormats);
         }
         actor = await lockedActor(tx, request);
-        if (file && input.attachmentId !== row.attachmentId && actor.role !== 'ADMINISTRADOR' && file.createdById !== actor.id) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para vincular este adjunto.');
+        if (file && input.attachmentId !== row.attachmentId && !request.auth!.permissions.includes('attachments.manage') && file.createdById !== actor.id) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para vincular este adjunto.');
         await checkDuplicates(tx, input, file?.sha256, id);
         await tx.publication.update({ where: { id }, data: {
           title: input.title, summary: input.summary, abstract: input.abstract, keywords: input.keywords, ...hashes(input),
@@ -207,7 +209,7 @@ export async function registerPublicationRoutes(app: FastifyInstance, prisma: Pr
         await tx.publicationAuthor.createMany({ data: input.authorIds.map((authorId, index) => ({ publicationId: id, authorId, position: index + 1 })) });
         await tx.publicationTutor.deleteMany({ where: { publicationId: id } });
         await tx.publicationTutor.createMany({ data: input.tutorIds.map((tutorId, index) => ({ publicationId: id, tutorId, position: index + 1 })) });
-        const after = publicationReadDto(await tx.publication.findUniqueOrThrow({ where: { id }, select: readSelect(actor.role) }), actor.role);
+        const after = publicationReadDto(await tx.publication.findUniqueOrThrow({ where: { id }, select: readSelect(readRole(request)) }), readRole(request));
         await audit(tx, request, { operation: 'PUBLICACION_MODIFICADA', resource: 'publicaciones', resourceId: id, publicationId: id, role: actor.role, status: 'EXITO', before, after });
         return after;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
@@ -218,16 +220,16 @@ export async function registerPublicationRoutes(app: FastifyInstance, prisma: Pr
     }
   });
 
-  api.patch('/api/v1/publicaciones/:id/estado', { preHandler: requireAdmin, schema: { params: publicationIdParams, querystring: publicationDetailQuerySchema, body: publicationStateSchema, response: { 200: publicationReadSchema } } }, async (request, reply) => {
+  api.patch('/api/v1/publicaciones/:id/estado', { preHandler: requirePermission('publications.inactivate'), schema: { params: publicationIdParams, querystring: publicationDetailQuerySchema, body: publicationStateSchema, response: { 200: publicationReadSchema } } }, async (request, reply) => {
     const expected = requirePublicationIfMatch(request.headers['if-match']);
     const id = request.params.id;
     const result = await prisma.$transaction(async tx => {
       await lockedActor(tx, request, true);
       await tx.$queryRaw`SELECT id FROM publicaciones WHERE id = ${id}::uuid FOR UPDATE`;
       const actor = await lockedActor(tx, request, true);
-      const row = await tx.publication.findUnique({ where: { id }, select: readSelect(actor.role) });
+      const row = await tx.publication.findUnique({ where: { id }, select: readSelect(readRole(request)) });
       if (!row) throw new AppError(404, 'NOT_FOUND', 'La publicación no existe.');
-      const before = publicationReadDto(row, actor.role);
+      const before = publicationReadDto(row, readRole(request));
       if (publicationEtag(before) !== expected) throw new AppError(412, 'PRECONDITION_FAILED', 'La publicación cambió. Consultá su detalle antes de inactivarla.');
       if (!row.active) return before;
       await tx.publication.update({ where: { id }, data: { active: false } });

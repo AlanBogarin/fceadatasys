@@ -1,3 +1,4 @@
+import { assertRequestPermission, assertAllowed } from '../security/permissions.js';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -6,11 +7,15 @@ import { AppError } from '../errors.js';
 import { assertConfirmationCurrent } from '../security/confirmation.js';
 import { contentEtag, requireIfMatch, assertVersion } from '../concurrency.js';
 import { audit, authenticate } from '../security/index.js';
-import { canManageCatalog, catalogDtoSchema, catalogIdParams, catalogParams, catalogQuerySchema, createCatalogSchema, patchCatalogSchema, validateCatalogInput, type CatalogKey } from './schemas.js';
+import { catalogDtoSchema, catalogIdParams, catalogParams, catalogQuerySchema, createCatalogSchema, patchCatalogSchema, validateCatalogInput, type CatalogKey } from './schemas.js';
 import { assertCatalogCanDeactivate, assertCatalogUnreferenced, createCatalog, deleteCatalog, getCatalog, listCatalog, lockCatalog, updateCatalog } from './store.js';
 
 function authorize(request: FastifyRequest, key: CatalogKey, deleting = false) {
-  if (!request.auth || (deleting ? request.auth.role !== 'ADMINISTRADOR' : !canManageCatalog(request.auth.role, key))) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para modificar este catálogo.');
+  request.requiredPermissions = [`catalogs.${key}.manage`, ...(deleting ? [`catalogs.${key}.delete`] : [])];
+  for (const permission of request.requiredPermissions) assertAllowed(request.auth!.permissions, permission);
+}
+function canReadCatalog(request: FastifyRequest, key: CatalogKey) {
+  return request.auth!.permissions.some(permission => [`catalogs.${key}.manage`, 'publications.create', 'publications.edit', ...(['autores', 'tutores'].includes(key) ? [] : ['publications.history'])].includes(permission));
 }
 async function lockedActor(tx: Prisma.TransactionClient, request: FastifyRequest, key: CatalogKey, deleting = false) {
   const auth = request.auth!;
@@ -20,7 +25,7 @@ async function lockedActor(tx: Prisma.TransactionClient, request: FastifyRequest
   const session = await tx.session.findUnique({ where: { id: auth.sessionId } });
   const now = request.server.security.now();
   if (!user?.active || !session || session.userId !== user.id || session.revokedAt || session.expiresAt <= now || now.getTime() - session.lastActivityAt.getTime() >= 600000) throw new AppError(401, 'UNAUTHENTICATED', 'La sesión no es válida o ha vencido.');
-  if (deleting ? user.role !== 'ADMINISTRADOR' : !canManageCatalog(user.role, key)) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para modificar este catálogo.');
+  await assertRequestPermission(tx, request, user);
   assertConfirmationCurrent(request, user);
   return user;
 }
@@ -42,7 +47,7 @@ export async function registerCatalogRoutes(app: FastifyInstance, prisma: Prisma
   api.get(base, { preHandler: authenticate, schema: { params: catalogParams, querystring: catalogQuerySchema, response: { 200: z.object({ data: z.array(catalogDtoSchema), pagination: z.object({ page: z.number(), pageSize: z.number(), total: z.number(), totalPages: z.number() }) }) } } }, async request => {
     const query = { ...request.query };
     // Público only needs active classification labels, never the personal directory.
-    if (request.auth!.role === 'PUBLICO') {
+    if (!canReadCatalog(request, request.params.catalog)) {
       if (request.params.catalog === 'autores' || request.params.catalog === 'tutores') throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para consultar este directorio.');
       query.active = true;
     }
@@ -50,9 +55,10 @@ export async function registerCatalogRoutes(app: FastifyInstance, prisma: Prisma
   });
   api.get(`${base}/:id`, { preHandler: authenticate, schema: { params: catalogIdParams, response: { 200: catalogDtoSchema } } }, async (request, reply) => {
     const { catalog, id } = request.params;
-    if (request.auth!.role === 'PUBLICO' && (catalog === 'autores' || catalog === 'tutores')) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para consultar este directorio.');
+    const canReadDirectory = canReadCatalog(request, catalog);
+    if (!canReadDirectory && (catalog === 'autores' || catalog === 'tutores')) throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para consultar este directorio.');
     const row = await getCatalog(prisma, catalog, id);
-    if (!row || (request.auth!.role === 'PUBLICO' && !row.active)) throw new AppError(404, 'NOT_FOUND', 'El registro del catálogo no existe.');
+    if (!row || (!canReadDirectory && !row.active)) throw new AppError(404, 'NOT_FOUND', 'El registro del catálogo no existe.');
     return reply.header('ETag', contentEtag(row)).send(row);
   });
   api.post(base, { preHandler: authenticate, schema: { params: catalogParams, body: createCatalogSchema, response: { 201: catalogDtoSchema } } }, async (request, reply) => {

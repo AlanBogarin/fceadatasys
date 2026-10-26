@@ -1,3 +1,4 @@
+import { hasPermission } from "./permissions";
 import {
   Check,
   ChevronLeft,
@@ -313,7 +314,7 @@ export default function CatalogPage({
                       >
                         <Settings2 size={17} />
                       </button>
-                      {user.role === "ADMINISTRADOR" && (
+                      {hasPermission(user, `catalogs.${catalog}.delete`) && (
                         <button
                           type="button"
                           className="icon-btn catalog-delete"
@@ -737,77 +738,5 @@ function CatalogForm({
         </div>
       </form>
     </CatalogDialog>
-  );
-}
-
-export function RolesPage() {
-  const permissions = [
-    ["Usuarios y catálogos administrativos", true, false, false],
-    ["Autores y tutores", true, true, false],
-    ["Eliminación de autores y tutores", true, false, false],
-    ["Parámetros generales", true, false, false],
-    ["Consulta de publicaciones", true, true, true],
-    ["Carga y edición de publicaciones", true, true, false],
-    ["Descarga de adjuntos", true, true, false],
-    ["Inactivación de publicaciones", true, false, false],
-    ["Reportes y auditoría", true, false, false],
-    ["Perfil, contraseña y cierre de sesión", true, true, true],
-  ] as const;
-  return (
-    <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">Administración / Acceso</p>
-          <h1>Roles y permisos</h1>
-          <p>Consultá las responsabilidades de los tres roles del sistema.</p>
-        </div>
-        <span className="badge neutral">Solo consulta</span>
-      </div>
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <h2>Matriz de permisos</h2>
-            <p>
-              Permisos definidos para el proyecto. Los módulos pendientes se
-              completarán en próximas entregas.
-            </p>
-          </div>
-          <ShieldCheck />
-        </div>
-        <div className="table-scroll">
-          <table className="catalog-table">
-            <thead>
-              <tr>
-                <th>Función</th>
-                <th>Administrador</th>
-                <th>Digitador</th>
-                <th>Público</th>
-              </tr>
-            </thead>
-            <tbody>
-              {permissions.map(([label, ...values]) => (
-                <tr key={label}>
-                  <td>{label}</td>
-                  {values.map((yes, i) => (
-                    <td key={i}>
-                      <span className={`badge ${yes ? "blue" : "neutral"}`}>
-                        {yes ? "Permitido" : "Sin acceso"}
-                      </span>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <div className="inline-note">
-        <ShieldCheck size={18} />
-        <p>
-          Asigná uno de estos roles desde Usuarios. Sus permisos están definidos
-          por los requerimientos del proyecto.
-        </p>
-      </div>
-    </>
   );
 }

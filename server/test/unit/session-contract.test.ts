@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { PrismaClient, Role, Session, User } from '@prisma/client';
 import { createApp } from '../helpers/unit-app.js';
 import type { AppConfig } from '../../src/config.js';
+import { defaultPermissions } from '../../src/security/permissions.js';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const SESSION_ID = '22222222-2222-4222-8222-222222222222';
@@ -30,7 +31,7 @@ test('GET sesión devuelve contrato seguro con fechas UTC y rol actual para cada
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.headers['cache-control'], 'no-store');
     assert.deepEqual(response.json(), {
-      user: { id: USER_ID, name: user.name, ci: user.ci, email: user.email, username: user.username, role, active: true, createdAt: user.createdAt.toISOString() },
+      user: { id: USER_ID, name: user.name, ci: user.ci, email: user.email, username: user.username, role, active: true, createdAt: user.createdAt.toISOString(), permissions: defaultPermissions[role] },
       session: { id: SESSION_ID, createdAt: session.createdAt.toISOString(), lastActivityAt: session.lastActivityAt.toISOString(), expiresAt: session.expiresAt.toISOString(), idleExpiresAt: '2026-10-15T12:09:30.000Z' },
       serverTime: NOW.toISOString(),
     });

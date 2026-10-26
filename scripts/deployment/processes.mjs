@@ -48,7 +48,7 @@ export function run(
         if (!quiet && output) console.error(redact(output, config));
         reject(
           Error(
-            `Falló ${label}. No se modificaron contraseñas ni se borraron datos existentes.`,
+            `Falló ${label}. Revisar la etapa y el registro de instalación.`,
           ),
         );
       } else resolve(output);

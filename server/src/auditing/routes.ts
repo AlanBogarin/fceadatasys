@@ -1,3 +1,4 @@
+import { assertRequestPermission } from '../security/permissions.js';
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -8,7 +9,7 @@ import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { AppError } from "../errors.js";
 import { normalizeCatalog } from "../catalogs/schemas.js";
-import { audit, requireAdmin } from "../security/index.js";
+import { audit, requirePermission } from "../security/index.js";
 import { publicationQuerySchema } from "../publications/schemas.js";
 
 export const auditQuery = z
@@ -192,12 +193,7 @@ async function assertAdmin(
     now.getTime() - session.lastActivityAt.getTime() >= 600000
   )
     throw new AppError(401, "UNAUTHENTICATED", "La sesión venció.");
-  if (user.role !== "ADMINISTRADOR")
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "Solo Administrador puede exportar auditoría.",
-    );
+  await assertRequestPermission(tx, request, user);
 }
 export async function auditDocument(
   rows: ReturnType<typeof auditDto>[],
@@ -316,7 +312,7 @@ export async function registerAuditRoutes(
   let busy = false;
   app.get(
     "/api/v1/auditoria",
-    { preHandler: requireAdmin },
+    { preHandler: requirePermission('audit.read') },
     async (request) => {
       const filters = auditQuery.parse(request.query);
       const result = await data(prisma, filters);
@@ -338,7 +334,7 @@ export async function registerAuditRoutes(
   );
   app.get(
     "/api/v1/auditoria/:id",
-    { preHandler: requireAdmin },
+    { preHandler: requirePermission('audit.read') },
     async (request) => {
       const { id } = z.object({ id: z.uuid() }).parse(request.params);
       z.object({}).strict().parse(request.query);
@@ -349,7 +345,7 @@ export async function registerAuditRoutes(
   );
   app.get(
     "/api/v1/auditoria/exportar",
-    { preHandler: requireAdmin, exposeHeadRoute: false },
+    { preHandler: requirePermission('audit.read', 'audit.export'), exposeHeadRoute: false },
     async (request, reply) => {
       const { format, snapshot, ...filters } = exportQuery.parse(request.query);
       if (busy)

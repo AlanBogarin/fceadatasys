@@ -8,6 +8,7 @@ import { createPrisma } from '../src/db.js';
 import type { AppConfig } from '../src/config.js';
 import { hashPassword, randomToken, tokenHash, verifyPassword } from '../src/security/crypto.js';
 import { userDto } from '../src/users/dto.js';
+import { defaultPermissions } from '../src/security/permissions.js';
 
 const databaseUrl = process.env.PROFILE_TEST_DATABASE_URL;
 test('perfil HTTP con PostgreSQL: identidad, actualización, unicidad y recuperación', { skip: !databaseUrl }, async t => {
@@ -53,7 +54,7 @@ test('perfil HTTP con PostgreSQL: identidad, actualización, unicidad y recupera
         const beforeSession = await prisma.session.findUniqueOrThrow({ where: { id: sid } });
         const read = await send({ url: '/api/v1/me?actorId=other-user', headers: active.headers });
         assert.equal(read.statusCode, 200);
-        assert.deepEqual(read.json(), userDto(user));
+        assert.deepEqual(read.json(), { ...userDto(user), permissions: defaultPermissions[role] });
         assert.equal(read.headers['cache-control'], 'no-store');
         const username = `${prefix}.renamed.${++counter}`;
         const response = await patch(active.headers, { email: ` NEW.${username}@EXAMPLE.INVALID `, username: ` ${username} `, ...(role === 'PUBLICO' ? { name: ` ${user.name} ` } : { name: `Actualizado ${role}` }) });
@@ -73,7 +74,9 @@ test('perfil HTTP con PostgreSQL: identidad, actualización, unicidad y recupera
         assert.equal(audit.role, role);
         assert.equal(audit.sessionId, sid);
         assert.deepEqual(audit.before, userDto(user));
-        assert.deepEqual(audit.after, response.json());
+        const { permissions, ...profileMetadata } = response.json();
+        assert.deepEqual(permissions, defaultPermissions[role]);
+        assert.deepEqual(audit.after, profileMetadata);
         const oldLogin = await send({ method: 'POST', url: '/api/v1/auth/login', headers: { origin }, payload: { username: user.username, password } });
         problem(oldLogin, 401, 'INVALID_CREDENTIALS');
         await login(username);

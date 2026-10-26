@@ -1,0 +1,5 @@
+CREATE TABLE public.permisos_sistema (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  politica JSONB NOT NULL CHECK (jsonb_typeof(politica) = 'object')
+);
+INSERT INTO public.permisos_sistema (id, politica) VALUES (1, '{"roles":{"ADMINISTRADOR":["users.read","users.manage","users.delete","users.password","permissions.manage","publications.create","publications.edit","publications.inactivate","publications.history","attachments.upload","attachments.download","attachments.manage","catalogs.autores.manage","catalogs.autores.delete","catalogs.tutores.manage","catalogs.tutores.delete","catalogs.carreras.manage","catalogs.carreras.delete","catalogs.facultades.manage","catalogs.facultades.delete","catalogs.filiales.manage","catalogs.filiales.delete","catalogs.tipos.manage","catalogs.tipos.delete","catalogs.niveles.manage","catalogs.niveles.delete","settings.manage","reports.read","reports.export","audit.read","audit.export","backups.manage"],"DIGITADOR":["publications.create","publications.edit","attachments.upload","attachments.download","catalogs.autores.manage","catalogs.tutores.manage"],"PUBLICO":[]},"users":{}}');

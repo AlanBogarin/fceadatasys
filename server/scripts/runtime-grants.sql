@@ -22,6 +22,8 @@ GRANT DELETE ON public.publicacion_autores, public.publicacion_tutores TO :"app_
 GRANT SELECT, INSERT ON public.asignaciones_adjuntos TO :"app_role";
 GRANT USAGE ON SEQUENCE public.publicaciones_numero_seq TO :"app_role";
 GRANT SELECT, UPDATE ON public.parametros_publicaciones TO :"app_role";
+GRANT SELECT, UPDATE ON public.permisos_sistema TO :"app_role";
+GRANT SELECT, INSERT, UPDATE ON public.respaldos TO :"app_role";
 -- Only server-side ClamAV verdicts may provision files or quarantine records.
 -- Narrow UPDATE grants also permit row locks during registration/download.
 GRANT SELECT ON public.adjuntos TO :"app_role";

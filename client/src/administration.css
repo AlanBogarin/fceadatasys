@@ -195,6 +195,41 @@ select[aria-invalid="true"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
+.audit-snapshots dl {
+  display: block;
+}
+.audit-snapshots dl > div {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.audit-snapshots dd {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.audit-snapshots ul {
+  padding-left: 20px;
+}
+.permission-panel > p,
+.permission-panel > label,
+.permission-panel > .publication-actions {
+  margin: 16px 24px;
+}
+.permission-panel > label {
+  display: block;
+  max-width: 600px;
+}
+.permission-panel input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  display: block;
+  accent-color: var(--primary, #590d31);
+}
+.permission-panel .catalog-table td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
 @media (max-width: 800px) {
   .administration-layout {
     grid-template-columns: 1fr;

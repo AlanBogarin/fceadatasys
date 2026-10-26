@@ -1,3 +1,7 @@
+import {
+  resolveExistingDatabase,
+  provisionBackupReader,
+} from "./production-database.mjs";
 import { createRequire } from "node:module";
 import {
   existsSync,
@@ -104,7 +108,11 @@ export async function ensureManagedPostgres(root, config) {
     const control = await run(
       pgTool(config, "pg_controldata"),
       ["-D", directory],
-      { ...settings, env: { LC_ALL: "C" }, label: "Identidad de PostgreSQL demo" },
+      {
+        ...settings,
+        env: { LC_ALL: "C" },
+        label: "Identidad de PostgreSQL demo",
+      },
     );
     const systemIdentifier = control.match(
       /^Database system identifier:\s*(\d+)\s*$/m,
@@ -146,7 +154,13 @@ export async function ensureManagedPostgres(root, config) {
       );
   };
 }
-export async function prepareDatabase(root, config, target, execute) {
+export async function prepareDatabase(
+  root,
+  config,
+  target,
+  execute,
+  options = {},
+) {
   const adminUrl = new URL(
     config.PG_ADMIN_URL || config.MIGRATION_DATABASE_URL,
   );
@@ -154,6 +168,75 @@ export async function prepareDatabase(root, config, target, execute) {
   const connection = databaseClient(root, adminUrl.href);
   try {
     await connection.connect();
+    // Serializes installers for this database across workspaces. Session lock lives through migrations/grants.
+    await connection.query(
+      "SELECT pg_advisory_lock(hashtextextended($1, 741903))",
+      [target.databaseName],
+    );
+    if (config.PROFILE === "production") {
+      const database =
+        (
+          await connection.query(
+            "SELECT datname FROM pg_database WHERE datname=$1",
+            [target.databaseName],
+          )
+        ).rows[0]?.datname || adminUrl.pathname.slice(1);
+      for (const url of [
+        target.owner,
+        target.runtime,
+        ...(options.backup
+          ? [new URL(options.backup.BACKUP_DATABASE_URL)]
+          : []),
+      ]) {
+        const name = decodeURIComponent(url.username);
+        const existing = (
+          await connection.query(
+            "SELECT rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolcanlogin FROM pg_roles WHERE rolname=$1",
+            [name],
+          )
+        ).rows[0];
+        if (!existing) continue;
+        if (
+          !existing.rolcanlogin ||
+          existing.rolsuper ||
+          existing.rolcreatedb ||
+          existing.rolcreaterole ||
+          existing.rolreplication
+        )
+          throw Error(
+            "El rol existente tiene privilegios incompatibles. Se conserva la base.",
+          );
+        const probeUrl = new URL(url);
+        probeUrl.pathname = "/" + database;
+        const probe = databaseClient(root, probeUrl.href);
+        try {
+          await probe.connect();
+          await probe.query("SELECT 1");
+        } catch {
+          throw Error(
+            `La contraseña o acceso del rol ${name} no coincide con PostgreSQL. Se conserva la base; volver a configurar sus credenciales.`,
+          );
+        } finally {
+          await probe.end();
+        }
+      }
+    }
+    const previous = await resolveExistingDatabase(
+      root,
+      config,
+      target,
+      connection,
+      adminUrl,
+      execute,
+      options,
+    );
+    if (
+      previous &&
+      previous.owner !== decodeURIComponent(target.owner.username)
+    )
+      throw Error(
+        "La base existente pertenece a otro propietario. Se conserva; revisar credenciales o elegir recreación explícita.",
+      );
     for (const [url, limited] of [
       [target.owner, false],
       [target.runtime, true],
@@ -172,59 +255,74 @@ export async function prepareDatabase(root, config, target, execute) {
         );
       } else if (
         !rows[0].rolcanlogin ||
-        (limited &&
+        ((limited || config.PROFILE === "production") &&
           (rows[0].rolsuper ||
             rows[0].rolcreatedb ||
             rows[0].rolcreaterole ||
             rows[0].rolreplication))
       )
-        throw Error("El runtime existente tiene privilegios incompatibles.");
+        throw Error(
+          "El rol existente tiene privilegios incompatibles. No se modificó.",
+        );
     }
-    const { rows } = await connection.query(
-      "SELECT pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname=$1",
-      [target.databaseName],
-    );
-    if (!rows.length)
+    if (!previous)
       await connection.query(
         `CREATE DATABASE ${identifier(target.databaseName)} OWNER ${identifier(decodeURIComponent(target.owner.username))}`,
       );
-    else if (rows[0].owner !== decodeURIComponent(target.owner.username))
-      throw Error(
-        "La base existente pertenece a otro propietario. No se modificó.",
-      );
+    await execute(
+      process.execPath,
+      ["node_modules/prisma/build/index.js", "migrate", "deploy"],
+      { DATABASE_URL: config.MIGRATION_DATABASE_URL },
+      "Migraciones",
+    );
+    await execute(
+      pgTool(config, "psql"),
+      [
+        "--no-psqlrc",
+        "-h",
+        target.owner.hostname.replace(/^\[|\]$/g, ""),
+        "-p",
+        target.owner.port || "5432",
+        "-U",
+        decodeURIComponent(target.owner.username),
+        "-d",
+        target.databaseName,
+        "-v",
+        `app_role=${decodeURIComponent(target.runtime.username)}`,
+        "-f",
+        "scripts/runtime-grants.sql",
+      ],
+      {
+        PGPASSWORD: decodeURIComponent(target.owner.password),
+        PGSSLMODE: process.env.PGSSLMODE || "prefer",
+      },
+      "Permisos runtime",
+    );
+    await provisionBackupReader(
+      root,
+      config,
+      target,
+      connection,
+      options.backup,
+      execute,
+    );
+    if (options.backup) {
+      const reader = databaseClient(root, options.backup.BACKUP_DATABASE_URL);
+      try {
+        await reader.connect();
+        await reader.query("SELECT 1 FROM public.auditoria LIMIT 1");
+      } catch {
+        throw Error(
+          "La cuenta de copias no pudo autenticarse o leer auditoría. Si ya existía, ingresar su contraseña real.",
+        );
+      } finally {
+        await reader.end();
+      }
+    }
+    return await verifyRuntime(root, config);
   } finally {
     await connection.end();
   }
-  await execute(
-    process.execPath,
-    ["node_modules/prisma/build/index.js", "migrate", "deploy"],
-    { DATABASE_URL: config.MIGRATION_DATABASE_URL },
-    "Migraciones",
-  );
-  await execute(
-    pgTool(config, "psql"),
-    [
-      "--no-psqlrc",
-      "-h",
-      target.owner.hostname,
-      "-p",
-      target.owner.port || "5432",
-      "-U",
-      decodeURIComponent(target.owner.username),
-      "-d",
-      target.databaseName,
-      "-v",
-      `app_role=${decodeURIComponent(target.runtime.username)}`,
-      "-f",
-      "scripts/runtime-grants.sql",
-    ],
-    {
-      PGPASSWORD: decodeURIComponent(target.owner.password),
-      PGSSLMODE: process.env.PGSSLMODE || "prefer",
-    },
-    "Permisos runtime",
-  );
-  return verifyRuntime(root, config);
 }
 export async function verifyRuntime(root, config) {
   // Authenticate the actual runtime. Existing role passwords are never reset.

@@ -1,7 +1,8 @@
+import { assertRequestPermission } from '../security/permissions.js';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { AppError } from '../errors.js';
-import { audit, requireAdmin } from '../security/index.js';
+import { audit, requirePermission } from '../security/index.js';
 import { exportQuerySchema, MAX_REPORT_RECORDS, reportData, reportFilters, reportQuerySchema } from './data.js';
 import { generateReport, MAX_REPORT_BYTES, type ReportGenerator } from './documents.js';
 
@@ -14,18 +15,18 @@ async function validateActor(tx: Prisma.TransactionClient, request: FastifyReque
   const session = await tx.session.findUnique({ where: { id: auth.sessionId } });
   const now = request.server.security.now();
   if (!user?.active || !session || session.userId !== user.id || session.revokedAt || session.expiresAt <= now || now.getTime() - session.lastActivityAt.getTime() >= 600000) throw new AppError(401, 'UNAUTHENTICATED', 'La sesión no es válida o ha vencido.');
-  if (user.role !== 'ADMINISTRADOR') throw new AppError(403, 'FORBIDDEN', 'Solo Administrador puede exportar reportes.');
+  await assertRequestPermission(tx, request, user);
   return user;
 }
 export async function registerReportRoutes(app: FastifyInstance, prisma: PrismaClient, options: ReportOptions = {}) {
   const generate = options.generate ?? generateReport;
   let busy = false;
-  app.get('/api/v1/reportes/publicaciones', { preHandler: requireAdmin }, async request => {
+  app.get('/api/v1/reportes/publicaciones', { preHandler: requirePermission('reports.read') }, async request => {
     const query = reportQuerySchema.parse(request.query);
     const result = await reportData(prisma, query);
     return { data: result.data, pagination: { page: query.page, pageSize: query.pageSize, total: result.total, totalPages: Math.ceil(result.total / query.pageSize) }, report: { snapshot: result.snapshot, exportable: result.total > 0 && result.exportable, maxRecords: MAX_REPORT_RECORDS } };
   });
-  app.get('/api/v1/reportes/publicaciones/exportar', { preHandler: requireAdmin, exposeHeadRoute: false }, async (request, reply) => {
+  app.get('/api/v1/reportes/publicaciones/exportar', { preHandler: requirePermission('reports.read', 'reports.export'), exposeHeadRoute: false }, async (request, reply) => {
     const { format, snapshot, ...filtersInput } = exportQuerySchema.parse(request.query);
     if (busy) throw new AppError(503, 'REPORT_SERVICE_BUSY', 'Hay una exportación en curso. Volvé a intentar.');
     busy = true;

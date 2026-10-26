@@ -7,6 +7,7 @@ export type UserDto = {
   email: string;
   username: string;
   role: Role;
+  permissions?: string[];
   active: boolean;
   createdAt: string;
 };
@@ -44,6 +45,22 @@ export type SessionDto = {
 export type MutationOptions = {
   ifMatch?: string;
   confirmationPassword?: string;
+};
+export type AccessPolicyDto = {
+  roles: Record<Role, string[]>;
+  users: Record<string, Record<string, boolean>>;
+  definitions: { key: string; label: string }[];
+};
+export type BackupDto = {
+  id: string;
+  createdAt: string;
+  finishedAt: string | null;
+  source: string;
+  status: string;
+  filename: string | null;
+  localSaved: boolean;
+  cloudSaved: boolean;
+  detail: string | null;
 };
 export type ExportMetadata = {
   snapshot: string | null;
@@ -126,6 +143,7 @@ export function userDto(user: UserDto): UserDto {
     email: user.email,
     username: user.username,
     role: user.role,
+    ...(user.permissions ? { permissions: [...user.permissions] } : {}),
     active: user.active,
     createdAt: user.createdAt,
   };

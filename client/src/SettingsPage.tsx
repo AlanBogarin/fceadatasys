@@ -1,3 +1,4 @@
+import { hasPermission } from "./permissions";
 import { FileCheck, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import "./administration.css";
@@ -59,7 +60,7 @@ function SettingsForm({
   const reviewed = version.latest?.data;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  if (user.role !== "ADMINISTRADOR")
+  if (!hasPermission(user, "settings.manage"))
     return <Alert text="No tenés permiso para administrar parámetros." />;
 
   async function submit(event: FormEvent<HTMLFormElement>) {

@@ -2,6 +2,7 @@ import type { PrismaClient, User } from "@prisma/client";
 import type { FastifyRequest } from "fastify";
 import { AppError } from "../errors.js";
 import { verifyPassword } from "./crypto.js";
+import { assertAllowed } from './permissions.js';
 import { audit } from "./audit.js";
 
 declare module "fastify" {
@@ -38,18 +39,7 @@ export async function confirmMutation(
 ) {
   if (!request.auth || !needsConfirmation(request)) return;
   const params = request.params as { catalog?: string };
-  if (
-    params.catalog &&
-    (request.auth.role === "PUBLICO" ||
-      (request.auth.role === "DIGITADOR" &&
-        (request.method === "DELETE" ||
-          !["autores", "tutores"].includes(params.catalog))))
-  )
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "No tenés permiso para modificar este catálogo.",
-    );
+  if (params.catalog) assertAllowed(request.auth.permissions, `catalogs.${params.catalog}.${request.method === "DELETE" ? "delete" : "manage"}`);
   const encoded = request.headers["x-confirmation-password"];
   if (
     typeof encoded !== "string" ||
