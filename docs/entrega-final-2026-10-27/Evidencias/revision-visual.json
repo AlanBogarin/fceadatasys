@@ -1,0 +1,47 @@
+{
+  "resultado": "APROBADO",
+  "metodo": "Exportación nativa de Word con índices actualizados; render_docx.py con conversión delegada al PDF nativo; rasterización Poppler a 120 dpi. Inspección visual de todas las páginas y nueva inspección de las 44 páginas que cambiaron en el último ajuste.",
+  "revisado": [
+    "Portadas, índices y numeración",
+    "Tablas con encabezados repetidos y sin encabezado aislado",
+    "Capturas actuales y texto legible",
+    "31 diagramas sin marca de agua",
+    "Secuencias con una operación por imagen",
+    "Márgenes, recortes, solapamientos y páginas vacías"
+  ],
+  "paginasTotales": 162,
+  "documentos": [
+    {
+      "documento": "01 Documento del sistema.docx",
+      "pdf": "01 Documento del sistema.pdf",
+      "paginas": 85,
+      "paginasRenderizadas": 85,
+      "sha256DOCX": "d1d1ec0a2cbac1461993b0ebdc59c50ab87aecd1c04b76b3da76590d4acd59ce",
+      "sha256PDF": "1137b8d63a5654b4c7f657fa1c6de338d63392a591947ab64558f9e077b40ddd"
+    },
+    {
+      "documento": "02 Manual de usuario.docx",
+      "pdf": "02 Manual de usuario.pdf",
+      "paginas": 37,
+      "paginasRenderizadas": 37,
+      "sha256DOCX": "d36cb3b64c2174666847247d203c8360f9f96314640dec0767969cf8f0ce7c2f",
+      "sha256PDF": "fabfc5a69d554fffab13c9be5d5078baa3e2c25b5d0b6d27fd5bac678450cf06"
+    },
+    {
+      "documento": "03 Manual de seguridad.docx",
+      "pdf": "03 Manual de seguridad.pdf",
+      "paginas": 23,
+      "paginasRenderizadas": 23,
+      "sha256DOCX": "99cd620b02dd182d7cdc95ee806d19bc2f7df66d505be24ffd31a46653780132",
+      "sha256PDF": "94caed62f06b88712aa8201e24f52eee5c39a1472969c3b67a144d7911632c9f"
+    },
+    {
+      "documento": "04 Presentación de la defensa.docx",
+      "pdf": "04 Presentación de la defensa.pdf",
+      "paginas": 17,
+      "paginasRenderizadas": 17,
+      "sha256DOCX": "942e9755f74a6882f73ad7eb5af53fad5b401ea1dbee335c649d5cf3059f50e7",
+      "sha256PDF": "9b8a1274d038d3c806a9eeaf13636a7cac314a137bb975fac8e87fa5c312ee3a"
+    }
+  ]
+}

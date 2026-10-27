@@ -1,0 +1,26 @@
+{
+  "archivosDeEntregaVerificadosExcluyendoEsteRegistro": 93,
+  "documentos": [
+    {
+      "archivo": "01 Documento del sistema.pdf",
+      "paginas": 85
+    },
+    {
+      "archivo": "02 Manual de usuario.pdf",
+      "paginas": 37
+    },
+    {
+      "archivo": "03 Manual de seguridad.pdf",
+      "paginas": 23
+    },
+    {
+      "archivo": "04 Presentación de la defensa.pdf",
+      "paginas": 17
+    }
+  ],
+  "archivosFuente": 354,
+  "configuracionesPrivadasEnFuente": 0,
+  "adjuntosVerificados": 8,
+  "proyectoVP": "integridad SQLite correcta",
+  "resultado": "APROBADO"
+}

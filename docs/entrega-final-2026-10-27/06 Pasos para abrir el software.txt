@@ -1,0 +1,31 @@
+﻿FCEA DATASYS PASOS DE APERTURA
+
+1. Extraer Software/FCEA-Datasys-codigo.zip completamente a una carpeta nueva.
+2. Instalar Node.js 24.11 o superior de la rama 24, PostgreSQL 18 con initdb, pg_ctl, pg_controldata, psql, pg_dump y pg_restore, y ClamAV con firmas vigentes.
+3. Abrir PowerShell o una terminal en la raíz extraída, donde está package.json.
+4. Ejecutar: npm run start:demo
+5. Esperar la instalación, compilación, migraciones y carga. La primera preparación necesita acceso al registro npm.
+6. Abrir la dirección informada. Predeterminado: http://127.0.0.1:8080
+7. Mantener la terminal abierta e ingresar con una cuenta del archivo de credenciales.
+
+INSTALACIÓN PREPARADA
+npm run start:demo -- --start-only
+
+CIERRE ORDENADO
+Ctrl+C en la terminal del lanzador, o desde otra terminal de la raíz:
+npm run stop:demo
+
+PUERTOS
+Demo: web 8080, API 3001, PostgreSQL aislado 55440/fceadatasys_demo.
+Visual Paradigm MCP también usa 8080; si está activo, cerrar ese servicio o configurar otra dirección web del perfil con el asistente. Durante las capturas se usó temporalmente 8082.
+127.0.0.1 identifica el equipo donde se abre el navegador; no sirve para acceder a un servidor desde otro equipo.
+
+PRODUCCIÓN
+npm run configure -- --profile production
+npm run start:production
+Requiere PostgreSQL propio, dominio y certificados HTTPS, Administrador inicial, rutas privadas y servicios reales. La preparación conserva una base existente por defecto. No elegir recrear sin una copia recuperable y autorización.
+
+BACKUP Y RESTAURACIÓN
+No es necesario restaurar el dump para abrir una demo nueva: el inicializador genera sus ejemplos.
+Para reproducir el estado entregado, TIC restaura el dump en otra base vacía y coloca los ocho adjuntos del ZIP en su almacenamiento privado. El Manual de seguridad detalla roles, grants, hashes y cambio coherente de conexiones.
+No copiar archivos privados dentro de client/public. El ZIP fuente no incluye configuraciones reales, tokens, certificados ni node_modules.

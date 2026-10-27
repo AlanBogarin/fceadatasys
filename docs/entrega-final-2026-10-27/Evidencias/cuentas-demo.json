@@ -1,0 +1,23 @@
+[
+  {
+    "usuario": "admin",
+    "rol": "ADMINISTRADOR",
+    "ingresoHTTP": 200,
+    "salidaHTTP": 204,
+    "resultado": "CREDENCIAL DEMO VERIFICADA"
+  },
+  {
+    "usuario": "digitador",
+    "rol": "DIGITADOR",
+    "ingresoHTTP": 200,
+    "salidaHTTP": 204,
+    "resultado": "CREDENCIAL DEMO VERIFICADA"
+  },
+  {
+    "usuario": "publico",
+    "rol": "PUBLICO",
+    "ingresoHTTP": 200,
+    "salidaHTTP": 204,
+    "resultado": "CREDENCIAL DEMO VERIFICADA"
+  }
+]

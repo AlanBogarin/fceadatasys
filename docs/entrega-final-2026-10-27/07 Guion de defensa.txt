@@ -1,0 +1,31 @@
+﻿GUION DE DEFENSA FCEA DATASYS
+
+1. Presentar título, nombre, problema, actores y alcance. Explicar que el sistema no evalúa tesis.
+2. Exponer objetivo general, específicos, requerimientos y herramientas con su función.
+3. Mostrar D31 Gantt y explicar sus fechas reconstruidas, evidencia y ampliación de permisos/backups del 26 y 27 de octubre. No afirmar que exista una línea base firmada.
+4. Primera transacción: registrar un trabajo aprobado con datos únicos y referencias activas. Guardar, anotar código y recargar. Intentar duplicado y demostrar rechazo. Obtener PDF y Excel de esa investigación.
+5. Segunda transacción: editar ese código, cambiar un dato visible, confirmar con contraseña y verificar. Volver a consultar y obtener nuevos PDF y Excel. Abrir auditoría para comparar antes y después.
+6. Mostrar un conjunto vacío de reportes: no se genera archivo. Explicar snapshot y cambio de versión.
+7. Backup manual: ejecutar o mostrar intento real, archivo, índice y SHA256. Abrir evidencia de restauración real en otro PostgreSQL.
+8. Backup automático: mostrar configuración de tarea, disparador y última ejecución real, archivo y hora. El ensayo temporal usa sesión local conectada; la tarea institucional diaria requiere cuenta propia.
+9. Nube: mostrar recuperación-drive.json, archivo recuperado, SHA256 coincidente y acceso solo de propietario. No mostrar el cliente OAuth ni tokens.
+10. Cerrar con resultados de pruebas y límites operativos. Producción requiere servicios y cuenta institucional propios; los PDF se respaldan por separado.
+
+PREGUNTAS PARA ENSAYAR
+Por qué PostgreSQL: integridad, transacciones, FK, UNIQUE y FTS.
+Qué es una transacción: cambio de negocio con sus relaciones y auditoría; todos confirman o se revierten.
+Cómo se evitan duplicados: normalización y hash individual, con índices únicos ante concurrencia.
+Por qué no borrar publicaciones: se conserva información histórica mediante inactivación.
+Qué ocurre si falla auditoría: la operación protegida se cancela; los rechazos también se registran.
+Por qué dos reportes: alta y actualización son dos operaciones y cada reporte representa su estado correspondiente.
+Qué contiene el dump: estructura y datos PostgreSQL, no PDF privados ni roles globales o secretos externos.
+Qué prueba COMPLETO: local y metadata remota verificadas; la restauración se ensaya aparte.
+Qué se midió del rendimiento: muestras históricas locales, no una garantía de red institucional.
+
+GUION DE VIDEO HASTA TRES MINUTOS
+00:00 a 00:25 problema, nombre y alcance.
+00:25 a 01:15 alta, código y primer reporte.
+01:15 a 01:50 modificación, segundo reporte y auditoría.
+01:50 a 02:35 backups local, automático, Drive y restauración.
+02:35 a 03:00 seguridad, acceso y cierre.
+Este archivo es un guion: no representa un video ya grabado.

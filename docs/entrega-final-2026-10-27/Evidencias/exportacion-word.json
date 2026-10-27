@@ -1,0 +1,30 @@
+[
+  {
+    "document": "01 Documento del sistema.docx",
+    "pages": 85,
+    "toc": 1,
+    "figures": 2,
+    "pdfBytes": 3935065
+  },
+  {
+    "document": "02 Manual de usuario.docx",
+    "pages": 37,
+    "toc": 1,
+    "figures": 2,
+    "pdfBytes": 2017965
+  },
+  {
+    "document": "03 Manual de seguridad.docx",
+    "pages": 23,
+    "toc": 1,
+    "figures": 1,
+    "pdfBytes": 307700
+  },
+  {
+    "document": "04 Presentación de la defensa.docx",
+    "pages": 17,
+    "toc": 0,
+    "figures": 0,
+    "pdfBytes": 369138
+  }
+]

@@ -1,0 +1,59 @@
+[
+  {
+    "documento": "01 Documento del sistema.pdf",
+    "paginas": 85,
+    "textoFueraDeMargenSeguro": [],
+    "paginasVacias": [],
+    "erroresDeCamposOMarcas": [],
+    "fuentes": [
+      "ArialMT",
+      "BCDEEE+Cambria",
+      "BCDFEE+Consolas",
+      "SymbolMT",
+      "TimesNewRomanPS-BoldMT",
+      "TimesNewRomanPSMT"
+    ],
+    "caracteres": 104056
+  },
+  {
+    "documento": "02 Manual de usuario.pdf",
+    "paginas": 37,
+    "textoFueraDeMargenSeguro": [],
+    "paginasVacias": [],
+    "erroresDeCamposOMarcas": [],
+    "fuentes": [
+      "BCDEEE+Cambria",
+      "BCDFEE+Consolas",
+      "TimesNewRomanPS-BoldMT",
+      "TimesNewRomanPSMT"
+    ],
+    "caracteres": 49008
+  },
+  {
+    "documento": "03 Manual de seguridad.pdf",
+    "paginas": 23,
+    "textoFueraDeMargenSeguro": [],
+    "paginasVacias": [],
+    "erroresDeCamposOMarcas": [],
+    "fuentes": [
+      "BCDEEE+Cambria",
+      "BCDFEE+Consolas",
+      "TimesNewRomanPS-BoldMT",
+      "TimesNewRomanPSMT"
+    ],
+    "caracteres": 42747
+  },
+  {
+    "documento": "04 Presentación de la defensa.pdf",
+    "paginas": 17,
+    "textoFueraDeMargenSeguro": [],
+    "paginasVacias": [],
+    "erroresDeCamposOMarcas": [],
+    "fuentes": [
+      "BCDEEE+Consolas",
+      "TimesNewRomanPS-BoldMT",
+      "TimesNewRomanPSMT"
+    ],
+    "caracteres": 8345
+  }
+]

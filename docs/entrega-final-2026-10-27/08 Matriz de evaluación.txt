@@ -1,0 +1,17 @@
+﻿MATRIZ DE COBERTURA DE LA RÚBRICA
+
+1. Título y nombre | 4 puntos | Portada y título del proyecto
+2. Objetivos general y específicos | 10 puntos | Objetivos y correspondencia con funciones
+3. Requerimientos funcionales | 10 puntos | Catálogo RF y trazabilidad
+4. Herramientas de desarrollo | 5 puntos | Tabla de herramientas y justificación
+5. Diagrama de Gantt | 5 puntos | D31 y cronograma con duraciones y dependencias
+6. Primera transacción | 15 puntos | Registro de investigación y prueba de validación
+7. Segunda transacción | 15 puntos | Modificación de la investigación con control de versión
+8. Reportes de ambas transacciones | 10 puntos | Reporte inicial y posterior del mismo código, PDF y Excel
+9. Backup manual y restauración | 6 puntos | Crear copia, identificar archivo y restaurar otra base
+10. Backup automático local | 7 puntos | Tarea, ejecución y archivo con fecha y hora
+11. Backup en nube | 8 puntos | Subida, acceso restringido, descarga y hash
+12. Defensa oral | 5 puntos | Guion, explicación técnica y preguntas de ensayo
+
+TOTAL 100 PUNTOS
+La evidencia acredita las comprobaciones que identifica; no garantiza la calificación de la defensa oral.

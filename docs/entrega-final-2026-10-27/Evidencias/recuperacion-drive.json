@@ -1,0 +1,19 @@
+{
+  "fecha": "2026-10-27T18:03:21.513Z",
+  "perfil": "demo",
+  "cuenta": "Cuenta autorizada de demostración, sin exponer su dirección",
+  "archivo": "fceadatasys-2026-10-27T15-37-04-011Z-b92f17eb-c7ff-49c9-b7f6-6e628f0a7695.dump",
+  "bytes": 93829,
+  "sha256": "741332863e155da07f8171f78295929742929963c0665deb849e46868b2bb1ce",
+  "coincideConCopiaLocal": true,
+  "coincideConHashAuditado": true,
+  "accesoPublico": false,
+  "tiposDePermisos": [
+    {
+      "tipo": "user",
+      "rol": "owner"
+    }
+  ],
+  "resultado": "RECUPERADO Y VERIFICADO",
+  "limitaciones": "Consulta y descarga de un respaldo ya existente. No se registró una tarea del sistema operativo ni se modificaron permisos de Drive."
+}
