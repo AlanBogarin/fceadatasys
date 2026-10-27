@@ -1,12 +1,14 @@
 # Validación de permisos, auditoría y copias — 26/10/2026
 
+Actualización del transporte de Drive del 27/10/2026: [DRIVE-API-VALIDATION.md](DRIVE-API-VALIDATION.md). Los recuentos de esta página corresponden a la validación original de permisos y copias.
+
 Se inspeccionaron el contrato maestro, estado Git inicial limpio, Fastify/Prisma/PostgreSQL, autenticación y confirmación, rutas protegidas, modelo de sesiones, cliente React, auditoría y lanzador Windows/Linux. El usuario autorizó expresamente actualizar `AGENTS.md` para reflejar permisos configurables.
 
 ## Cambios y contratos
 
 - Política persistida por rol con excepciones por cuenta; defaults compatibles, revocación en sesión, controles en servidor y UI, protección del último gestor y de cuentas superiores. Política y auditoría se confirman juntas. ETag canónico evita falsos conflictos por orden de claves JSONB.
 - Auditoría distingue Nombre completo/Usuario y muestra estructuras, booleanos y colecciones en forma legible; JSON y raw siguen disponibles como opciones técnicas.
-- Copias locales custom de PostgreSQL y subida a Drive mediante rclone, verificación del índice y checksum, ejecución manual con historial, exclusión entre procesos, estados completo/parcial/fallido, tareas diarias idempotentes Windows/Linux y horario configurable.
+- Copias locales custom de PostgreSQL y subida directa a la API de Google Drive, verificación del índice y checksum, ejecución manual con historial, exclusión entre procesos, estados completo/parcial/fallido, tareas diarias idempotentes Windows/Linux y horario configurable.
 - Dos migraciones, SQL de reversión y grants runtime. Contratos ampliados en `server/docs/API.md` y `server/docs/DATABASE.md`. Operación y configuración en `BACKUPS.md`; reglas de acceso en `PERMISSIONS.md`.
 
 ## Resultados
@@ -30,6 +32,6 @@ La nueva integración ejercitó concesión de catálogo a Digitador, excepciones
 
 ## Límites operativos
 
-Google Drive se sustituyó en las pruebas: no se autorizó ni probó una cuenta real. No se instaló una tarea real de Windows ni un crontab en Linux. La activación requiere elegir carpeta privada, credenciales de lectura PostgreSQL, autorizar Drive mediante rclone y ejecutar el instalador con el horario deseado. No se acredita restauración institucional completa ni copia de los adjuntos; la guía describe cómo ensayar una restauración en una base nueva y preservar los archivos de Biblioteca.
+Google Drive se sustituyó en las pruebas: no se autorizó ni probó una cuenta real. No se instaló una tarea real de Windows ni un crontab en Linux. La activación requiere elegir carpeta privada, credenciales de lectura PostgreSQL, importar el JSON OAuth y autorizar Drive desde el navegador y ejecutar el instalador con el horario deseado. No se acredita restauración institucional completa ni copia de los adjuntos; la guía describe cómo ensayar una restauración en una base nueva y preservar los archivos de Biblioteca.
 
 No hay errores conocidos pendientes en las validaciones enumeradas. La compensación de efectos externos ante un fallo de auditoría depende de que disco y proveedor sigan accesibles; se documenta el procedimiento de revisión. No se publicaron cambios ni se registraron tareas con credenciales de ejemplo.

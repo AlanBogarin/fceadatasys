@@ -119,7 +119,7 @@ async function configure(config, configFile) {
         "El archivo privado de copias debe ser distinto de la configuración de despliegue.",
       );
     const base = dirname(file);
-    for (const key of ["BACKUP_DIRECTORY", "RCLONE_CONFIG"])
+    for (const key of ["BACKUP_DIRECTORY", "DRIVE_CLIENT_FILE", "DRIVE_TOKEN_FILE"])
       result.backup[key] = assertPrivateLocation(
         root,
         resolve(base, result.backup[key]),
@@ -596,7 +596,7 @@ async function main() {
 main().catch((error) => {
   console.error(
     error?.message &&
-      /^(Falta configuración|Perfil inválido|PUBLIC_URL|Producción|Demo|MANAGE_|API_PORT|JWT_SECRET|La API|La base|La entrega|La contraseña o acceso del rol |La conexión de copias |La cuenta de copias |La configuración, adjuntos y copias |La autorización inicial de Google Drive |El |No |Revisar|Un |Runtime|Se requiere|Faltan|Falta compilación|Falló|Puerto |Ya existe|Configuración |Opción |Migraciones|Completar|Elegir|Certificado|Preparación cancelada|Confirmación incorrecta|Destino rclone|--configure )/.test(
+      /^(Falta configuración|Perfil inválido|PUBLIC_URL|Producción|Demo|MANAGE_|API_PORT|JWT_SECRET|La API|La base|La entrega|La contraseña o acceso del rol |La conexión de copias |La cuenta de copias |La configuración, adjuntos y copias |La autorización inicial de Google Drive |El |No |Revisar|Un |Runtime|Se requiere|Faltan|Falta compilación|Falló|Puerto |Ya existe|Configuración |Opción |Migraciones|Completar|Elegir|Certificado|Preparación cancelada|Confirmación incorrecta|Destino Google Drive|--configure )/.test(
         error.message,
       )
       ? error.message

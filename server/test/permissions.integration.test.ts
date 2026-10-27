@@ -32,7 +32,8 @@ test(
     const folder = await mkdtemp(resolve(".tmp/permissions-integration-"));
     const local = join(folder, "copies"),
       configFile = join(folder, "backup.env"),
-      remote = join(folder, "rclone.conf");
+      client = join(folder, "drive-client.json"),
+      token = join(folder, "drive-token.json");
     const password = "Permissions2026!",
       suffix = randomUUID().slice(0, 8),
       now = new Date();
@@ -62,10 +63,25 @@ test(
       });
       people.push({ user, session });
     }
-    await writeFile(remote, "[drive]\ntype = drive\n");
+    await writeFile(
+      client,
+      JSON.stringify({
+        installed: {
+          client_id: "integration.apps.googleusercontent.com",
+          client_secret: "test-secret",
+        },
+      }),
+    );
+    await writeFile(
+      token,
+      JSON.stringify({
+        client_id: "integration.apps.googleusercontent.com",
+        refresh_token: "test-refresh",
+      }),
+    );
     await writeFile(
       configFile,
-      `BACKUP_DATABASE_URL="${process.env.PERMISSIONS_TEST_OWNER_URL}"\nBACKUP_DIRECTORY="${local.replaceAll("\\", "/")}"\nRCLONE_CONFIG="${remote.replaceAll("\\", "/")}"\nRCLONE_REMOTE=drive:integration\nPG_DUMP_COMMAND="${process.env.TEST_PG_DUMP!.replaceAll("\\", "/")}"\nPG_RESTORE_COMMAND="${process.env.TEST_PG_RESTORE!.replaceAll("\\", "/")}"\n`,
+      `BACKUP_DATABASE_URL="${process.env.PERMISSIONS_TEST_OWNER_URL}"\nBACKUP_DIRECTORY="${local.replaceAll("\\", "/")}"\nDRIVE_CLIENT_FILE="${client.replaceAll("\\", "/")}"\nDRIVE_TOKEN_FILE="${token.replaceAll("\\", "/")}"\nDRIVE_FOLDER_ID=integration-folder\nPG_DUMP_COMMAND="${process.env.TEST_PG_DUMP!.replaceAll("\\", "/")}"\nPG_RESTORE_COMMAND="${process.env.TEST_PG_RESTORE!.replaceAll("\\", "/")}"\n`,
     );
     let cloudFile = "",
       releaseDump: (() => void) | undefined;
@@ -73,19 +89,27 @@ test(
       releaseDump = resolveGate;
     });
     const command: Command = async (program, args, env, timeout) => {
-      if (program === "rclone") {
-        if (args[0] === "copyto") cloudFile = args[1];
-        if (args[0] === "lsjson") {
-          const bytes = await readFile(cloudFile);
-          return JSON.stringify({
-            Size: bytes.length,
-            Hashes: { MD5: createHash("md5").update(bytes).digest("hex") },
-          });
-        }
-        return "";
-      }
       if (args.includes("--format=custom")) await dumpGate;
       return execute(program, args, env, timeout);
+    };
+    let cloudName = "";
+    const drive = {
+      generateId: async () => "integration-file",
+      upload: async (_id: string, path: string, name: string) => {
+        cloudFile = path;
+        cloudName = name;
+      },
+      metadata: async () => {
+        const bytes = await readFile(cloudFile);
+        return {
+          id: "integration-file",
+          name: cloudName,
+          parents: ["integration-folder"],
+          size: String(bytes.length),
+          md5Checksum: createHash("md5").update(bytes).digest("hex"),
+        };
+      },
+      remove: async () => {},
     };
     const config = {
       nodeEnv: "test" as const,
@@ -102,7 +126,7 @@ test(
     };
     const app = await createApp(config, prisma, {
       logger: false,
-      backups: { command },
+      backups: { command, drive },
       security: {
         mailer: {
           available: false,
@@ -270,7 +294,7 @@ test(
       config,
       { ip: "127.0.0.1", headers: { "user-agent": "test-scheduler" } } as any,
       "PROGRAMADO",
-      { command },
+      { command, drive },
     );
     assert.equal((await scheduled.completion).status, "COMPLETO");
     assert.equal(

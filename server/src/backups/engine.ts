@@ -11,7 +11,14 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve, relative } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  resolve,
+  relative,
+} from "node:path";
 import { parseEnv } from "node:util";
 import { Client } from "pg";
 import { z } from "zod";
@@ -21,15 +28,25 @@ import type { AppConfig } from "../config.js";
 import { AppError } from "../errors.js";
 import { audit } from "../security/audit.js";
 import { assertRequestPermission } from "../security/permissions.js";
+import {
+  GoogleDrive,
+  readDriveClient,
+  readDriveToken,
+  type DriveStorage,
+} from "./drive.js";
 
 const schema = z.object({
   BACKUP_DATABASE_URL: z.url().refine((value) => /^postgres(ql)?:/.test(value)),
   BACKUP_DIRECTORY: z.string().min(1),
   PG_DUMP_COMMAND: z.string().min(1).default("pg_dump"),
   PG_RESTORE_COMMAND: z.string().min(1).default("pg_restore"),
-  RCLONE_COMMAND: z.string().min(1).default("rclone"),
-  RCLONE_CONFIG: z.string().min(1),
-  RCLONE_REMOTE: z.string().regex(/^[a-zA-Z0-9_-]+:[^\r\n]*$/),
+  DRIVE_CLIENT_FILE: z.string().min(1),
+  DRIVE_TOKEN_FILE: z.string().min(1),
+  DRIVE_FOLDER_ID: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]*$/)
+    .default(""),
+  DRIVE_FOLDER_NAME: z.string().trim().min(1).max(200).default("FCEA Datasys"),
   BACKUP_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -38,8 +55,22 @@ const schema = z.object({
     .default(1800000),
 });
 export type BackupSettings = z.infer<typeof schema>;
+async function canonicalLocation(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    // Resolve existing ancestors too, so a new token cannot escape through a junction.
+    if (
+      (error as NodeJS.ErrnoException).code !== "ENOENT" ||
+      dirname(path) === path
+    )
+      throw error;
+    return join(await canonicalLocation(dirname(path)), basename(path));
+  }
+}
 export async function backupSettings(
   configFile: string,
+  { requireAuthorization = true } = {},
 ): Promise<BackupSettings> {
   let settings: BackupSettings;
   try {
@@ -51,31 +82,51 @@ export async function backupSettings(
       "Configurá las copias locales y Google Drive en el servidor.",
     );
   }
-  for (const key of ["BACKUP_DIRECTORY", "RCLONE_CONFIG"] as const) {
+  for (const key of [
+    "BACKUP_DIRECTORY",
+    "DRIVE_CLIENT_FILE",
+    "DRIVE_TOKEN_FILE",
+  ] as const) {
     if (!isAbsolute(settings[key]))
       settings[key] = resolve(dirname(configFile), settings[key]);
   }
-  // Only a Google Drive remote is accepted. Tokens never leave this server.
-  let remoteConfig: string;
   try {
-    remoteConfig = await readFile(settings.RCLONE_CONFIG, "utf8");
+    const client = await readDriveClient(settings.DRIVE_CLIENT_FILE);
+    if (requireAuthorization) {
+      await readDriveToken(settings.DRIVE_TOKEN_FILE, client.client_id);
+      if (!settings.DRIVE_FOLDER_ID) throw Error("Falta carpeta de Drive.");
+    }
+    const locations = await Promise.all(
+      [configFile, settings.DRIVE_CLIENT_FILE, settings.DRIVE_TOKEN_FILE].map(
+        (path) => canonicalLocation(resolve(path)),
+      ),
+    );
+    const keys = locations.map((path) =>
+      process.platform === "win32" ? path.toLowerCase() : path,
+    );
+    if (new Set(keys).size !== locations.length)
+      throw Error("Archivos privados superpuestos.");
+    for (const actual of locations) {
+      for (const candidate of [
+        resolve(process.cwd(), "client"),
+        resolve(process.cwd(), "../client"),
+      ]) {
+        const base = await realpath(candidate).catch(() => candidate);
+        const fromClient = relative(base, actual);
+        if (
+          !fromClient ||
+          (!fromClient.startsWith("..") && !isAbsolute(fromClient))
+        )
+          throw Error("Los secretos deben quedar fuera del cliente web.");
+      }
+    }
   } catch {
     throw new AppError(
       503,
       "BACKUP_NOT_CONFIGURED",
-      "No se pudo leer la configuración privada de Google Drive.",
+      "Revisá el JSON del cliente OAuth, la autorización privada y la carpeta de Google Drive.",
     );
   }
-  const name = settings.RCLONE_REMOTE.split(":")[0];
-  const section = remoteConfig
-    .split(/(?=^\[)/m)
-    .find((part) => part.startsWith(`[${name}]`));
-  if (!section || !/^type\s*=\s*drive\s*$/m.test(section))
-    throw new AppError(
-      503,
-      "BACKUP_NOT_CONFIGURED",
-      "El destino debe ser un remoto de Google Drive de rclone.",
-    );
   return settings;
 }
 export type Command = (
@@ -168,6 +219,7 @@ export async function acquireBackupLock(
 }
 export interface BackupOptions {
   command?: Command;
+  drive?: DriveStorage;
   acquireLock?: typeof acquireBackupLock;
 }
 export async function startBackup(
@@ -270,6 +322,8 @@ export async function startBackup(
       release.assertHeld?.();
       return output;
     },
+    options.drive ?? new GoogleDrive(settings),
+    () => release.assertHeld?.(),
   ).finally(release);
   return { job, completion };
 }
@@ -288,25 +342,14 @@ async function performBackup(
   request: FastifyRequest,
   id: string,
   command: Command,
+  drive: DriveStorage,
+  assertHeld: () => void,
 ) {
   const filename = `fceadatasys-${new Date().toISOString().replace(/[:.]/g, "-")}-${id}.dump`;
   const local = join(settings.BACKUP_DIRECTORY, filename),
     partial = local + ".partial";
-  const remote = settings.RCLONE_REMOTE.replace(/\/$/, "") + "/" + filename;
-  const rcloneArgs = [
-    "--config",
-    settings.RCLONE_CONFIG,
-    "--retries",
-    "3",
-    "--low-level-retries",
-    "3",
-    "--stats",
-    "0",
-    "--contimeout",
-    "30s",
-    "--timeout",
-    "2m",
-  ];
+  let remoteId: string | undefined;
+  let uploadAttempted = false;
   let localSaved = false,
     cloudSaved = false,
     detail = "",
@@ -361,34 +404,35 @@ async function performBackup(
     await rename(partial, local);
     localSaved = true;
     await chmod(local, 0o600);
+    assertHeld();
+    remoteId = await drive.generateId();
+    assertHeld();
     await audit(prisma, request, {
       operation: "RESPALDO_NUBE_AUTORIZADO",
       resource: "respaldos",
       resourceId: id,
       status: "EXITO",
-      after: { filename },
+      after: { filename, driveFileId: remoteId },
     });
-    await command(
-      settings.RCLONE_COMMAND,
-      ["copyto", local, remote, "--checksum", ...rcloneArgs],
-      process.env,
-      settings.BACKUP_TIMEOUT_MS,
-    );
-    const uploaded = JSON.parse(
-      await command(
-        settings.RCLONE_COMMAND,
-        ["lsjson", remote, "--stat", "--hash", ...rcloneArgs],
-        process.env,
-        settings.BACKUP_TIMEOUT_MS,
-      ),
-    );
+    assertHeld();
+    uploadAttempted = true;
+    await drive.upload(remoteId, local, filename);
+    assertHeld();
+    const uploaded = await drive.metadata(remoteId);
+    assertHeld();
     if (
-      uploaded.Size !== (await stat(local)).size ||
-      uploaded.Hashes?.MD5?.toLowerCase() !== hashes.md5
+      uploaded.id !== remoteId ||
+      uploaded.name !== filename ||
+      uploaded.trashed ||
+      !uploaded.parents?.includes(settings.DRIVE_FOLDER_ID) ||
+      uploaded.size !== String((await stat(local)).size) ||
+      uploaded.md5Checksum?.toLowerCase() !== hashes.md5
     )
       throw Error("No se pudo verificar Google Drive.");
     cloudSaved = true;
   } catch (error) {
+    if (remoteId && uploadAttempted)
+      await drive.remove(remoteId).catch(() => {});
     detail = localSaved
       ? "La copia local está disponible. No se confirmó la copia en Google Drive; revisá la conexión y las credenciales y ejecutá una nueva copia."
       : "No se pudo crear o verificar la copia local. Revisá PostgreSQL, permisos, herramientas y espacio disponible.";
@@ -403,6 +447,7 @@ async function performBackup(
   const status = cloudSaved ? "COMPLETO" : localSaved ? "PARCIAL" : "FALLIDO";
   try {
     return await prisma.$transaction(async (tx) => {
+      if (cloudSaved) assertHeld();
       await audit(tx, request, {
         operation: "RESPALDO_FINALIZADO",
         resource: "respaldos",
@@ -413,6 +458,7 @@ async function performBackup(
           filename,
           localSaved,
           cloudSaved,
+          ...(remoteId ? { driveFileId: remoteId } : {}),
           ...(hashes ? { sha256: hashes.sha256 } : {}),
         },
       });
@@ -430,13 +476,7 @@ async function performBackup(
     });
   } catch (error) {
     // Cancel newly generated copies if the mandatory final audit cannot commit.
-    if (cloudSaved)
-      await command(
-        settings.RCLONE_COMMAND,
-        ["deletefile", remote, ...rcloneArgs],
-        process.env,
-        settings.BACKUP_TIMEOUT_MS,
-      ).catch(() => {});
+    if (remoteId) await drive.remove(remoteId).catch(() => {});
     if (localSaved) await rm(local, { force: true }).catch(() => {});
     throw error;
   }

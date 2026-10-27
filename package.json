@@ -14,6 +14,7 @@
     "stop:production": "node scripts/run.mjs --profile production --stop",
     "configure": "node scripts/run.mjs --configure",
     "backup": "node scripts/backup.mjs",
+    "backup:authorize": "node scripts/authorize-drive.mjs",
     "backup:schedule": "node scripts/configure-backups.mjs",
     "test:backups": "node --test scripts/backups/*.test.mjs",
     "test:deployment": "node --test scripts/deployment/*.test.mjs",

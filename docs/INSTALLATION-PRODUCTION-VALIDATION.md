@@ -1,5 +1,7 @@
 # Validación del asistente de producción — 26/10/2026
 
+Actualización del transporte de Drive del 27/10/2026: [DRIVE-API-VALIDATION.md](DRIVE-API-VALIDATION.md). Los recuentos de esta página corresponden a la validación original del asistente.
+
 Se revisó el lanzador existente, los perfiles y plantillas, la preparación de PostgreSQL, el aprovisionamiento inicial, los comandos de copias y la programación Windows/Linux. Se conservaron los cambios anteriores de permisos, auditoría y copias. El alcance de esta ampliación es el asistente y su integración con esas capacidades.
 
 ## Resultado
@@ -8,7 +10,7 @@ Producción propone `fceadatasys` y solicita datos del servicio PostgreSQL princ
 
 Si existe la base, la ejecución interactiva ofrece conservar, recrear o cancelar. Recrear requiere copia local previa con índice comprobado, confirmación exacta, identidad sin cambios y ausencia de conexiones activas. No se fuerzan desconexiones. Sin interacción conserva. Las credenciales de roles existentes deben coincidir; no se restablecen ni se eliminan roles. Cambiar el nombre sugerido no migra automáticamente una base anterior.
 
-El asistente integra la cuenta dedicada de lectura, autorización rclone, primera copia local/Drive, tarea diaria idempotente, horario y deshabilitación explícita de una tarea previa. Las conexiones administrativas y la contraseña inicial se retiran del archivo de despliegue tras una preparación exitosa. La API mantiene credenciales limitadas.
+El asistente integra la cuenta dedicada de lectura, autorización OAuth con la API de Google Drive, primera copia local/Drive, tarea diaria idempotente, horario y deshabilitación explícita de una tarea previa. Las conexiones administrativas y la contraseña inicial se retiran del archivo de despliegue tras una preparación exitosa. La API mantiene credenciales limitadas.
 
 ## Comprobaciones ejecutadas
 

@@ -86,6 +86,7 @@ const labels: Record<string, string> = {
   filename: "Nombre del archivo",
   localSaved: "Copia local guardada",
   cloudSaved: "Copia en Google Drive guardada",
+  driveFileId: "Archivo en Google Drive (identificador)",
   scannedAt: "Fecha de análisis",
   scanner: "Antivirus",
   engine: "Motor de análisis",

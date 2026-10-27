@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
   readConfig,
@@ -25,14 +25,16 @@ export function configuredBackups(root, config) {
     "BACKUP_DIRECTORY",
     "PG_DUMP_COMMAND",
     "PG_RESTORE_COMMAND",
-    "RCLONE_COMMAND",
-    "RCLONE_CONFIG",
-    "RCLONE_REMOTE",
+    "DRIVE_CLIENT_FILE",
+    "DRIVE_TOKEN_FILE",
   ])
     if (!backup[key]?.trim())
       throw Error(`Falta configuración de copias: ${key}.`);
-  if (!/^[a-zA-Z0-9_-]+:[^\r\n]*$/.test(backup.RCLONE_REMOTE))
-    throw Error("Destino rclone inválido.");
+  if (
+    backup.DRIVE_FOLDER_ID &&
+    !/^[a-zA-Z0-9_-]+$/.test(backup.DRIVE_FOLDER_ID)
+  )
+    throw Error("Destino Google Drive inválido.");
   const target = new URL(config.DATABASE_URL),
     reader = new URL(backup.BACKUP_DATABASE_URL);
   if (reader.host !== target.host || reader.pathname !== target.pathname)
@@ -43,10 +45,12 @@ export function configuredBackups(root, config) {
   const result = {
     ...backup,
     BACKUP_DIRECTORY: resolve(dirname(file), backup.BACKUP_DIRECTORY),
-    RCLONE_CONFIG: resolve(dirname(file), backup.RCLONE_CONFIG),
+    DRIVE_CLIENT_FILE: resolve(dirname(file), backup.DRIVE_CLIENT_FILE),
+    DRIVE_TOKEN_FILE: resolve(dirname(file), backup.DRIVE_TOKEN_FILE),
   };
   assertPrivateLocation(root, result.BACKUP_DIRECTORY);
-  assertPrivateLocation(root, result.RCLONE_CONFIG);
+  assertPrivateLocation(root, result.DRIVE_CLIENT_FILE);
+  assertPrivateLocation(root, result.DRIVE_TOKEN_FILE);
   return result;
 }
 export async function prepareBackupTools(
@@ -59,7 +63,6 @@ export async function prepareBackupTools(
   for (const [key, argv] of [
     ["PG_DUMP_COMMAND", ["--version"]],
     ["PG_RESTORE_COMMAND", ["--version"]],
-    ["RCLONE_COMMAND", ["version"]],
   ])
     await execute(backup[key], argv, {}, key);
   if (config.BACKUP_CONFIGURE_DRIVE === "true") {
@@ -67,10 +70,16 @@ export async function prepareBackupTools(
       throw Error(
         "La autorización inicial de Google Drive requiere una ejecución interactiva de configuración.",
       );
-    mkdirSync(dirname(backup.RCLONE_CONFIG), { recursive: true, mode: 0o700 });
     await interactiveExecute(
-      backup.RCLONE_COMMAND,
-      ["config", "--config", backup.RCLONE_CONFIG],
+      process.execPath,
+      [
+        resolve(root, "server/dist/scripts/authorize-drive.js"),
+        "--config",
+        localPath(
+          root,
+          config.BACKUP_CONFIG_FILE || `.local/backups/${config.PROFILE}.env`,
+        ),
+      ],
       "Autorización de Google Drive",
     );
     config.BACKUP_CONFIGURE_DRIVE = "false";

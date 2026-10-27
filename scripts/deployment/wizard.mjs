@@ -26,7 +26,8 @@ export function dataDefaults(root, profile, platform = process.platform) {
     return {
       attachments: resolve(root, `server/.local/${profile}/attachments`),
       backups: resolve(root, `.local/backups/${profile}`),
-      rclone: resolve(root, `.local/backups/${profile}-rclone.conf`),
+      driveClient: resolve(root, `.local/backups/${profile}-drive-client.json`),
+      driveToken: resolve(root, `.local/backups/${profile}-drive-token.json`),
     };
   const base =
     platform === "win32"
@@ -35,7 +36,8 @@ export function dataDefaults(root, profile, platform = process.platform) {
   return {
     attachments: join(base, "attachments"),
     backups: join(base, "backups"),
-    rclone: join(base, "private", "rclone.conf"),
+    driveClient: join(base, "private", "drive-client.json"),
+    driveToken: join(base, "private", "drive-token.json"),
   };
 }
 
@@ -387,7 +389,21 @@ export async function configureDeployment(
     );
     const file = localPath(root, config.BACKUP_CONFIG_FILE);
     const previousBackup = existsSync(file) ? readConfig(file) : {};
-    backup = { ...previousBackup };
+    backup = Object.fromEntries(
+      Object.entries(previousBackup).filter(([key]) =>
+        [
+          "BACKUP_DATABASE_URL",
+          "BACKUP_DIRECTORY",
+          "PG_DUMP_COMMAND",
+          "PG_RESTORE_COMMAND",
+          "BACKUP_TIMEOUT_MS",
+          "DRIVE_CLIENT_FILE",
+          "DRIVE_TOKEN_FILE",
+          "DRIVE_FOLDER_ID",
+          "DRIVE_FOLDER_NAME",
+        ].includes(key),
+      ),
+    );
     backup.BACKUP_DIRECTORY = await field(
       "BACKUP_DIRECTORY",
       "Carpeta privada para copias de la base",
@@ -442,25 +458,34 @@ export async function configureDeployment(
       "Ejecutable pg_restore",
       backup.PG_RESTORE_COMMAND || tool("pg_restore"),
     );
-    backup.RCLONE_COMMAND = await field(
-      "RCLONE_COMMAND",
-      "Ejecutable rclone",
-      backup.RCLONE_COMMAND || "rclone",
+    log(
+      "Google Drive usa su API directamente. Importá el JSON OAuth de tipo aplicación de escritorio; el navegador solicitará autorización una vez.",
     );
-    backup.RCLONE_CONFIG = await field(
-      "RCLONE_CONFIG",
-      "Archivo privado de credenciales rclone",
-      backup.RCLONE_CONFIG || paths.rclone,
+    backup.DRIVE_CLIENT_FILE = await field(
+      "DRIVE_CLIENT_FILE",
+      "JSON privado del cliente OAuth de Google",
+      backup.DRIVE_CLIENT_FILE || paths.driveClient,
     );
-    backup.RCLONE_REMOTE = await field(
-      "RCLONE_REMOTE",
-      "Destino Google Drive, remoto:carpeta",
-      backup.RCLONE_REMOTE || `drive:fceadatasys/${profile}`,
-      (value) => /^[a-zA-Z0-9_-]+:[^\r\n]*$/.test(value),
+    backup.DRIVE_TOKEN_FILE = await field(
+      "DRIVE_TOKEN_FILE",
+      "Archivo privado para guardar la autorización de Google",
+      backup.DRIVE_TOKEN_FILE || paths.driveToken,
+    );
+    backup.DRIVE_FOLDER_NAME = await field(
+      "DRIVE_FOLDER_NAME",
+      "Nombre de la carpeta que se creará en Drive",
+      backup.DRIVE_FOLDER_NAME || `fceadatasys-${profile}`,
+      (value) => Boolean(value.trim()) && value.length <= 200,
+    );
+    backup.DRIVE_FOLDER_ID = await field(
+      "DRIVE_FOLDER_ID",
+      "ID de carpeta ya autorizada; vacío crea una carpeta propia",
+      backup.DRIVE_FOLDER_ID || "",
+      (value) => /^[a-zA-Z0-9_-]*$/.test(value),
     );
     backup.BACKUP_TIMEOUT_MS = await number(
       "BACKUP_TIMEOUT_MS",
-      "Tiempo máximo de cada herramienta de copias en milisegundos",
+      "Tiempo máximo de cada etapa de copias en milisegundos",
       backup.BACKUP_TIMEOUT_MS || "1800000",
       1000,
       7200000,
@@ -468,8 +493,9 @@ export async function configureDeployment(
     config.BACKUP_CONFIGURE_DRIVE = String(
       await yes(
         "BACKUP_CONFIGURE_DRIVE",
-        "Abrir rclone config para autorizar o configurar Drive durante la preparación",
-        !existsSync(resolve(dirname(file), backup.RCLONE_CONFIG)),
+        "Abrir el navegador para autorizar Google Drive durante la preparación",
+        !existsSync(resolve(dirname(file), backup.DRIVE_TOKEN_FILE)) ||
+          !backup.DRIVE_FOLDER_ID,
       ),
     );
     config.BACKUP_TEST_ON_SETUP = String(

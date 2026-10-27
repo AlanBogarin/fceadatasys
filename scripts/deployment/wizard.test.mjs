@@ -101,9 +101,10 @@ test("producción usa fceadatasys en el servicio principal y pregunta credencial
     "BACKUP_DB_PASSWORD",
     "PG_DUMP_COMMAND",
     "PG_RESTORE_COMMAND",
-    "RCLONE_COMMAND",
-    "RCLONE_CONFIG",
-    "RCLONE_REMOTE",
+    "DRIVE_CLIENT_FILE",
+    "DRIVE_TOKEN_FILE",
+    "DRIVE_FOLDER_NAME",
+    "DRIVE_FOLDER_ID",
     "BACKUP_TIMEOUT_MS",
     "BACKUP_CONFIGURE_DRIVE",
     "BACKUP_TEST_ON_SETUP",
@@ -147,7 +148,36 @@ test("el asistente actualiza el nombre anterior sin ordenar renombrar ni elimina
     undefined,
   );
   assert.equal(result.config.BACKUP_DISABLE_SCHEDULE, "true");
-  assert.ok(!prompt.calls.some((call) => call.key === "RCLONE_REMOTE"));
+  assert.ok(!prompt.calls.some((call) => call.key === "DRIVE_FOLDER_ID"));
+});
+
+test("demo habilita Drive personal con configuración propia y conserva la base demo", async (t) => {
+  const folder = fixture(t);
+  const prompt = terminal({
+    PUBLIC_URL: "http://127.0.0.1:8080",
+    BACKUP_ENABLED: "si",
+    BACKUP_CONFIG_FILE: join(folder, "demo.env"),
+    BACKUP_CONFIGURE_DRIVE: "si",
+    BACKUP_INSTALL_SCHEDULE: "no",
+    SMTP_ENABLED: "no",
+  });
+  const input = defaults(root, "demo");
+  const result = await configureDeployment(root, input, prompt);
+  assert.equal(result.config.PROFILE, "demo");
+  assert.equal(result.config.BACKUP_ENABLED, "true");
+  assert.equal(result.config.BACKUP_CONFIGURE_DRIVE, "true");
+  assert.equal(result.config.BACKUP_INSTALL_SCHEDULE, "false");
+  assert.equal(result.config.DATABASE_URL, input.DATABASE_URL);
+  const runtime = new URL(input.DATABASE_URL);
+  const reader = new URL(result.backup.BACKUP_DATABASE_URL);
+  assert.equal(reader.host, runtime.host);
+  assert.equal(reader.pathname, "/fceadatasys_demo");
+  assert.notEqual(reader.username, runtime.username);
+  assert.equal(result.backup.DRIVE_FOLDER_NAME, "fceadatasys-demo");
+  assert.equal(result.backup.DRIVE_FOLDER_ID, "");
+  assert.ok(result.backup.DRIVE_CLIENT_FILE.endsWith("demo-drive-client.json"));
+  assert.ok(result.backup.DRIVE_TOKEN_FILE.endsWith("demo-drive-token.json"));
+  assert.ok(!prompt.calls.some((call) => call.key === "BOOTSTRAP_ADMIN_EMAIL"));
 });
 test("URLs codifican contraseñas con símbolos; identificadores y carpetas públicas se rechazan", () => {
   const url = new URL(
@@ -194,9 +224,9 @@ test("la configuración privada de copias persiste y se valida contra la base de
     BACKUP_DIRECTORY: "copies",
     PG_DUMP_COMMAND: "pg_dump",
     PG_RESTORE_COMMAND: "pg_restore",
-    RCLONE_COMMAND: "rclone",
-    RCLONE_CONFIG: "rclone.conf",
-    RCLONE_REMOTE: "drive:copias",
+    DRIVE_CLIENT_FILE: "drive-client.json",
+    DRIVE_TOKEN_FILE: "drive-token.json",
+    DRIVE_FOLDER_ID: "folder-test",
   };
   writeConfig(file, backup);
   assert.deepEqual(readConfig(file), backup);
@@ -224,8 +254,8 @@ test("preparación de copias: autorización explícita, primera prueba y horario
   const backup = {
     PG_DUMP_COMMAND: "pg_dump",
     PG_RESTORE_COMMAND: "pg_restore",
-    RCLONE_COMMAND: "rclone",
-    RCLONE_CONFIG: join(folder, "private", "rclone.conf"),
+    DRIVE_CLIENT_FILE: join(folder, "private", "drive-client.json"),
+    DRIVE_TOKEN_FILE: join(folder, "private", "drive-token.json"),
   };
   const commands = [],
     interactive = [];
@@ -241,7 +271,7 @@ test("preparación de copias: autorización explícita, primera prueba y horario
   await prepareBackupTools(root, config, backup, options);
   assert.equal(config.BACKUP_CONFIGURE_DRIVE, "false");
   assert.equal(validated, 1);
-  assert.ok(interactive[0][1].includes("config"));
+  assert.ok(interactive[0][1][0].endsWith("authorize-drive.js"));
   await finishBackupSetup(root, config, backup, options);
   assert.ok(commands.some((args) => args[1].includes("scripts/backup.mjs")));
   assert.ok(

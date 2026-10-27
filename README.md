@@ -81,7 +81,9 @@ La configuración se guarda en `.local/deploy/production.env`, ignorada por Git.
 
 La primera carga crea únicamente un Administrador (valores iniciales: **Administrador / CI `0000000` / usuario `admin`**), parámetros **300 palabras / PDF / 10 MiB** y auditoría. La identidad inicial se puede ajustar en el asistente y no se cargan muestras UNC. La contraseña inicial y la URL administrativa se retiran del archivo tras preparar la base; la API recibe solo sus credenciales runtime.
 
-Si se habilitan copias, el asistente guarda `.local/backups/production.env`, provisiona una cuenta PostgreSQL de lectura y permite abrir rclone para autorizar Drive, probar la primera copia y registrar o actualizar la tarea diaria Windows/Linux con la hora elegida. También ofrece deshabilitar una tarea previa cuando se desactiva la programación. Rclone y las herramientas PostgreSQL deben estar instalados. Guía completa y responsabilidades: [INSTALLATION-PRODUCTION.md](docs/INSTALLATION-PRODUCTION.md).
+Si se habilitan copias, el asistente guarda `.local/backups/production.env`, provisiona una cuenta PostgreSQL de lectura y permite importar el JSON OAuth y abrir el navegador para autorizar Drive, probar la primera copia y registrar o actualizar la tarea diaria Windows/Linux con la hora elegida. También ofrece deshabilitar una tarea previa cuando se desactiva la programación. Solo se requieren las herramientas PostgreSQL; la subida utiliza directamente la API de Google Drive. Preparación de cuenta, proyecto, credenciales y consentimiento: [guía de Google Drive](docs/GOOGLE-DRIVE.md). Instalación y responsabilidades: [INSTALLATION-PRODUCTION.md](docs/INSTALLATION-PRODUCTION.md).
+
+Demo admite una cuenta personal de Google. Producción utiliza su propia configuración y proyecto de Google. La caducidad semanal corresponde al estado OAuth externo **Prueba/Testing** de Google Cloud; elegir el perfil local `production` no cambia ese estado. En Google **En producción**, el código renueva automáticamente el acceso mientras la autorización siga válida. Detalles y renovación: [Google Drive](docs/GOOGLE-DRIVE.md#10-caducidad-y-uso-en-producción).
 
 La web escucha por defecto en `0.0.0.0`, puerto HTTPS del `PUBLIC_URL`; la API permanece en loopback. El servidor web incluido entrega `client/dist`, sirve configuración pública en ejecución y dirige `/api/v1` a la API. No es necesario ejecutar Vite ni configurar Nginx para este camino de despliegue.
 
@@ -108,7 +110,7 @@ Editar `.local/deploy/demo.env` o `.local/deploy/production.env`, o usar el asis
 | `BOOTSTRAP_ADMIN_*` | Identidad y credenciales para la primera cuenta de producción. |
 | `SMTP_*` | Transporte para recuperación. Sin SMTP no se envían correos. |
 | `BACKUP_ENABLED` / `BACKUP_CONFIG_FILE` | Habilitar las copias y elegir su archivo privado. |
-| `BACKUP_CONFIGURE_DRIVE` / `BACKUP_TEST_ON_SETUP` | Abrir la autorización de Drive y probar una primera copia durante la preparación. |
+| `BACKUP_CONFIGURE_DRIVE` / `BACKUP_TEST_ON_SETUP` | Autorizar la API de Drive en el navegador y probar una primera copia durante la preparación. |
 | `BACKUP_INSTALL_SCHEDULE` / `BACKUP_TIME` | Registrar/actualizar la tarea diaria y su hora local `HH:MM`. |
 | `BACKUP_DISABLE_SCHEDULE` | Deshabilitar una tarea anterior si el instalador lo solicitó; se consume al aplicarse. |
 | `INSTALL_BACKUP_DIRECTORY` | Carpeta privada de la copia obligatoria antes de recrear una base. |
@@ -142,7 +144,7 @@ El proceso permanece en primer plano. Para ejecución después de reiniciar el e
 
 ## Desarrollo y validación
 
-La ventana Roles y permisos permite configurar acciones por rol y excepciones por cuenta. Auditoría muestra una vista amigable con opciones JSON/raw. Copias de seguridad permite respaldos de PostgreSQL y consulta del estado local/en Google Drive. Preparación y programación Windows/Linux: [BACKUPS.md](docs/BACKUPS.md); accesos: [PERMISSIONS.md](docs/PERMISSIONS.md). Requieren las dos migraciones del 26/10/2026 y los grants actualizados.
+La ventana Roles y permisos permite configurar acciones por rol y excepciones por cuenta. Auditoría muestra una vista amigable con opciones JSON/raw. Copias de seguridad permite respaldos de PostgreSQL y consulta del estado local/en Google Drive. Configuración y acceso a Drive: [GOOGLE-DRIVE.md](docs/GOOGLE-DRIVE.md). Programación y restauración: [BACKUPS.md](docs/BACKUPS.md); accesos: [PERMISSIONS.md](docs/PERMISSIONS.md). Requieren las dos migraciones del 26/10/2026 y los grants actualizados.
 
 El cliente de desarrollo también utiliza API real. Las instrucciones manuales y contratos están en [cliente](client/README.md), [servidor](server/README.md), [API](server/docs/API.md) y [conjuntos iniciales](server/docs/INITIAL-DATA.md).
 

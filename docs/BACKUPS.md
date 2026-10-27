@@ -2,17 +2,19 @@
 
 La aplicación incorpora **Administración → Copias de seguridad**. Requiere Administrador y `backups.manage`. **Crear copia ahora** responde HTTP 202 y permite seguir el resultado en el historial. La programación usa el Programador de tareas de Windows o el crontab de la cuenta en Linux; funciona sin la web/API iniciada, siempre que PostgreSQL esté disponible.
 
+Para preparar Google Cloud, descargar el JSON y obtener acceso, seguir la [guía de Google Drive](GOOGLE-DRIVE.md). Esta página describe la configuración del servidor, ejecución, programación y recuperación.
+
 ## Preparación del servidor
 
-**Asistente integrado:** `npm run configure -- --profile production` pregunta los campos de esta guía, crea el archivo privado y ofrece aplicar la preparación. Si se habilita la función, crea/verifica la cuenta de lectura, comprueba herramientas y configuración Drive, ofrece abrir rclone para autorizar la cuenta, ejecutar una primera copia y crear/actualizar la tarea diaria. La autorización OAuth y, en Windows, la cuenta del Programador de tareas requieren intervención del encargado. La configuración manual siguiente sigue disponible.
+**Asistente integrado:** `npm run configure -- --profile production` pregunta los campos de esta guía, crea el archivo privado y ofrece aplicar la preparación. Si se habilita la función, crea/verifica la cuenta de lectura, comprueba herramientas y configuración Drive, ofrece autorizar la API de Google Drive en el navegador, ejecutar una primera copia y crear/actualizar la tarea diaria. La autorización OAuth y, en Windows, la cuenta del Programador de tareas requieren intervención del encargado. La configuración manual siguiente sigue disponible.
 
 1. Actualizar con el lanzador normal (compila, aplica las migraciones y los grants). Para instalación manual: compilar servidor/cliente, aplicar `prisma migrate deploy` con el propietario y `server/scripts/runtime-grants.sql` con `app_role`.
-2. Instalar herramientas PostgreSQL compatibles con la versión del servidor: `pg_dump` y `pg_restore`. Instalar [rclone](https://rclone.org/install/).
+2. Instalar herramientas PostgreSQL compatibles con la versión del servidor: `pg_dump` y `pg_restore`. La API de Drive se consume con Node.js, sin herramientas adicionales.
 3. Crear una carpeta privada para los archivos y un archivo de configuración privado. Copiar `deployment/.env.backup.example` a `.local/backups/production.env` o `.local/backups/demo.env` y completar las rutas y conexión. El lanzador resuelve ese archivo por perfil; para otra ruta, definir `BACKUP_CONFIG_FILE` en `.local/deploy/PERFIL.env`. El servidor arrancado directamente también acepta `BACKUP_CONFIG_FILE` en su entorno.
-4. Autorizar una cuenta institucional de Google Drive con `rclone config --config RUTA_PRIVADA/rclone.conf`: crear un remoto `drive` de tipo **Google Drive**, completar OAuth en el navegador y, si corresponde, elegir una carpeta raíz. Configurar `RCLONE_REMOTE=drive:fceadatasys/production`. Las cuentas de servicio requieren una unidad compartida adecuada; para Drive personal usar OAuth. Seguir la [guía oficial de Drive](https://rclone.org/drive/).
+4. Preparar el JSON OAuth de tipo **aplicación de escritorio**, indicar `DRIVE_CLIENT_FILE` y `DRIVE_TOKEN_FILE`, y autorizar con el asistente o `npm run backup:authorize -- --profile production`. La autorización crea la carpeta `DRIVE_FOLDER_NAME` y guarda su ID en `DRIVE_FOLDER_ID`. No se admiten claves de cuenta de servicio ni clientes web en este flujo.
 5. Ejecutar una primera copia y comprobar el estado **COMPLETO** antes de registrar la tarea diaria.
 
-La cuenta que ejecuta la API y la tarea necesita acceso al archivo privado, credenciales rclone, carpeta local y herramientas. rclone puede actualizar su token OAuth: su configuración debe permitir esa actualización. En Linux: directorios privados `0700` y archivos de secretos `0600`; en Windows: ACL que autorice solamente a las cuentas del servicio y administradores institucionales. Evitar carpetas compartidas o servidas por HTTP. No incluir configuración ni copias en Git.
+La cuenta que ejecuta la API y la tarea necesita acceso al archivo privado, JSON OAuth, archivo de autorización, carpeta local y herramientas. El archivo de autorización debe permitir la actualización atómica del refresh token si Google lo renueva (escritura en su directorio). En Linux: directorios privados `0700` y archivos de secretos `0600`; en Windows: ACL que autorice solamente a las cuentas del servicio y administradores institucionales. Evitar carpetas compartidas o servidas por HTTP. No incluir configuración ni copias en Git.
 
 Ejemplo de rutas Windows en el archivo privado (adaptar conexión y destino):
 
@@ -21,12 +23,43 @@ BACKUP_DATABASE_URL=postgresql://fcea_production_backup:CLAVE_PROPIA@127.0.0.1:5
 BACKUP_DIRECTORY=C:/FCEA/private/backups
 PG_DUMP_COMMAND=C:/Program Files/PostgreSQL/18/bin/pg_dump.exe
 PG_RESTORE_COMMAND=C:/Program Files/PostgreSQL/18/bin/pg_restore.exe
-RCLONE_COMMAND=C:/Tools/rclone/rclone.exe
-RCLONE_CONFIG=C:/FCEA/private/rclone.conf
-RCLONE_REMOTE=drive:fceadatasys/production
+DRIVE_CLIENT_FILE=C:/FCEA/private/drive-client.json
+DRIVE_TOKEN_FILE=C:/FCEA/private/drive-token.json
+DRIVE_FOLDER_NAME=fceadatasys-production
+DRIVE_FOLDER_ID=
 ```
 
-En Linux usar, por ejemplo, `/var/lib/fceadatasys/backups`, `/var/lib/fceadatasys/private/rclone.conf`, `/usr/bin/pg_dump`, `/usr/bin/pg_restore` y la ruta absoluta de rclone. Las rutas relativas del archivo de copias parten de su propia carpeta. La conexión de copias debe tener el mismo host, puerto y base que `DATABASE_URL`, con un usuario diferente si se desea. `sslmode` se conserva al ejecutar pg_dump; para certificados libpq adicionales configurar el entorno del servicio.
+En Linux usar, por ejemplo, `/var/lib/fceadatasys/backups`, `/var/lib/fceadatasys/private/drive-client.json`, `/var/lib/fceadatasys/private/drive-token.json`, `/usr/bin/pg_dump` y `/usr/bin/pg_restore`. Las rutas relativas del archivo de copias parten de su propia carpeta. La conexión de copias debe tener el mismo host, puerto y base que `DATABASE_URL`, con un usuario diferente si se desea. `sslmode` se conserva al ejecutar pg_dump; para certificados libpq adicionales configurar el entorno del servicio.
+
+## Autorización directa de Google Drive
+
+La preparación de Google Cloud se realiza según [GOOGLE-DRIVE.md](GOOGLE-DRIVE.md): habilitar Drive API, configurar el consentimiento, crear el cliente de escritorio y guardar su JSON en `DRIVE_CLIENT_FILE`. El instalador no crea proyectos ni publica aplicaciones en Google. El archivo `DRIVE_TOKEN_FILE` es distinto del JSON descargado; se genera al autorizar la cuenta.
+
+El flujo solicita únicamente `https://www.googleapis.com/auth/drive.file`: accede a archivos/carpetas creados o autorizados para esa aplicación. Un enlace o ID no concede acceso por sí solo. Dejar `DRIVE_FOLDER_ID` vacío crea una carpeta propia con `DRIVE_FOLDER_NAME`; el comando de autorización persiste su ID. Conservar el ID al reautorizar el mismo cliente y cuenta si la carpeta sigue accesible.
+
+Después de compilar el servidor, ejecutar desde la raíz:
+
+```sh
+npm run backup:authorize -- --profile production
+```
+
+El navegador se abre automáticamente y el enlace también se muestra en la terminal. El callback escucha temporalmente **solo en 127.0.0.1**, en un puerto libre, valida `state` y usa PKCE; vence después de cinco minutos. Se guarda únicamente el refresh token vinculado al cliente, en `DRIVE_TOKEN_FILE`, con escritura atómica. Los access tokens se renuevan en memoria. Ningún token se devuelve por la API del sistema ni se escribe en auditoría o argumentos de procesos. Esperar que la terminal confirme la carpeta: recibir el callback todavía no confirma toda la preparación.
+
+La autorización inicial necesita una terminal interactiva y no requiere conexión PostgreSQL. Para equipos sin navegador, usar el túnel o transferencia privada descritos en [GOOGLE-DRIVE.md](GOOGLE-DRIVE.md#9-servidor-sin-navegador). Las copias posteriores funcionan sin navegador mientras el token siga válido.
+
+La caducidad depende de Google Cloud: **Usuarios externos + Prueba/Testing** emite tokens de Drive que vencen a los siete días. En **En producción**, no se aplica esa regla semanal; el acceso se renueva automáticamente mientras el refresh token siga válido. Elegir el perfil local `production` no cambia el estado de Google. Audiencia interna de Workspace, publicación y otras causas de revocación: [GOOGLE-DRIVE.md](GOOGLE-DRIVE.md#10-caducidad-y-uso-en-producción). El modo de despliegue `--non-interactive` requiere JSON, token e ID ya preparados.
+
+Cuando se usa `backup:authorize` de forma independiente, revisar que `BACKUP_CONFIGURE_DRIVE` quede en `false` en el archivo de despliegue si ya no se necesita abrir la autorización durante la siguiente preparación. El asistente integrado actualiza esa bandera al completar su propia etapa.
+
+La subida usa [sesiones reanudables de Drive v3](https://developers.google.com/workspace/drive/api/guides/manage-uploads), bloques de hasta 8 MiB, reintentos limitados ante cuotas/errores temporales y consulta del rango confirmado tras una interrupción. No carga el respaldo completo en memoria. Una sesión no se conserva entre ejecuciones: si el intento falla, queda **PARCIAL** y se debe ejecutar una nueva copia. Se consulta metadata por ID y se compara nombre, carpeta, tamaño y MD5 antes de confirmar **COMPLETO**.
+
+Al actualizar una instalación existente, ejecutar otra vez el asistente para generar el nuevo archivo privado e importar/autorizar el JSON OAuth. Los respaldos y el historial existentes se conservan. Comprobar una primera copia completa antes de dejar activa la programación.
+
+## Demo con una cuenta personal de Google
+
+El perfil `demo` admite cuentas personales y cuentas de Workspace con el mismo flujo OAuth. No exige correo institucional. La [guía de Google Drive](GOOGLE-DRIVE.md) incluye los pasos de Google, rutas de demo, usuarios de prueba, comandos y comprobación final. Sus archivos, tokens, proyecto de Google y carpeta deben estar separados de los de producción.
+
+La base habitual de demo es `127.0.0.1:55440/fceadatasys_demo`. El lanzador debe preparar su cuenta de lectura antes de respaldar. Para una presentación se puede usar la copia manual con demo iniciado. Al cerrar el lanzador se detiene el clúster que ese proceso haya iniciado; una tarea programada necesita PostgreSQL disponible a su hora. Los siete días corresponden al estado OAuth externo de prueba, también si se utilizara desde otro perfil local.
 
 ## Cuenta de lectura para PostgreSQL
 
@@ -70,18 +103,33 @@ La institución debe autorizar su cuenta y comprobar el primer respaldo completo
 - **PARCIAL**: archivo local verificado, subida/verificación de Drive fallida. Se conserva la copia local y se informa que debe corregirse la conexión y ejecutarse otra copia.
 - **FALLIDO**: no se confirmó un archivo local o se interrumpió un proceso anterior. Los `.partial` del intento actual se eliminan. Tras un cierre abrupto pueden quedar parciales que TIC debe revisar.
 - Una exclusión PostgreSQL impide solapar copias manuales y programadas. Si el proceso termina, PostgreSQL libera el bloqueo; el siguiente intento marca los registros interrumpidos como fallidos antes de continuar.
-- Auditoría previa y final obligatoria. Si falla la auditoría inicial, no se ejecuta pg_dump. Si falla la confirmación final, se intenta retirar exclusivamente los archivos del intento, incluidos los remotos ya confirmados. Si el proveedor está inaccesible durante la compensación, TIC debe revisar el archivo remoto identificado en la auditoría inicial. No hay transacción distribuida entre PostgreSQL, disco y Drive.
+- Auditoría previa y final obligatoria. Si falla la auditoría inicial, no se ejecuta pg_dump. Si falla la confirmación final, se intenta retirar exclusivamente los archivos del intento, incluido el archivo remoto del intento aunque su subida no se haya confirmado. El ID de Drive se genera antes de subir y se registra en `RESPALDO_NUBE_AUTORIZADO`; la compensación usa exclusivamente ese ID. Si el proveedor está inaccesible durante la compensación, TIC debe revisar el archivo remoto identificado en la auditoría inicial. No hay transacción distribuida entre PostgreSQL, disco y Drive.
 - No hay borrado automático ni retención impuesta. Definir capacidad/retención institucional y revisar resultados. Las copias contienen datos sensibles: proteger disco y cuenta de Drive.
 
-Restaurar primero en una base nueva y aislada con el propietario autorizado:
+## Restauración de una copia
+
+El `.dump` permite reconstruir la estructura y los datos al momento de la copia. No incluye cambios posteriores ni permite elegir un instante intermedio entre respaldos. La aplicación no tiene un botón de restauración; el encargado utiliza herramientas administrativas como `pg_restore` o pgAdmin.
+
+1. Antes de sustituir una instalación activa, entrar en mantenimiento y conservar una copia del estado actual, incluida su auditoría. Mantener un registro del procedimiento.
+2. Descargar el respaldo elegido desde Drive o usar su copia local. Si se descargó, comprobar su SHA-256 contra el registrado en la auditoría del respaldo.
+3. Crear una **base nueva y vacía**, por ejemplo `fceadatasys_recuperada`, con un propietario autorizado. En un servidor nuevo, preparar también los roles técnicos: el respaldo de una sola base no crea los roles globales PostgreSQL.
+4. Restaurar con ese propietario, comprobar los datos y aplicar los grants del runtime. La cuenta de lectura de copias no es la cuenta de restauración.
+5. Verificar usuarios, permisos, catálogos y publicaciones, usar una versión compatible de la aplicación y recuperar los adjuntos correspondientes. Cambiar el destino de la aplicación solo cuando se haya validado la recuperación.
+
+Ejemplo, desde la raíz y con herramientas en PATH; adaptar host, puerto, roles, nombre de base y ruta:
 
 ```sh
-pg_restore --list /ruta/copia.dump
-pg_restore --no-owner --no-acl --dbname=CONEXION_BASE_NUEVA /ruta/copia.dump
+pg_restore --list "/ruta/copia.dump"
+pg_restore --host=127.0.0.1 --port=5432 --username=fcea_production_owner --dbname=fceadatasys_recuperada --no-owner --no-acl --single-transaction "/ruta/copia.dump"
+psql --host=127.0.0.1 --port=5432 --username=fcea_production_owner --dbname=fceadatasys_recuperada -v app_role=fcea_production_app -f server/scripts/runtime-grants.sql
 ```
 
-Aplicar los grants de runtime y verificar integridad/readiness. Nunca ensayar sobre producción. El respaldo solicitado cubre la base; los PDF están en `ATTACHMENT_DIRECTORY` y requieren su propia copia para una recuperación integral.
+`--single-transaction` confirma toda la restauración o revierte sus efectos si falla. Las credenciales se proporcionan mediante los mecanismos seguros de PostgreSQL, sin escribir contraseñas en comandos. Ver [pg_restore de PostgreSQL 18](https://www.postgresql.org/docs/18/app-pgrestore.html). Validar readiness/integridad y preparar de nuevo el acceso del lector de copias cuando corresponda.
+
+Si la instalación pasa a usar la base recuperada, actualizar de forma coherente `DATABASE_URL`, `MIGRATION_DATABASE_URL` y `BACKUP_DATABASE_URL`, conservando el usuario técnico correspondiente en cada una. Sus tres conexiones deben apuntar a la misma base del perfil. La base anterior se conserva durante la comprobación.
+
+El respaldo actual cubre PostgreSQL. Los PDF están en `ATTACHMENT_DIRECTORY` y necesitan una copia compatible con ese estado; el JSON OAuth, token, archivos privados y roles PostgreSQL también se conservan por separado. El estado **COMPLETO** verifica archivo local y remoto, cabecera e índice; no sustituye un ensayo de restauración integral.
 
 ## Validación reproducible
 
-`npm run test:backups`, `npm run test:unit --prefix server` y `server/test/permissions.integration.test.ts` comprueban horarios/idempotencia, permisos, auditoría, exclusión, pg_dump/pg_restore reales y fallos de nube con rclone sustituido. La integración exige la base desechable `fceadatasys_permissions_demo_test`, `PERMISSIONS_TEST_DATABASE_URL`, `PERMISSIONS_TEST_OWNER_URL`, `TEST_PG_DUMP` y `TEST_PG_RESTORE`. La variable de propietario solo debe apuntar al entorno de pruebas.
+`npm run test:backups`, `npm run test:unit --prefix server` y `server/test/permissions.integration.test.ts` comprueban horarios/idempotencia, permisos, auditoría, exclusión, pg_dump/pg_restore reales y fallos de nube con la API de Drive sustituida. La integración exige la base desechable `fceadatasys_permissions_demo_test`, `PERMISSIONS_TEST_DATABASE_URL`, `PERMISSIONS_TEST_OWNER_URL`, `TEST_PG_DUMP` y `TEST_PG_RESTORE`. La variable de propietario solo debe apuntar al entorno de pruebas.

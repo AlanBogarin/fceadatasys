@@ -4,7 +4,9 @@ La base predeterminada es **`fceadatasys`**, en el servicio PostgreSQL que indiq
 
 ## Preparar el equipo
 
-Antes de iniciar, el encargado debe disponer de Node.js 24.11+ de la rama 24, npm, PostgreSQL 18 funcionando, sus herramientas (`psql`, `pg_dump`, `pg_restore`), ClamAV con firmas vigentes y rclone si se usarán copias en Drive. En Linux, cron/crontab debe estar instalado y activo para programarlas. También debe preparar dominio/DNS, acceso de red, certificado y clave TLS PEM válidos y carpetas privadas accesibles por las cuentas de ejecución.
+Antes de iniciar, el encargado debe disponer de Node.js 24.11+ de la rama 24, npm, PostgreSQL 18 funcionando, sus herramientas (`psql`, `pg_dump`, `pg_restore`) y ClamAV con firmas vigentes. Si se usarán copias en Drive, preparar el JSON OAuth de aplicación de escritorio de Google. En Linux, cron/crontab debe estar instalado y activo para programarlas. También debe preparar dominio/DNS, acceso de red, certificado y clave TLS PEM válidos y carpetas privadas accesibles por las cuentas de ejecución.
+
+Para obtener el JSON y el acceso, seguir [GOOGLE-DRIVE.md](GOOGLE-DRIVE.md). El proyecto de Google de producción debe estar separado del de demo. La audiencia externa en **Prueba/Testing** emite autorizaciones de Drive que caducan a los siete días; el perfil local `production` no modifica esa condición. Completar el estado **En producción** de Google, o usar audiencia interna cuando corresponda a una organización Workspace, y autorizar la cuenta del entorno definitivo. Las autorizaciones siguen sujetas a revocación y políticas de Google.
 
 No se debe registrar como conexión permanente de la aplicación la cuenta administrativa `postgres`. El asistente la utiliza para crear o comprobar las cuentas técnicas y después retira esa conexión del archivo de despliegue.
 
@@ -26,8 +28,8 @@ El cuestionario pide:
 | Seguridad y archivos | Certificado, clave TLS, secreto JWT, carpeta de adjuntos, ejecutable y firmas ClamAV, timeout, antigüedad de firmas y concurrencia. |
 | Administrador inicial | Nombre, CI, usuario, correo y contraseña. Solo se aplica al inicializar una base nueva. |
 | Correo | Habilitar SMTP, servidor, puerto, TLS implícito/STARTTLS, remitente y autenticación opcional. |
-| Copias | Habilitar/deshabilitar, archivo privado, carpeta local, usuario PostgreSQL de lectura y contraseña, pg_dump, pg_restore, rclone, archivo de credenciales, remoto/carpeta Drive y timeout. |
-| Activación de copias | Abrir rclone para autorizar/configurar Drive, probar una primera copia, crear/actualizar la tarea diaria, hora local `HH:MM` o deshabilitar una tarea previa. |
+| Copias | Habilitar/deshabilitar, archivo privado, carpeta local, usuario PostgreSQL de lectura y contraseña, pg_dump, pg_restore, JSON OAuth, archivo privado de autorización, nombre/ID de carpeta Drive y timeout. |
+| Activación de copias | Abrir el navegador para autorizar la API de Drive, probar una primera copia, crear/actualizar la tarea diaria, hora local `HH:MM` o deshabilitar una tarea previa. |
 | Reinstalación | Carpeta privada donde guardar la copia obligatoria antes de recrear una base. |
 
 Las contraseñas no se muestran en pantalla. El asistente construye las URLs y guarda `.local/deploy/production.env` y, cuando se habilitan copias, el archivo elegido (predeterminado `.local/backups/production.env`). Los archivos están ignorados por Git. En Linux se escriben con modo 0600; Windows requiere comprobar las ACL para las cuentas institucionales que los utilizarán.
@@ -52,7 +54,7 @@ No existe una opción de borrado sin interacción: `--non-interactive` siempre c
 
 Si se habilitan, el asistente crea o verifica un usuario dedicado de lectura (predeterminado `fcea_production_backup`), otorga lectura de tablas y secuencias actuales y futuras del propietario y comprueba su acceso. No utiliza para los respaldos las credenciales administrativas permanentes.
 
-La opción de abrir rclone inicia su asistente oficial. El encargado debe seleccionar/crear el remoto indicado, iniciar sesión en Google y autorizar la cuenta. El remoto debe ser de tipo Google Drive y coincidir con el nombre elegido. Si ya existe una configuración autorizada, puede omitir esta apertura e indicar su archivo. La configuración se valida antes de modificar la base.
+El asistente pide `DRIVE_CLIENT_FILE` (JSON OAuth de aplicación de escritorio), `DRIVE_TOKEN_FILE` y nombre de carpeta. La autorización abre Google en el navegador, solicita acceso únicamente a archivos de la aplicación y guarda un refresh token privado. Crea una carpeta propia y completa `DRIVE_FOLDER_ID`; un ID previo debe ser accesible para ese mismo cliente OAuth. Si ya existe una autorización válida, puede conservarla. La configuración se valida antes de modificar la base. También se puede autorizar con `npm run backup:authorize -- --profile production`. Obtención del JSON, consentimiento, renovación, equipos sin navegador y solución de errores: [GOOGLE-DRIVE.md](GOOGLE-DRIVE.md). Copias y recuperación: [BACKUPS.md](BACKUPS.md).
 
 La primera copia, si se solicita, debe completar disco y Drive para que esa etapa se apruebe. Si se omite, el instalador informa que la comprobación real de nube está pendiente. La tarea diaria se crea o actualiza si se eligió; no duplica la del mismo perfil/directorio. Windows puede solicitar las credenciales de la cuenta del sistema operativo que ejecutará las copias sin sesión iniciada. Esa cuenta es independiente de `postgres` y debe tener permisos sobre archivos privados y herramientas. En modo sin interacción, esa autorización inicial debe estar resuelta antes.
 
@@ -71,7 +73,7 @@ Para configurar inicio automático del servicio de la aplicación, el encargado 
 | Se automatiza al aplicar | Sigue a cargo del encargado |
 | --- | --- |
 | Archivos privados, generación de secretos y URLs. | Datos reales de instalación, contraseñas administrativas y permisos/ACL del sistema operativo. |
-| Dependencias npm y compilación de cliente/API. | Instalar Node, PostgreSQL, ClamAV, rclone y cron; mantener sus actualizaciones. |
+| Dependencias npm y compilación de cliente/API. | Instalar Node, PostgreSQL, ClamAV y cron; mantener sus actualizaciones. |
 | Base, roles técnicos, migraciones, grants y primer Administrador. | Proporcionar acceso administrativo válido; decidir conservar/recrear y revisar el destino. |
 | Configuración de origen web, API privada, cookies y uso de TLS. | Dominio/DNS, firewall, acceso al puerto web, obtención y renovación del certificado. |
 | Configuración SMTP y comprobación del transporte al iniciar la API. | Proporcionar cuenta/remitente SMTP y comprobar entrega real a los destinatarios. |
