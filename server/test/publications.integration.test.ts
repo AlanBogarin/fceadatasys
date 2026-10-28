@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { catalogFields } from './helpers/catalog-fields.js';
 import assert from 'node:assert/strict';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -38,7 +39,7 @@ test('registro de publicaciones PostgreSQL: relaciones, permisos, duplicados, ad
   const send = (options: InjectOptions) => app.inject({ remoteAddress: `198.51.100.${1 + sequence++ % 250}`, ...options });
   const problem = (response: { statusCode: number; body: string; json(): { code: string; invalid_params: { name: string }[] } }, status: number, code: string) => { assert.equal(response.statusCode, status, response.body); assert.equal(response.json().code, code); assert.ok(Array.isArray(response.json().invalid_params)); };
   const catalog = async (key: CatalogKey) => {
-    const response = await send({ method: 'POST', url: `/api/v1/catalogos/${key}`, headers: headers.ADMINISTRADOR, payload: { name: `${key} ${suffix} ${sequence}` } });
+    const response = await send({ method: 'POST', url: `/api/v1/catalogos/${key}`, headers: headers.ADMINISTRADOR, payload: { name: `${key} ${suffix} ${sequence}`, fields: catalogFields(key) } });
     assert.equal(response.statusCode, 201, response.body);
     return response.json<{ id: string; name: string }>();
   };

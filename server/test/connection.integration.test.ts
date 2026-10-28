@@ -1,4 +1,5 @@
 import test from "node:test";
+import { catalogFields } from "./helpers/catalog-fields.js";
 import assert from "node:assert/strict";
 import { randomInt, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -118,7 +119,7 @@ test(
         method: "POST",
         url: `/api/v1/catalogos/${catalog}`,
         headers: auth(),
-        payload: { name },
+        payload: { name, fields: catalogFields(catalog) },
       });
       assert.equal(response.statusCode, 201, response.body);
       return response.json().id as string;

@@ -1,4 +1,5 @@
 import test from "node:test";
+import { catalogFields } from "../../server/test/helpers/catalog-fields";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { apiFixture, testAdmin, testPassword } from "./api-fixture";
@@ -53,7 +54,7 @@ test("Pasos 11–15: catálogos reales, permisos, selectores y referencias hist�
         for (let n = 1; n <= 3; n++) {
           const input: CatalogInput = {
             name: `${scope} ${n}`,
-            fields: n === 1 ? fields : {},
+            fields: catalogFields(key, n === 1 ? fields : {}),
           };
           const row = await admin.client.catalogs.save(key, input);
           rows.push(row);
@@ -111,7 +112,7 @@ test("Pasos 11–15: catálogos reales, permisos, selectores y referencias hist�
         await assert.rejects(
           admin.client.catalogs.save(key, {
             name: `  ${changed.data.name.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase()}  `,
-            fields: {},
+            fields: catalogFields(key),
           }),
           failure("DUPLICATE_CATALOG"),
         );
@@ -148,7 +149,7 @@ test("Pasos 11–15: catálogos reales, permisos, selectores y referencias hist�
         await assert.rejects(
           admin.client.catalogs.save(key, {
             name: inactive.data.name,
-            fields: {},
+            fields: catalogFields(key),
           }),
           failure("DUPLICATE_CATALOG"),
         );
@@ -214,7 +215,7 @@ test("Pasos 11–15: catálogos reales, permisos, selectores y referencias hist�
       for (const key of keys) {
         const row = await admin.client.catalogs.save(key, {
           name: `${key} permisos ${suffix}`,
-          fields: {},
+          fields: catalogFields(key),
         });
         ids.push(row.data.id);
         for (const { tab } of accounts) {
@@ -295,11 +296,11 @@ test("Pasos 11–15: catálogos reales, permisos, selectores y referencias hist�
     async () => {
       const author = await admin.client.catalogs.save("autores", {
         name: `Autor clasificaciones ${suffix}`,
-        fields: {},
+        fields: catalogFields("autores"),
       });
       const tutor = await admin.client.catalogs.save("tutores", {
         name: `Tutor clasificaciones ${suffix}`,
-        fields: {},
+        fields: catalogFields("tutores"),
       });
       const refs = {} as Record<
         PublicationClassification,
@@ -310,13 +311,13 @@ test("Pasos 11–15: catálogos reales, permisos, selectores y referencias hist�
       ) as PublicationClassification[]) {
         refs[key] = await admin.client.catalogs.save(key, {
           name: `${key} publicación ${suffix}`,
-          fields: {},
+          fields: catalogFields(key),
         });
         ids.push(refs[key].data.id);
       }
       const faculty = await admin.client.catalogs.save("facultades", {
         name: `Facultad independiente ${suffix}`,
-        fields: {},
+        fields: catalogFields("facultades"),
       });
       ids.push(faculty.data.id);
       const body = {

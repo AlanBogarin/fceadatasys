@@ -1,4 +1,5 @@
 import test from "node:test";
+import { catalogFields } from "../../server/test/helpers/catalog-fields";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { apiFixture, testAdmin, testPassword } from "./api-fixture";
@@ -300,7 +301,7 @@ test("Pasos 1–10: adaptador del cliente contra API, PostgreSQL runtime y SMTP 
     },
   );
   await t.test(
-    "9–10: autores/tutores, opcionales propios, duplicados, ETag y DELETE administrativo",
+    "9–10: autores/tutores, datos obligatorios, duplicados, ETag y DELETE administrativo",
     async () => {
       const d = f.browser().tab();
       await d.client.auth.initializeBrowser();
@@ -310,10 +311,10 @@ test("Pasos 1–10: adaptador del cliente contra API, PostgreSQL runtime y SMTP 
       for (const key of ["autores", "tutores"] as const) {
         const input: CatalogInput = {
           name: `Persona ${key} ${suffix}`,
-          fields:
-            key === "autores"
-              ? { orcid: "", email: "", ci: "" }
-              : { especialidad: "Economía", email: "", ci: "" },
+          fields: catalogFields(
+            key,
+            key === "autores" ? { orcid: "" } : { especialidad: "Economía" },
+          ),
         };
         const created = await d.client.catalogs.save(key, input);
         await assert.rejects(
@@ -355,7 +356,7 @@ test("Pasos 1–10: adaptador del cliente contra API, PostgreSQL runtime y SMTP 
       }
       await d.client.catalogs.save("autores", {
         name: `Referencia histórica ${suffix}`,
-        fields: {},
+        fields: catalogFields("autores"),
       });
       const account = await a.client.users.get(digitador.id);
       await assert.rejects(
@@ -377,11 +378,11 @@ test("Pasos 1–10: adaptador del cliente contra API, PostgreSQL runtime y SMTP 
     async () => {
       const author = await a.client.catalogs.save("autores", {
         name: `Autor vinculado ${suffix}`,
-        fields: {},
+        fields: catalogFields("autores"),
       });
       const tutor = await a.client.catalogs.save("tutores", {
         name: `Tutor vinculado ${suffix}`,
-        fields: {},
+        fields: catalogFields("tutores"),
       });
       const refs: string[] = [];
       for (const key of ["carreras", "niveles", "tipos", "filiales"]) {
@@ -389,7 +390,10 @@ test("Pasos 1–10: adaptador del cliente contra API, PostgreSQL runtime y SMTP 
           `/catalogos/${key}`,
           {
             method: "POST",
-            body: { name: `${key} fixture ${suffix}`, fields: {} },
+            body: {
+              name: `${key} fixture ${suffix}`,
+              fields: catalogFields(key),
+            },
           },
         );
         refs.push(created.data.id);

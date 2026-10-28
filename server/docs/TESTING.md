@@ -2,6 +2,14 @@
 
 Los resultados que siguen son registros fechados. Esta reorganización no repite las suites ni presenta los conteos históricos como resultados nuevos. Consultar las [validaciones posteriores](../../docs/README.md#validaciones-fechadas).
 
+## Campos obligatorios de catálogos — 28/10/2026
+
+La validación vigente exige CI/correo en autores y tutores, especialidad en tutores, código en carreras, sigla en facultades y dirección en sedes/filiales. ORCID y descripciones continúan opcionales. Los casos anteriores que aceptaban identidades opcionales describen el contrato histórico, sustituido por [CATALOGS.md](CATALOGS.md).
+
+Validación de esta actualización: **116 pruebas del cliente**, **247 unitarias del servidor**, **21 de integración PostgreSQL de catálogos/inicialización** y **9 del cliente contra la API de catálogos**, todas aprobadas sin omisiones. Tipos del servidor y compilaciones de cliente/servidor correctos. Las pruebas de servidor que usan callbacks localhost y uniones de directorios se ejecutaron fuera del sandbox.
+
+Se comprueban omisiones, cadenas vacías y espacios Unicode en alta/edición, Problem Details por campo, conservación de datos tras rechazos y unicidad concurrente. Una demo anterior completa únicamente valores faltantes mediante ETag/confirmación/auditoría, conserva valores personalizados y revierte la modificación si falla el log; repetir con datos completos no vuelve a modificarla. Integraciones exclusivamente en bases locales de prueba; el scanner de la suite de inicialización es un fixture explícito, sin acreditar ClamAV real en esta ejecución. La demo operativa se actualiza al volver a iniciar su perfil.
+
 ## Cierre histórico del 17/10/2026
 
 Último cierre integrado H1–H3: **348 aprobadas** (212 sin servicios y 136 PostgreSQL), cero fallos/omitidas; ClamAV real habilitado, build/tipos correctos, siete comprobaciones de persistencia y connection-smoke correctos. Cliente: **87 pruebas** y build. Detalles y límites en la sección final de H1–H3 y en [la nota de implementación](../../docs/historico/integracion/IMPLEMENTACION-H1-H2-H3-2026-10-17.md). Los conteos de fases anteriores se conservan como evidencia histórica. La consolidación documental no repite las suites ni acredita conexión real desde navegador.

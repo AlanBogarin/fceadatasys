@@ -14,6 +14,8 @@ Ningún cargador borra registros ni auditoría para convertir un entorno en otro
 
 La [estructura institucional](../data/demo/unc.json) transcribe el YAML aportado por el usuario; no se realizó una verificación institucional externa. Las personas y los trabajos son ficticios, identificados como tales en resúmenes y PDF.
 
+**Campos obligatorios actualizados el 28/10/2026:** los 14 autores y 12 tutores incluyen CI y correo sintéticos (`autorN@demo.example.test` / `tutorN@demo.example.test`); cada tutor tiene especialidad. Las 18 carreras tienen códigos sintéticos estables `DEMO-<sigla>-<posición>`, las facultades conservan sus siglas y las cinco sedes incluyen direcciones expresamente ficticias en `unc.json`. Estos valores permiten mostrar los campos obligatorios sin atribuir contactos, códigos o direcciones reales a la institución. ORCID y descripciones siguen siendo opcionales; ver [CATALOGS.md](CATALOGS.md).
+
 | Datos | Cantidad |
 | --- | --- |
 | Facultades | 6: FCEA, FHyCE, FCA, FACET, FMUNC y FOUNC |
@@ -105,7 +107,7 @@ Correo/contraseña ausentes se rechazan antes de abrir la base. Se exige coincid
 
 ## Repetición y errores
 
-- Demo encuentra cuentas por usuario y registros por nombres/títulos normalizados. Conserva existentes; no realiza PATCH/DELETE ni cambia credenciales/estados. Un catálogo requerido inactivo o identidad incompatible exige intervención explícita.
+- Demo encuentra cuentas por usuario y registros por nombres/títulos normalizados. Conserva existentes y completa únicamente los campos obligatorios faltantes de sus muestras mediante PATCH con ETag, contraseña de confirmación y auditoría transaccional. Conserva valores personalizados, IDs, fechas de alta, relaciones, credenciales y estados; no realiza DELETE. El resultado incluye `catalogsUpdated`; una segunda ejecución con datos completos devuelve cero actualizaciones. Un catálogo requerido inactivo o identidad incompatible exige intervención explícita. Repetir `npm run db:init:demo` desde `server/` actualiza una demo anterior; el lanzador también ejecuta la inicialización al arrancar el perfil demo.
 - Usuarios, catálogos, archivos y publicaciones se cargan por API con sesión Admin y auditoría. No se insertan archivos marcados CLEAN ni publicaciones directamente en PostgreSQL.
 - Cada operación es transaccional; no existe una transacción global para ocho binarios y todo el conjunto. Si se interrumpe, se conservan operaciones confirmadas. Corregir la causa y repetir completa lo faltante.
 - Un PDF cargado y todavía DISPONIBLE se recupera por SHA-256. Vinculados, reservados, pendientes y rechazados no se tratan como libres.

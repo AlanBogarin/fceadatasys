@@ -43,6 +43,8 @@ Administrador mantiene usuarios, publicaciones, catálogos, parámetros, reporte
 
 Los datos y archivos proceden del servidor. El access token vive en memoria; las cookies de sesión son HttpOnly. Las señales entre pestañas no incluyen credenciales ni datos de negocio. La demo UNC también utiliza estos controles y descarga autenticada; no publica archivos de muestra en `public/demo`.
 
+Los formularios de catálogos marcan con `*` los campos obligatorios: nombre en todos; CI y correo en autores; CI, correo y especialidad en tutores; código en carreras; sigla en facultades; dirección en sedes/filiales. ORCID y descripciones son opcionales. El cliente y la API rechazan campos obligatorios omitidos, vacíos o con solo espacios, tanto al crear como al editar. Contrato detallado en [CATALOGS.md](../server/docs/CATALOGS.md).
+
 ## Validación
 
 ```powershell

@@ -178,7 +178,7 @@ test(
       method: "POST",
       url: "/api/v1/catalogos/facultades",
       headers: headers[2],
-      payload: { name: `Facultad ${suffix}`, fields: {} },
+      payload: { name: `Facultad ${suffix}`, fields: { sigla: `FAC-${suffix}` } },
     });
     assert.equal(created.statusCode, 201, created.body);
     assert.equal(

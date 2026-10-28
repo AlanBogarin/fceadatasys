@@ -2,6 +2,8 @@
 
 **Actualización documental del 28/10/2026.** AGENTS.md es el contrato maestro. Cliente y API ya están conectados; el despliegue usa perfiles demo/production con API real. Los permisos efectivos por rol y cuenta sustituyen las restricciones iniciales cuando se delegan, según [PERMISSIONS.md](docs/operacion/PERMISSIONS.md). Los avances e informes históricos se conservan fuera de esta raíz; ver [índice documental](docs/README.md).
 
+En catálogos se exige nombre en todos los registros; además CI y correo en autores; CI, correo y especialidad en tutores; código en carreras; sigla en facultades; dirección en sedes/filiales. ORCID y descripciones son opcionales. Formularios, API y datos de demo siguen estas reglas, documentadas en [CATALOGS.md](server/docs/CATALOGS.md).
+
 ## 1. Identificación del proyecto
 
 **Nombre del proyecto:** `fceadatasys` — susceptible a cambios.
@@ -246,11 +248,13 @@ Los datos definidos para un autor son:
 
 - ID;
 - nombre completo;
-- CI, opcional;
-- correo electrónico, opcional;
+- CI, obligatoria;
+- correo electrónico, obligatorio;
 - ORCID, opcional.
 
 ### Tutores
+
+Datos obligatorios: nombre completo, cédula de identidad, correo electrónico y especialidad.
 
 Los tutores constituyen una relación N:M con las publicaciones.
 
@@ -794,8 +798,8 @@ Los valores anteriores/nuevos podrán representarse estructuradamente, por ejemp
 
 - ID;
 - nombre completo;
-- CI opcional;
-- correo opcional;
+- CI obligatoria;
+- correo obligatorio;
 - ORCID opcional.
 
 ### Reglas
@@ -812,8 +816,11 @@ Los valores anteriores/nuevos podrán representarse estructuradamente, por ejemp
 
 ### Datos
 
-- identificación del tutor;
-- información descriptiva definida por el modelo.
+- ID;
+- nombre completo obligatorio;
+- CI obligatoria;
+- correo electrónico obligatorio;
+- especialidad obligatoria.
 
 ### Reglas
 

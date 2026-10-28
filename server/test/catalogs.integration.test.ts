@@ -10,6 +10,7 @@ import { createPrisma } from '../src/db.js';
 import type { AppConfig } from '../src/config.js';
 import { hashPassword } from '../src/security/crypto.js';
 import { catalogKeys, normalizeCatalog, type CatalogDto, type CatalogKey } from '../src/catalogs/schemas.js';
+import { catalogFields } from './helpers/catalog-fields.js';
 
 const databaseUrl = process.env.CATALOGS_TEST_DATABASE_URL;
 test('catálogos PostgreSQL: contratos, permisos, unicidad, referencias y auditoría', { skip: !databaseUrl }, async t => {
@@ -35,7 +36,7 @@ test('catálogos PostgreSQL: contratos, permisos, unicidad, referencias y audito
   const headers: Record<string, { authorization: string }> = {};
   const base = (key: CatalogKey) => `/api/v1/catalogos/${key}`;
   const create = async (key: CatalogKey, fields: Record<string, string> = {}, name = `Registro ${suffix} ${sequence}`) => {
-    const response = await send({ method: 'POST', url: base(key), headers: headers.ADMINISTRADOR, payload: { name, fields } });
+    const response = await send({ method: 'POST', url: base(key), headers: headers.ADMINISTRADOR, payload: { name, fields: catalogFields(key, fields) } });
     assert.equal(response.statusCode, 201, response.body);
     assert.equal(response.headers.location, `${base(key)}/${response.json().id}`);
     return response.json<CatalogDto>();
@@ -97,7 +98,7 @@ test('catálogos PostgreSQL: contratos, permisos, unicidad, referencias y audito
         const row = await create(key);
         for (const role of ['DIGITADOR', 'PUBLICO']) {
           const manage = role === 'DIGITADOR' && (key === 'autores' || key === 'tutores');
-          const created = await send({ method: 'POST', url: base(key), headers: headers[role], payload: { name: `${role} ${suffix} ${sequence}` } });
+          const created = await send({ method: 'POST', url: base(key), headers: headers[role], payload: { name: `${role} ${suffix} ${sequence}`, fields: catalogFields(key) } });
           assert.equal(created.statusCode, manage ? 201 : 403, created.body);
           assert.equal((await patch(key, row.id, { name: `Permiso ${row.id}` }, role)).statusCode, manage ? 200 : 403);
           assert.equal((await patch(key, row.id, { active: false }, role)).statusCode, manage ? 200 : 403);
@@ -133,7 +134,7 @@ test('catálogos PostgreSQL: contratos, permisos, unicidad, referencias y audito
       await patch('tipos', row.id, { active: false });
       problem(await send({ method: 'POST', url: base('tipos'), headers: headers.ADMINISTRADOR, payload: { name: `UNICO...${suffix}` } }), 409, 'DUPLICATE_CATALOG');
       for (const [key, field, value] of [['autores', 'ci', String(ciBase + 30)], ['autores', 'email', `unique.${suffix}@example.org`], ['autores', 'orcid', otherOrcid], ['tutores', 'ci', String(ciBase + 40)], ['tutores', 'email', `tutor.${suffix}@example.org`], ['carreras', 'codigo', `C-${suffix}`], ['facultades', 'sigla', `F-${suffix}`]] as const) {
-        const results = await Promise.all([0, 1].map(index => send({ method: 'POST', url: base(key), headers: headers.ADMINISTRADOR, payload: { name: `Concurrente ${key} ${field} ${suffix} ${index}`, fields: { [field]: value } } })));
+        const results = await Promise.all([0, 1].map(index => send({ method: 'POST', url: base(key), headers: headers.ADMINISTRADOR, payload: { name: `Concurrente ${key} ${field} ${suffix} ${index}`, fields: catalogFields(key, { [field]: value }) } })));
         assert.deepEqual(results.map(result => result.statusCode).sort(), [201, 409], results.map(result => result.body).join('\n'));
       }
       const key = `db unico ${suffix}`;
@@ -155,6 +156,25 @@ test('catálogos PostgreSQL: contratos, permisos, unicidad, referencias y audito
       problem(await send({ method: 'DELETE', url: `${base('facultades')}/${career.id}`, headers: headers.ADMINISTRADOR }), 404, 'NOT_FOUND');
       const failures = await prisma.auditLog.count({ where: { status: 'FALLIDO', operation: 'OPERACION_RECHAZADA', sessionId: { not: null }, detail: { startsWith: 'VALIDATION_ERROR:' } } });
       assert.ok(failures > 0);
+    });
+    await t.test('campos obligatorios: POST incompleto y PATCH vacío se rechazan y auditan sin modificar datos', async () => {
+      const required = { autores: ['ci', 'email'], tutores: ['ci', 'email', 'especialidad'], carreras: ['codigo'], facultades: ['sigla'], filiales: ['direccion'] } as const;
+      for (const [catalog, fields] of Object.entries(required)) {
+        const key = catalog as keyof typeof required;
+        const row = await create(key);
+        for (const field of fields) {
+          for (const empty of [undefined, '', ' \t\n ', '\u3000']) {
+            const input = catalogFields(key);
+            if (empty === undefined) delete input[field];
+            else input[field] = empty;
+            const rejected = await send({ method: 'POST', url: base(key), headers: headers.ADMINISTRADOR, payload: { name: `Incompleto ${suffix} ${sequence}`, fields: input } });
+            problem(rejected, 400, 'VALIDATION_ERROR');
+            assert.ok(rejected.json().invalid_params.some((param: { name: string }) => param.name === `body.fields.${field}`));
+          }
+          problem(await patch(key, row.id, { fields: { [field]: '' } }), 400, 'VALIDATION_ERROR');
+          assert.deepEqual((await send({ url: `${base(key)}/${row.id}`, headers: headers.ADMINISTRADOR })).json(), row);
+        }
+      }
     });
     await t.test('referencias FK reales impiden inactivar y eliminar sin perder historia', async () => {
       for (const [key, column] of [['autores', 'author_id'], ['tutores', 'tutor_id'], ['carreras', 'catalog_id']] as const) {
@@ -231,11 +251,10 @@ test('catálogos PostgreSQL: contratos, permisos, unicidad, referencias y audito
       assert.equal(detail.json().fields.email, `merged.${suffix}@example.org`);
       assert.equal(detail.json().fields.orcid, '');
       const cleared = await patch('autores', row.id, { fields: { ci: '', email: '' } });
-      assert.equal(cleared.statusCode, 200, cleared.body);
-      assert.deepEqual(cleared.json().fields, { ci: '', email: '', orcid: '' });
+      problem(cleared, 400, 'VALIDATION_ERROR');
       const stored = await prisma.author.findUniqueOrThrow({ where: { id: row.id } });
-      assert.equal(stored.ciKey, null);
-      assert.equal(stored.emailKey, null);
+      assert.ok(stored.ciKey);
+      assert.ok(stored.emailKey);
     });
     await t.test('fallo de auditoría revierte alta, edición, estados y eliminación', async () => {
       let failing = '';
@@ -244,7 +263,7 @@ test('catálogos PostgreSQL: contratos, permisos, unicidad, referencias y audito
       try {
         const name = `Fallido ${suffix}`;
         failing = 'CATALOGO_CREADO';
-        problem(await brokenApp.inject({ method: 'POST', url: base('autores'), headers: headers.ADMINISTRADOR, payload: { name } }), 503, 'AUDIT_UNAVAILABLE');
+        problem(await brokenApp.inject({ method: 'POST', url: base('autores'), headers: headers.ADMINISTRADOR, payload: { name, fields: catalogFields('autores') } }), 503, 'AUDIT_UNAVAILABLE');
         assert.equal(await prisma.author.count({ where: { nameKey: normalizeCatalog(name) } }), 0);
         const row = await create('autores');
         for (const [operation, method, payload] of [['CATALOGO_MODIFICADO', 'PATCH', { name: 'Cambio fallido' }], ['CATALOGO_INACTIVADO', 'PATCH', { active: false }], ['CATALOGO_ELIMINADO', 'DELETE', undefined]] as const) {

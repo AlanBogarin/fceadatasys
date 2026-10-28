@@ -10,6 +10,7 @@ import {
   productionInput,
 } from "../../src/initialization/profiles.js";
 import { validateAttachment } from "../../src/attachments/formats.js";
+import { validateCatalogInput } from "../../src/catalogs/schemas.js";
 
 test("Conjunto demo UNC: conserva el YAML aportado y todas las referencias bibliográficas, sin claves aleatorias", () => {
   const data = loadDemoDataset();
@@ -56,6 +57,40 @@ test("Conjunto demo UNC: conserva el YAML aportado y todas las referencias bibli
     data.publications.every((row) =>
       ["Concepción", "Horqueta"].includes(row.branch),
     ),
+  );
+});
+
+test("Demo: campos obligatorios completos, identidades únicas y valores sintéticos estables", () => {
+  const data = loadDemoDataset();
+  assert.deepEqual(loadDemoDataset().catalogs, data.catalogs);
+  for (const row of data.catalogs) validateCatalogInput(row.key, row);
+  for (const key of ["autores", "tutores"] as const) {
+    const people = data.catalogs.filter((row) => row.key === key);
+    for (const field of ["ci", "email"]) {
+      assert.equal(
+        new Set(people.map((row) => row.fields[field])).size,
+        people.length,
+      );
+      assert.ok(people.every((row) => !!row.fields[field]));
+    }
+    assert.ok(
+      people.every((row) => row.fields.email.endsWith("@demo.example.test")),
+    );
+  }
+  assert.ok(
+    data.catalogs
+      .filter((row) => row.key === "tutores")
+      .every((row) => !!row.fields.especialidad),
+  );
+  const codes = data.catalogs
+    .filter((row) => row.key === "carreras")
+    .map((row) => row.fields.codigo);
+  assert.equal(new Set(codes).size, 18);
+  assert.ok(codes.every((code) => code.startsWith("DEMO-")));
+  assert.ok(
+    data.catalogs
+      .filter((row) => row.key === "filiales")
+      .every((row) => row.fields.direccion.includes("ficticia")),
   );
 });
 

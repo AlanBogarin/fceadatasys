@@ -63,6 +63,7 @@
     {
       "nombre": "Concepción",
       "tipo": "Sede Central",
+      "direccion": "Calle de muestra 100, Concepción, Paraguay (dirección ficticia).",
       "facultades_presentes": [
         "FCEA",
         "FHyCE",
@@ -75,11 +76,13 @@
     {
       "nombre": "Horqueta",
       "tipo": "Filial",
+      "direccion": "Calle de muestra 200, Horqueta, Paraguay (dirección ficticia).",
       "facultades_presentes": ["FCEA"]
     },
     {
       "nombre": "Yby Yaú",
       "tipo": "Filial",
+      "direccion": "Calle de muestra 300, Yby Yaú, Paraguay (dirección ficticia).",
       "facultades_presentes": [
         "Programas de extensión y unidades de desarrollo"
       ]
@@ -87,11 +90,13 @@
     {
       "nombre": "Vallemí",
       "tipo": "Filial",
+      "direccion": "Calle de muestra 400, Vallemí, Paraguay (dirección ficticia).",
       "facultades_presentes": ["Programas académicos complementarios"]
     },
     {
       "nombre": "Fuerte Olimpo",
       "tipo": "Filial",
+      "direccion": "Calle de muestra 500, Fuerte Olimpo, Paraguay (dirección ficticia).",
       "facultades_presentes": ["Aulas de extensión y soporte de grado"]
     }
   ]

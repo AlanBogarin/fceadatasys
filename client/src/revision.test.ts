@@ -12,7 +12,7 @@ import {
 import { existingChanges, verifyConfirmationPassword } from "./mutationPolicy";
 import { logoutKey, sessionGenerationMatches } from "./sessionSignals";
 
-test("Autores y tutores admiten CI/correo opcionales y validan los datos informados; código de carrera opcional", async () => {
+test("Autores y tutores exigen CI/correo; tutor exige especialidad y carrera exige código", async () => {
   const state = await seed();
   const actorId = state.users[0].id;
   for (const catalog of ["autores", "tutores"] as const) {
@@ -21,7 +21,7 @@ test("Autores y tutores admiten CI/correo opcionales y validan los datos informa
       { ci: "1234567" },
       { email: "persona@example.test" },
     ] as Record<string, string>[]) {
-      assert.doesNotThrow(() =>
+      assert.throws(() =>
         saveCatalogRecord(state, actorId, catalog, {
           name: "Persona de prueba",
           fields,
@@ -33,6 +33,7 @@ test("Autores y tutores admiten CI/correo opcionales y validan los datos informa
         ci: "1234567",
         email: "persona@example.test",
       };
+      if (catalog === "tutores") fields.especialidad = "Economía";
       if (orcid !== undefined && catalog === "autores") fields.orcid = orcid;
       assert.equal(
         saveCatalogRecord(state, actorId, catalog, {
@@ -43,10 +44,16 @@ test("Autores y tutores admiten CI/correo opcionales y validan los datos informa
       );
     }
   }
-  assert.doesNotThrow(() =>
+  assert.throws(() =>
     saveCatalogRecord(state, actorId, "carreras", {
       name: "Carrera",
       fields: {},
+    }),
+  );
+  assert.doesNotThrow(() =>
+    saveCatalogRecord(state, actorId, "carreras", {
+      name: "Carrera",
+      fields: { codigo: "CAR-1" },
     }),
   );
 });

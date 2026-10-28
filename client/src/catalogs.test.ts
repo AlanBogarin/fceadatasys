@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import type { State, User, Role } from "./model";
 import {
   CATALOG_KEYS,
+  catalogConfig,
   deleteCatalogRecord,
   emptyCatalogs,
   filterCatalog,
   migrateCatalogs,
+  saveCatalogRecord,
   setCatalogActive,
 } from "./catalogs";
 
@@ -34,6 +36,58 @@ const initial = (): State => ({
   ],
   recovery: [],
   catalogs: emptyCatalogs(),
+});
+
+test("formularios y servicio exigen los campos obligatorios al crear y editar", () => {
+  const required = {
+    autores: ["ci", "email"],
+    tutores: ["ci", "email", "especialidad"],
+    carreras: ["codigo"],
+    facultades: ["sigla"],
+    filiales: ["direccion"],
+    tipos: [],
+    niveles: [],
+  };
+  for (const key of CATALOG_KEYS) {
+    assert.deepEqual(
+      catalogConfig[key].fields
+        .filter((field) => field.required)
+        .map((field) => field.key),
+      required[key],
+    );
+    const prepared = saveCatalogSample(initial(), "admin", key, {
+      name: "Registro",
+      fields: {},
+    });
+    const record = prepared.catalogs[key][0];
+    for (const field of required[key])
+      for (const empty of [undefined, "", " \t\n ", "\u3000"]) {
+        const fields = { ...record.fields };
+        if (empty === undefined) delete fields[field];
+        else fields[field] = empty;
+        const before = JSON.stringify(prepared);
+        assert.throws(
+          () =>
+            saveCatalogRecord(initial(), "admin", key, {
+              name: "Registro nuevo",
+              fields,
+            }),
+          /campo obligatorio/,
+        );
+        assert.throws(
+          () =>
+            saveCatalogRecord(
+              prepared,
+              "admin",
+              key,
+              { name: record.name, fields },
+              record.id,
+            ),
+          /campo obligatorio/,
+        );
+        assert.equal(JSON.stringify(prepared), before);
+      }
+  }
 });
 
 test("solo Administrador activo puede eliminar registros sin vínculos en los siete catálogos", () => {
@@ -190,7 +244,7 @@ test("autor valida ORCID opcional y duplicados por identidad con sus datos oblig
     );
   }
   state = saveCatalogSample(state, "digitador", "tutores", {
-    name: "Tutor sin contacto",
+    name: "Tutor con datos obligatorios",
     fields: {},
   });
   assert.equal(state.catalogs.tutores.length, 1);

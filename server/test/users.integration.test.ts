@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { catalogFields } from './helpers/catalog-fields.js';
 import assert from 'node:assert/strict';
 import { randomInt, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -390,7 +391,7 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
 
       const creator = await create({ role: 'DIGITADOR' });
       const creatorHeaders = await login(creator.username);
-      const author = await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers: creatorHeaders, payload: { name: `Autor H2 ${suffix}` } });
+      const author = await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers: creatorHeaders, payload: { name: `Autor H2 ${suffix}`, fields: catalogFields('autores') } });
       assert.equal(author.statusCode, 201, author.body);
       const path = `/api/v1/catalogos/autores/${author.json().id}`;
       const editor = await create({ role: 'DIGITADOR' });
@@ -414,7 +415,7 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
     await scenario('H2: un catálogo que falla auditoría no crea participación para su actor', async () => {
       const editor = await create({ role: 'DIGITADOR' });
       const editorHeaders = await login(editor.username);
-      const author = await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers, payload: { name: `Rollback H2 ${suffix}` } });
+      const author = await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers, payload: { name: `Rollback H2 ${suffix}`, fields: catalogFields('autores') } });
       assert.equal(author.statusCode, 201, author.body);
       const path = `/api/v1/catalogos/autores/${author.json().id}`;
       const faulty = prisma.$extends({ query: { auditLog: { create: async ({ args, query }) => {
@@ -432,7 +433,7 @@ test('usuarios PostgreSQL: contratos, permisos, concurrencia, unicidad y rollbac
     await scenario('H2: participación que confirma durante la espera impide inactivar al actor', async () => {
       const editor = await create({ role: 'DIGITADOR' });
       const editorHeaders = await login(editor.username);
-      const author = await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers, payload: { name: `Concurrente H2 ${suffix}` } });
+      const author = await send({ method: 'POST', url: '/api/v1/catalogos/autores', headers, payload: { name: `Concurrente H2 ${suffix}`, fields: catalogFields('autores') } });
       assert.equal(author.statusCode, 201, author.body);
       let enter!: () => void;
       let release!: () => void;

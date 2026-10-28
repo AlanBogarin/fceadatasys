@@ -22,6 +22,7 @@ type Row = {
   title?: string;
   sha256?: string;
   status?: string;
+  fields?: Record<string, string>;
 };
 type Page = { data: Row[]; pagination: { totalPages: number } };
 
@@ -48,20 +49,23 @@ export async function initializeDemo(
   const counts = {
     usersCreated: Number(initial),
     catalogsCreated: 0,
+    catalogsUpdated: 0,
     publicationsCreated: 0,
     attachmentsCreated: 0,
   };
-  async function request<T>(
+  async function send(
     path: string,
-    method: "GET" | "POST" = "GET",
+    method: "GET" | "POST" | "PATCH" = "GET",
     body?: unknown,
-  ): Promise<T> {
+    extraHeaders: Record<string, string> = {},
+  ) {
     let payload: string | Buffer | undefined;
     const headers: Record<string, string> = {
       origin: config.allowedOrigins[0],
       "user-agent": "fceadatasys-demo-initializer",
       cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join("; "),
       ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
+      ...extraHeaders,
     };
     if (body instanceof FormData) {
       const encoded = new Request("http://127.0.0.1/multipart", {
@@ -92,6 +96,10 @@ export async function initializeDemo(
         `Carga demo interrumpida: ${method} ${path.split("?")[0]} respondió ${response.statusCode} ${code}. Los datos confirmados se conservan; corregí la causa y repetí la carga.`,
       );
     }
+    return response;
+  }
+  async function request<T>(...args: Parameters<typeof send>): Promise<T> {
+    const response = await send(...args);
     return response.statusCode === 204 ? (undefined as T) : response.json<T>();
   }
   async function list(path: string) {
@@ -148,6 +156,33 @@ export async function initializeDemo(
             fields: catalog.fields,
           });
           counts.catalogsCreated++;
+        } else {
+          // Completar la demo anterior por la API, conservando valores personalizados.
+          const path = `/catalogos/${kind}/${row.id}`;
+          const response = await send(path);
+          const current = response.json<Row>();
+          const missingFields = Object.fromEntries(
+            Object.entries(catalog.fields).filter(
+              ([field, value]) =>
+                field !== "descripcion" &&
+                value.trim() &&
+                !current.fields?.[field]?.trim(),
+            ),
+          );
+          if (Object.keys(missingFields).length) {
+            await request(
+              path,
+              "PATCH",
+              { fields: missingFields },
+              {
+                "if-match": String(response.headers.etag),
+                "x-confirmation-password": Buffer.from(
+                  accounts[0].password,
+                ).toString("base64"),
+              },
+            );
+            counts.catalogsUpdated++;
+          }
         }
         ids.set(key(kind, catalog.name), row.id);
       }

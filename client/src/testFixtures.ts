@@ -26,6 +26,13 @@ export function saveCatalogSample(
   }
   if (catalog === "carreras")
     fields.codigo = existing?.fields.codigo || `PRUEBA-${fixtureNumber}`;
+  if (catalog === "tutores")
+    fields.especialidad =
+      existing?.fields.especialidad || "Especialidad de prueba";
+  if (catalog === "facultades")
+    fields.sigla = existing?.fields.sigla || `FAC-${fixtureNumber}`;
+  if (catalog === "filiales")
+    fields.direccion = existing?.fields.direccion || "Dirección de prueba";
   return saveCatalogRecord(
     state,
     actorId,

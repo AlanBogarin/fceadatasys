@@ -141,8 +141,8 @@ Datos:
 
 - `id`;
 - `nombre_completo`;
-- `ci` opcional;
-- `correo` opcional;
+- `ci` obligatorio;
+- `correo` obligatorio;
 - `orc_id` opcional.
 
 Un autor puede participar en múltiples publicaciones. En una publicación determinada solo puede aparecer una vez, aunque conceptualmente pueda actuar como autor/coautor.
@@ -152,6 +152,8 @@ La relación publicación-autor es N:M y debe conservar el orden de autoría.
 ### Tutores
 
 Tutor/orientador es una entidad reutilizable.
+
+Datos obligatorios: nombre completo, cédula de identidad, correo electrónico y especialidad.
 
 Una publicación puede tener múltiples tutores y un tutor puede participar en múltiples publicaciones.
 
@@ -226,6 +228,7 @@ Parámetros generales:
 
 Reglas:
 
+- En altas y modificaciones de catálogos son obligatorios: código de carrera, sigla de facultad y dirección de sede/filial, además del nombre. Autor exige CI y correo; tutor exige CI, correo y especialidad. ORCID y descripciones siguen siendo opcionales. Actualización autorizada por el usuario el 28/10/2026.
 - nombres de catálogos deben ser únicos;
 - un catálogo inactivo no aparece en nuevas cargas;
 - los registros históricos que lo referencian se conservan;

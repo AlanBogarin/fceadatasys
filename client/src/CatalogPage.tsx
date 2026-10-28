@@ -600,7 +600,6 @@ function CatalogForm({
   close: () => void;
 }) {
   const config = catalogConfig[catalog];
-  const personForm = catalog === "autores" || catalog === "tutores";
   const record = editing === "new" ? null : editing;
   const client = useDataClient();
   const version = useVersionedDraft(
@@ -672,11 +671,7 @@ function CatalogForm({
             />
           )}
           <p className="muted">
-            {personForm
-              ? "El nombre completo es obligatorio. Cédula, correo y los otros datos son opcionales."
-              : catalog === "carreras"
-                ? "El nombre es obligatorio. El código es opcional."
-                : "El nombre es obligatorio. Los demás campos son opcionales."}
+            Los campos marcados con * son obligatorios.
           </p>
           <label className="field">
             <span>

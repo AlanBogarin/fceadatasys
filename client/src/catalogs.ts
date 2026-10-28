@@ -49,12 +49,14 @@ export const catalogConfig: Record<
       {
         key: "ci",
         label: "Cédula de identidad",
+        required: true,
         maxLength: 12,
         placeholder: "Solo números",
       },
       {
         key: "email",
         label: "Correo electrónico",
+        required: true,
         type: "email",
         maxLength: 150,
       },
@@ -75,16 +77,23 @@ export const catalogConfig: Record<
       {
         key: "ci",
         label: "Cédula de identidad",
+        required: true,
         maxLength: 12,
         placeholder: "Solo números",
       },
       {
         key: "email",
         label: "Correo electrónico",
+        required: true,
         type: "email",
         maxLength: 150,
       },
-      { key: "especialidad", label: "Especialidad", maxLength: 150 },
+      {
+        key: "especialidad",
+        label: "Especialidad",
+        maxLength: 150,
+        required: true,
+      },
     ],
   },
   carreras: {
@@ -94,7 +103,7 @@ export const catalogConfig: Record<
     description:
       "Organizá las carreras utilizadas para clasificar las publicaciones.",
     fields: [
-      { key: "codigo", label: "Código", maxLength: 30 },
+      { key: "codigo", label: "Código", maxLength: 30, required: true },
       { key: "descripcion", label: "Descripción", maxLength: 300 },
     ],
   },
@@ -104,7 +113,7 @@ export const catalogConfig: Record<
     createLabel: "Nueva facultad",
     description: "Administrá las unidades académicas del repositorio.",
     fields: [
-      { key: "sigla", label: "Sigla", maxLength: 30 },
+      { key: "sigla", label: "Sigla", maxLength: 30, required: true },
       { key: "descripcion", label: "Descripción", maxLength: 300 },
     ],
   },
@@ -115,7 +124,7 @@ export const catalogConfig: Record<
     description:
       "Registrá las sedes y filiales de procedencia de los trabajos.",
     fields: [
-      { key: "direccion", label: "Dirección", maxLength: 200 },
+      { key: "direccion", label: "Dirección", maxLength: 200, required: true },
       { key: "descripcion", label: "Descripción", maxLength: 300 },
     ],
   },
@@ -153,7 +162,8 @@ export const normalizeCatalog = (value: string) =>
     .replace(/[\p{P}\p{S}]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
-const trim = (value: string) => value.trim().replace(/\s+/g, " ");
+const trim = (value: string) =>
+  value.normalize("NFKC").trim().replace(/\s+/g, " ");
 export function canManageCatalog(role: Role, key: CatalogKey) {
   return (
     role === "ADMINISTRADOR" ||
@@ -213,6 +223,9 @@ export function saveCatalogRecord(
   const fields: Record<string, string> = {};
   for (const field of catalogConfig[key].fields) {
     const value = trim(input.fields[field.key] || "");
+    if (field.required && !value) {
+      throw Error(`${field.label}: campo obligatorio.`);
+    }
     if (value.length > field.maxLength) {
       throw Error(`${field.label}: máximo ${field.maxLength} caracteres.`);
     }

@@ -333,6 +333,117 @@ test(
       },
     );
     await t.test(
+      "Demo anterior: completa solo campos faltantes con ETag, confirmación y auditoría; conserva valores personalizados",
+      async () => {
+        // Fixtures explícitos que representan registros creados antes de exigir estos campos.
+        const author = await demo.client.author.findFirstOrThrow({
+          where: { name: "Lucía Benítez" },
+        });
+        const tutor = await demo.client.tutor.findFirstOrThrow({
+          where: { name: "Laura Martínez" },
+        });
+        const career = await demo.client.catalogRecord.findFirstOrThrow({
+          where: { kind: "carreras", name: "Ingeniería Comercial" },
+        });
+        const branch = await demo.client.catalogRecord.findFirstOrThrow({
+          where: { kind: "filiales", name: "Concepción" },
+        });
+        await demo.client.author.update({
+          where: { id: author.id },
+          data: {
+            ci: null,
+            ciKey: null,
+            email: "personalizado@example.test",
+            emailKey: "personalizado example test",
+          },
+        });
+        await demo.client.tutor.update({
+          where: { id: tutor.id },
+          data: { specialization: null },
+        });
+        await demo.client.catalogRecord.update({
+          where: { id: career.id },
+          data: {
+            code: null,
+            codeKey: null,
+            description: "Descripción personalizada",
+          },
+        });
+        await demo.client.catalogRecord.update({
+          where: { id: branch.id },
+          data: { address: null },
+        });
+        const broken = demo.client.$extends({
+          query: {
+            auditLog: {
+              create: ({ args, query }) => {
+                if (args.data.operation === "CATALOGO_MODIFICADO")
+                  throw Error("Fallo de auditoría al completar demo.");
+                return query(args);
+              },
+            },
+          },
+        }) as unknown as PrismaClient;
+        await assert.rejects(
+          initializeDemo(broken, config, environment, undefined, options),
+          /AUDIT_UNAVAILABLE/,
+        );
+        assert.equal(
+          (
+            await demo.client.catalogRecord.findUniqueOrThrow({
+              where: { id: career.id },
+            })
+          ).code,
+          null,
+        );
+        const result = await initializeDemo(
+          demo.client,
+          config,
+          environment,
+          undefined,
+          options,
+        );
+        assert.equal(result.catalogsUpdated, 4);
+        assert.equal(result.catalogsCreated, 0);
+        assert.equal(result.publicationsCreated, 0);
+        assert.equal(result.attachmentsCreated, 0);
+        const completed = await demo.client.author.findUniqueOrThrow({
+          where: { id: author.id },
+        });
+        assert.equal(completed.ci, "9000001");
+        assert.equal(completed.email, "personalizado@example.test");
+        assert.deepEqual(completed.createdAt, author.createdAt);
+        assert.equal(
+          (
+            await demo.client.tutor.findUniqueOrThrow({
+              where: { id: tutor.id },
+            })
+          ).specialization,
+          "Administración",
+        );
+        const completedCareer =
+          await demo.client.catalogRecord.findUniqueOrThrow({
+            where: { id: career.id },
+          });
+        assert.equal(completedCareer.code, "DEMO-FCEA-1");
+        assert.equal(completedCareer.description, "Descripción personalizada");
+        assert.match(
+          (
+            await demo.client.catalogRecord.findUniqueOrThrow({
+              where: { id: branch.id },
+            })
+          ).address!,
+          /ficticia/,
+        );
+        assert.equal(
+          await demo.client.auditLog.count({
+            where: { operation: "CATALOGO_MODIFICADO", status: "EXITO" },
+          }),
+          4,
+        );
+      },
+    );
+    await t.test(
       "Demo: segunda ejecución conserva IDs/credenciales, no duplica negocios ni reanaliza archivos",
       async () => {
         const before = await demo.client.publication.findMany({
@@ -352,6 +463,7 @@ test(
         );
         assert.equal(result.usersCreated, 0);
         assert.equal(result.catalogsCreated, 0);
+        assert.equal(result.catalogsUpdated, 0);
         assert.equal(result.publicationsCreated, 0);
         assert.equal(result.attachmentsCreated, 0);
         assert.equal(scanned, 8);

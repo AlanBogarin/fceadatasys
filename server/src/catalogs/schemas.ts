@@ -10,14 +10,15 @@ export const normalizeCatalog = (value: string) => value.normalize('NFKD').repla
 const text = (max: number) => z.string().transform(value => value.normalize('NFKC').trim().replace(/\s+/gu, ' ')).pipe(z.string().max(max));
 const name = text(150).refine(value => !!normalizeCatalog(value), 'Ingresá un nombre de hasta 150 caracteres.');
 const optionalText = (max: number) => text(max).optional().default('');
-const ci = optionalText(12).refine(value => !value || /^\d{5,12}$/.test(value), 'La CI debe contener entre 5 y 12 dígitos.');
-const email = optionalText(150).transform(value => value.toLocaleLowerCase('es')).refine(value => !value || z.email().safeParse(value).success, 'Ingresá un correo electrónico válido.');
+const requiredText = (max: number, label: string) => optionalText(max).refine(value => !!value, `${label}: campo obligatorio.`);
+const ci = requiredText(12, 'Cédula de identidad').refine(value => !value || /^\d{5,12}$/.test(value), 'La CI debe contener entre 5 y 12 dígitos.');
+const email = requiredText(150, 'Correo electrónico').transform(value => value.toLocaleLowerCase('es')).refine(value => !value || z.email().safeParse(value).success, 'Ingresá un correo electrónico válido.');
 const fieldsByCatalog = {
   autores: z.object({ ci, email, orcid: optionalText(19).transform(value => value.toUpperCase()).refine(value => !value || /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/.test(value), 'El formato de ORCID no es válido.') }).strict(),
-  tutores: z.object({ ci, email, especialidad: optionalText(150) }).strict(),
-  carreras: z.object({ codigo: optionalText(30), descripcion: optionalText(300) }).strict(),
-  facultades: z.object({ sigla: optionalText(30), descripcion: optionalText(300) }).strict(),
-  filiales: z.object({ direccion: optionalText(200), descripcion: optionalText(300) }).strict(),
+  tutores: z.object({ ci, email, especialidad: requiredText(150, 'Especialidad') }).strict(),
+  carreras: z.object({ codigo: requiredText(30, 'Código'), descripcion: optionalText(300) }).strict(),
+  facultades: z.object({ sigla: requiredText(30, 'Sigla'), descripcion: optionalText(300) }).strict(),
+  filiales: z.object({ direccion: requiredText(200, 'Dirección'), descripcion: optionalText(300) }).strict(),
   tipos: z.object({ descripcion: optionalText(300) }).strict(),
   niveles: z.object({ descripcion: optionalText(300) }).strict(),
 };

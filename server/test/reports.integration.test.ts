@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { catalogFields } from './helpers/catalog-fields.js';
 import assert from 'node:assert/strict';
 import { randomInt, randomUUID } from 'node:crypto';
 import { Client } from 'pg';
@@ -47,7 +48,7 @@ test('reportes PostgreSQL: permisos, filtros, exportadores reales, concurrencia 
       assert.equal(login.statusCode, 200, login.body); headers[role] = { authorization: `Bearer ${login.json().accessToken}` };
     }
     const catalog = async (key: string) => {
-      const result = await send({ method: 'POST', url: `/api/v1/catalogos/${key}`, headers: headers.ADMINISTRADOR, payload: { name: `${key} ${suffix}` } });
+      const result = await send({ method: 'POST', url: `/api/v1/catalogos/${key}`, headers: headers.ADMINISTRADOR, payload: { name: `${key} ${suffix}`, fields: catalogFields(key) } });
       assert.equal(result.statusCode, 201, result.body); return result.json().id as string;
     };
     const careerId = await catalog('carreras'), levelId = await catalog('niveles'), typeId = await catalog('tipos'), branchId = await catalog('filiales');

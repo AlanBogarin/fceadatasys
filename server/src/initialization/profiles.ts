@@ -37,6 +37,7 @@ const universitySchema = z
         .object({
           nombre: z.string(),
           tipo: z.string(),
+          direccion: z.string().trim().min(1),
           facultades_presentes: names,
         })
         .strict(),
@@ -103,17 +104,28 @@ export function loadDemoDataset() {
       descripcion:
         "Datos institucionales según el YAML aportado para la demostración.",
     });
-    for (const career of faculty.carreras)
+    for (const [index, career] of faculty.carreras.entries())
       add("carreras", career, {
+        codigo: `DEMO-${faculty.sigla}-${index + 1}`,
         descripcion: `Carrera de ${faculty.facultad} (${faculty.sigla}), según el YAML de demostración.`,
       });
   }
   for (const branch of institution.filiales_globales)
     add("filiales", branch.nombre, {
+      direccion: branch.direccion,
       descripcion: `${branch.tipo}. Presencia indicada: ${branch.facultades_presentes.join(", ")}. Según el YAML de demostración.`,
     });
-  for (const author of people.authors) add("autores", author);
-  for (const tutor of people.tutors) add("tutores", tutor);
+  for (const [index, author] of people.authors.entries())
+    add("autores", author, {
+      ci: String(9000001 + index),
+      email: `autor${index + 1}@demo.example.test`,
+    });
+  for (const [index, tutor] of people.tutors.entries())
+    add("tutores", tutor, {
+      ci: String(9100001 + index),
+      email: `tutor${index + 1}@demo.example.test`,
+      especialidad: ["Administración", "Contabilidad", "Economía"][index % 3],
+    });
   for (const level of people.levels)
     add("niveles", level, {
       descripcion: "Clasificación para los trabajos ficticios de demostración.",

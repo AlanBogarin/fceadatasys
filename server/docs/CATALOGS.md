@@ -22,16 +22,18 @@ No expone claves normalizadas, `participantIds` ni `demoKey`. La autoría de los
 
 ## Escrituras y campos
 
-Alta: `{ "name": "Nombre", "fields": {} }`; `name` obligatorio hasta 150 caracteres, no vacío después de normalizar. `fields` puede omitirse. Se crea activo. PATCH acepta `name`, `fields` y/o `active`; exige al menos uno. Los campos omitidos se conservan; `fields` se combina por clave con los campos actuales bajo bloqueo. Enviar `""` limpia un campo opcional; `null` no es válido para estos campos. GET detalle, POST y PATCH emiten ETag opaco. PATCH/DELETE exigen If-Match de la precarga y X-Confirmation-Password con la contraseña del actor en Base64 de UTF-8. Sin versión: 428 PRECONDITION_REQUIRED; formato inválido: 400 VALIDATION_ERROR; versión desactualizada: 412 RESOURCE_VERSION_CONFLICT. Comparación bajo bloqueo; conservar formulario y revisar el conflicto antes de reenviar. DELETE no requiere cuerpo; admite `{}` o `null` como vacío, rechaza propiedades adicionales.
+Alta: `{ "name": "Carrera de ejemplo", "fields": { "codigo": "CAR-1" } }`; `name` obligatorio hasta 150 caracteres, no vacío después de normalizar. Desde el 28/10/2026, también se exigen los campos de la tabla siguiente. `fields` puede omitirse solo en tipos y niveles. Se crea activo. PATCH acepta `name`, `fields` y/o `active`; exige al menos uno. Los campos omitidos se conservan; `fields` se combina por clave con los campos actuales bajo bloqueo y se valida el resultado completo. Enviar `""` limpia únicamente un campo opcional; `null` no es válido para estos campos. GET detalle, POST y PATCH emiten ETag opaco. PATCH/DELETE exigen If-Match de la precarga y X-Confirmation-Password con la contraseña del actor en Base64 de UTF-8. Sin versión: 428 PRECONDITION_REQUIRED; formato inválido: 400 VALIDATION_ERROR; versión desactualizada: 412 RESOURCE_VERSION_CONFLICT. Comparación bajo bloqueo; conservar formulario y revisar el conflicto antes de reenviar. DELETE no requiere cuerpo; admite `{}` o `null` como vacío, rechaza propiedades adicionales.
 
-| Catálogo | Claves admitidas dentro de `fields` (todas opcionales) |
-| --- | --- |
-| autores | `ci` (5–12 dígitos), `email` (150), `orcid` (19, `0000-0000-0000-0000`, admite X final) |
-| tutores | `ci` (5–12 dígitos), `email` (150), `especialidad` (150) |
-| carreras | `codigo` (30), `descripcion` (300) |
-| facultades | `sigla` (30), `descripcion` (300) |
-| filiales | `direccion` (200), `descripcion` (300) |
-| tipos, niveles | `descripcion` (300) |
+| Catálogo | Campos obligatorios en `fields` | Campos opcionales en `fields` |
+| --- | --- | --- |
+| autores | `ci` (5–12 dígitos), `email` (150, correo válido) | `orcid` (19, `0000-0000-0000-0000`, admite X final) |
+| tutores | `ci` (5–12 dígitos), `email` (150, correo válido), `especialidad` (150) | — |
+| carreras | `codigo` (30) | `descripcion` (300) |
+| facultades | `sigla` (30) | `descripcion` (300) |
+| filiales | `direccion` (200) | `descripcion` (300) |
+| tipos, niveles | — | `descripcion` (300) |
+
+Los obligatorios deben contener texto después de NFKC y normalización de espacios; omitirlos en POST o vaciarlos en PATCH devuelve HTTP 400 `VALIDATION_ERROR` con `body.fields.<campo>` en `invalid_params`. Los registros históricos incompletos siguen siendo consultables y deben completarse al modificarlos. El esquema SQL conserva su compatibilidad con esos registros; esta actualización no requiere migración ni inventa datos de producción. El inicializador demo completa exclusivamente valores faltantes de sus muestras mediante PATCH auditado.
 
 Se normaliza Unicode NFKC y espacios para guardar; correo en minúsculas y ORCID en mayúsculas. Las respuestas incluyen las claves opcionales de su catálogo con `""` si no tienen valor. Se rechazan campos desconocidos, incluso metadatos pertenecientes a otro catálogo, identidad del actor y bitácoras del navegador.
 

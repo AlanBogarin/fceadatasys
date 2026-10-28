@@ -1,4 +1,5 @@
 import test from "node:test";
+import { catalogFields } from "../../server/test/helpers/catalog-fields";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -67,13 +68,13 @@ test("Pasos 16–20: archivos, publicaciones, consulta y reportes reales", async
     refs[key] = (
       await admin.client.catalogs.save(key, {
         name: `Conexión publicaciones ${key} ${suffix}`,
-        fields: {},
+        fields: catalogFields(key),
       })
     ).data.id;
   const secondAuthor = (
     await admin.client.catalogs.save("autores", {
       name: `Coautor ordenado ${suffix}`,
-      fields: {},
+      fields: catalogFields("autores"),
     })
   ).data.id;
   let sequence = 0;
@@ -101,7 +102,10 @@ test("Pasos 16–20: archivos, publicaciones, consulta y reportes reales", async
     };
   };
   const base = await readFile(
-    new URL("../../server/data/demo/documents/Educacion-financiera-y-ahorro.pdf", import.meta.url),
+    new URL(
+      "../../server/data/demo/documents/Educacion-financiera-y-ahorro.pdf",
+      import.meta.url,
+    ),
   );
   const pdf = () =>
     new File(

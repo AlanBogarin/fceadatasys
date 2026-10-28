@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { catalogFields } from './helpers/catalog-fields.js';
 import assert from 'node:assert/strict';
 import { randomInt, randomUUID } from 'node:crypto';
 import { copyFile, mkdtemp, readFile, readdir, rmdir, unlink, writeFile } from 'node:fs/promises';
@@ -44,7 +45,7 @@ test('Adjuntos PostgreSQL: carga, descarga, seguridad de archivos, permisos y au
   const publish = async (attachmentId: string, actor = 'ADMINISTRADOR') => {
     const refs: Record<string, string> = {};
     for (const key of ['autores', 'tutores', 'carreras', 'niveles', 'tipos', 'filiales']) {
-      const response = await send({ method: 'POST', url: `/api/v1/catalogos/${key}`, headers: headers.ADMINISTRADOR, payload: { name: `Adjuntos ${key} ${suffix} ${sequence}` } });
+      const response = await send({ method: 'POST', url: `/api/v1/catalogos/${key}`, headers: headers.ADMINISTRADOR, payload: { name: `Adjuntos ${key} ${suffix} ${sequence}`, fields: catalogFields(key) } });
       assert.equal(response.statusCode, 201, response.body);
       refs[key] = response.json().id;
     }
