@@ -4,7 +4,7 @@ La base predeterminada es **`fceadatasys`**, en el servicio PostgreSQL que indiq
 
 ## Preparar el equipo
 
-Antes de iniciar, el encargado debe disponer de Node.js 24.11+ de la rama 24, npm, PostgreSQL 18 funcionando, sus herramientas (`psql`, `pg_dump`, `pg_restore`) y ClamAV con firmas vigentes. Si se usarán copias en Drive, preparar el JSON OAuth de aplicación de escritorio de Google. En Linux, cron/crontab debe estar instalado y activo para programarlas. También debe preparar dominio/DNS, acceso de red, certificado y clave TLS PEM válidos y carpetas privadas accesibles por las cuentas de ejecución.
+Antes de iniciar, el encargado debe disponer de Node.js 24.11+ de la rama 24, npm, PostgreSQL 18 funcionando, sus herramientas (`psql`, `pg_dump`, `pg_restore`) y ClamAV con `clamscan` y `freshclam`. El lanzador descarga las firmas ausentes e intenta actualizar las vencidas antes de continuar; requiere Internet y permisos de escritura en el directorio configurado. Si se usarán copias en Drive, preparar el JSON OAuth de aplicación de escritorio de Google. En Linux, cron/crontab debe estar instalado y activo para programarlas. También debe preparar dominio/DNS, acceso de red, certificado y clave TLS PEM válidos y carpetas privadas accesibles por las cuentas de ejecución.
 
 Para obtener el JSON y el acceso, seguir [GOOGLE-DRIVE.md](GOOGLE-DRIVE.md). El proyecto de Google de producción debe estar separado del de demo. La audiencia externa en **Prueba/Testing** emite autorizaciones de Drive que caducan a los siete días; el perfil local `production` no modifica esa condición. Completar el estado **En producción** de Google, o usar audiencia interna cuando corresponda a una organización Workspace, y autorizar la cuenta del entorno definitivo. Las autorizaciones siguen sujetas a revocación y políticas de Google.
 
@@ -34,7 +34,9 @@ El cuestionario pide:
 
 Las contraseñas no se muestran en pantalla. El asistente construye las URLs y guarda `.local/deploy/production.env` y, cuando se habilitan copias, el archivo elegido (predeterminado `.local/backups/production.env`). Los archivos están ignorados por Git. En Linux se escriben con modo 0600; Windows requiere comprobar las ACL para las cuentas institucionales que los utilizarán.
 
-Al terminar las preguntas se puede **guardar solamente** o **aplicar la preparación**. Guardar no inspecciona ni crea la base. Aplicar instala dependencias npm si faltan, compila, valida configuración/TLS/ClamAV y herramientas de copias, conecta al PostgreSQL principal y prepara los componentes elegidos. `--configure --setup-only` aplica después de recopilar las respuestas sin preguntar ese último paso.
+Al terminar las preguntas se puede **guardar solamente** o **aplicar la preparación**. Guardar no inspecciona ni crea la base. Aplicar prepara automáticamente las firmas de ClamAV, instala dependencias npm si faltan, compila, valida configuración/TLS y un análisis real con ClamAV, comprueba herramientas de copias, conecta al PostgreSQL principal y prepara los componentes elegidos. Si el análisis falla por indisponibilidad, actualiza las firmas y repite una vez; una detección o un fallo persistente cancela la preparación. `--configure --setup-only` aplica después de recopilar las respuestas sin preguntar ese último paso.
+
+El recorrido habitual es `npm run configure` (elegir `production`) seguido de `npm run start:production`; para demo, elegir `demo` y ejecutar `npm run start:demo`. No se requiere ejecutar un comando separado de firmas. FreshClam se busca junto a `CLAMAV_COMMAND`, o en PATH si el escáner está en PATH; respeta el `CLAMAV_DATABASE_DIR` elegido y usa la cuenta del instalador. Los registros de descarga se conservan en `.local/deploy/clamav/`. Si las firmas existentes permiten un análisis limpio, la preparación puede seguir sin descargar.
 
 También se puede ejecutar `npm run start:production`: una instalación nueva abre el asistente y, después de preparar, inicia la aplicación. Las instalaciones ya configuradas reutilizan el archivo.
 
@@ -74,6 +76,7 @@ Para configurar inicio automático del servicio de la aplicación, el encargado 
 | --- | --- |
 | Archivos privados, generación de secretos y URLs. | Datos reales de instalación, contraseñas administrativas y permisos/ACL del sistema operativo. |
 | Dependencias npm y compilación de cliente/API. | Instalar Node, PostgreSQL, ClamAV y cron; mantener sus actualizaciones. |
+| Descarga inicial de firmas y recuperación de firmas vencidas al preparar. | Acceso a Internet cuando se actualiza y permisos de escritura en el directorio de firmas. |
 | Base, roles técnicos, migraciones, grants y primer Administrador. | Proporcionar acceso administrativo válido; decidir conservar/recrear y revisar el destino. |
 | Configuración de origen web, API privada, cookies y uso de TLS. | Dominio/DNS, firewall, acceso al puerto web, obtención y renovación del certificado. |
 | Configuración SMTP y comprobación del transporte al iniciar la API. | Proporcionar cuenta/remitente SMTP y comprobar entrega real a los destinatarios. |
@@ -84,3 +87,5 @@ Para configurar inicio automático del servicio de la aplicación, el encargado 
 ## Validación
 
 Las pruebas de `scripts/deployment/*.test.mjs` ejercitan el cuestionario, secretos, URLs, opciones de copias y recreación protegida. `scripts/deployment/production.integration.mjs` utiliza exclusivamente un clúster temporal y otro puerto para comprobar instalación completa, creación de `fceadatasys`, roles limitados, lector de copias, conservación, rechazos, recreación y restauración real. No utiliza el servicio principal ni una cuenta real de Drive.
+
+`npm run test:deployment:clamav`, con `DEPLOYMENT_CLAMAV_TEST_ENABLED=1`, comprueba descarga oficial real desde un directorio temporal vacío, análisis limpio y reutilización sin volver a descargar. Requiere ClamAV/FreshClam instalados, servidor compilado y acceso a Internet. Admite `CLAMAV_TEST_COMMAND` para otro ejecutable; no modifica las firmas existentes del proyecto.

@@ -21,6 +21,7 @@
     "test:restore:integration": "node --test scripts/backups/restore.integration.mjs",
     "test:deployment": "node --test scripts/deployment/*.test.mjs",
     "test:deployment:integration": "node --test scripts/deployment/launch.integration.mjs",
+    "test:deployment:clamav": "node --test scripts/deployment/clamav.integration.mjs",
     "test:production-setup": "node --test scripts/deployment/production.integration.mjs"
   }
 }

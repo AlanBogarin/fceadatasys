@@ -28,11 +28,15 @@ El lanzador instala dependencias cuando es necesario, compila cliente/API, prepa
 
 - Node.js 24.11+ (<25), con npm y acceso al registro de dependencias en la primera instalación.
 - PostgreSQL 18 instalado, incluyendo `initdb`, `pg_ctl`, `pg_controldata` y `psql`.
-- ClamAV instalado y firmas vigentes. En Windows, desde la raíz: `./server/scripts/update-clamav.ps1`.
+- ClamAV instalado con `clamscan` y `freshclam`, y acceso a Internet cuando se deban descargar o actualizar firmas.
 - Producción: servicio PostgreSQL disponible, dominio/DNS y certificado/clave TLS PEM propios.
 - SMTP si se requiere entregar correos de recuperación.
 
-El script comprueba la configuración y analiza un contenido inocuo con ClamAV antes de completar la preparación. No instala paquetes del sistema operativo ni modifica DNS, firewall o certificados del equipo.
+El script comprueba la configuración, descarga firmas oficiales con FreshClam si faltan y analiza un contenido inocuo con ClamAV antes de completar la preparación. Si el análisis no se puede completar con las firmas existentes, intenta actualizarlas y repite el análisis una vez. Solo continúa con un resultado limpio. No instala paquetes del sistema operativo ni modifica DNS, firewall o certificados del equipo.
+
+Para instalar, ejecutar `npm run configure`, elegir el perfil y aplicar la preparación; después `npm run start:demo` o `npm run start:production`. Si se guardó solamente la configuración, el comando de arranque completa la preparación. La descarga de firmas también se integra en esos comandos, incluso después de borrar `server/.local/` y con un `CLAMAV_DATABASE_DIR` personalizado. FreshClam se busca junto al ejecutable configurado en `CLAMAV_COMMAND`, o en PATH cuando `clamscan` está en PATH. Se ejecuta con la cuenta del instalador y necesita escritura en el directorio de firmas. Los fallos de descarga indican el registro privado en `.local/deploy/clamav/`. `clamscan --version` solo comprueba el ejecutable; no acredita un análisis con firmas vigentes.
+
+La carpeta `.local/` de la raíz contiene configuración y el clúster demo; `server/.local/` contiene firmas y adjuntos. Borrar solo la primera no restablece los adjuntos ni elimina una base de producción alojada en el servicio PostgreSQL.
 
 ## Demo UNC
 

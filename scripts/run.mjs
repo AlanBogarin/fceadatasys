@@ -38,6 +38,7 @@ import {
   verifyRuntime,
 } from "./deployment/database.mjs";
 import { createGateway } from "./deployment/gateway.mjs";
+import { prepareClamAv, verifyClamAv } from "./deployment/clamav.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -326,6 +327,11 @@ async function main() {
     );
   };
   try {
+    let clamAvPrepared;
+    if (!options["--start-only"]) {
+      console.log("Preparando ejecutable y firmas de ClamAV…");
+      clamAvPrepared = await prepareClamAv(root, config, { signal: abort.signal });
+    }
     if (!options["--setup-only"]) {
       await available(+config.API_PORT, "127.0.0.1");
       await available(
@@ -378,7 +384,6 @@ async function main() {
       console.log("Compilando servidor y cliente conectado…");
       await npm("server", ["run", "build"], "Compilación API");
       await npm("client", ["run", "build"], "Compilación cliente");
-      console.log("Preparando base, migraciones y permisos…");
       const { backupSettings } =
         await import("../server/dist/src/backups/engine.js");
       const backupOptions = {
@@ -393,26 +398,17 @@ async function main() {
       const { loadConfig } = await import("../server/dist/src/config.js");
       loadConfig(environment);
       console.log("Comprobando firmas y ejecutable ClamAV…");
-      await execute(
-        config.CLAMAV_COMMAND,
-        [
-          `--database=${localPath(root, config.CLAMAV_DATABASE_DIR)}`,
-          "--version",
-        ],
-        {},
-        "ClamAV",
-      );
-      const { createClamScanner } =
-        await import("../server/dist/src/attachments/scanner.js");
-      await createClamScanner(loadConfig(environment).attachments).scan(
-        Buffer.from("Comprobación operativa FCEA-Datasys."),
-      );
+      await verifyClamAv(root, config, {
+        signal: abort.signal,
+        prepared: clamAvPrepared,
+      });
       if (profile === "production" && config.BOOTSTRAP_ADMIN_PASSWORD) {
         const { productionInput } =
           await import("../server/dist/src/initialization/profiles.js");
         productionInput(environment);
       }
       await prepareBackupTools(root, config, backup, backupOptions);
+      console.log("Preparando base, migraciones y permisos…");
       const users = await prepareDatabase(root, config, target, execute, {
         backup,
         ...(!options["--non-interactive"] && profile === "production"
