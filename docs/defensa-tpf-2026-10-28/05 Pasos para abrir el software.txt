@@ -1,0 +1,50 @@
+﻿FCEA-DATASYS - APERTURA DEL SOFTWARE
+
+REQUISITOS DEL EQUIPO SERVIDOR
+Node.js 24.11 o superior de la rama 24 (menor que 25), npm, PostgreSQL 18 con initdb/pg_ctl/psql/pg_dump/pg_restore, ClamAV y firmas vigentes. Navegador actualizado. Conexión a Internet para la primera instalación npm y para Drive.
+
+DEMO NUEVA
+1. Extraer Software/FCEA-Datasys-codigo.zip.
+2. Abrir PowerShell en la carpeta fceadatasys que contiene package.json.
+3. Actualizar las firmas de ClamAV si corresponde:
+   ./server/scripts/update-clamav.ps1
+4. Ejecutar:
+   npm run start:demo
+5. Esperar el mensaje Sistema iniciado y abrir http://127.0.0.1:8080, o la dirección que informe el lanzador.
+6. Ingresar con las cuentas de 04 Usuarios y contraseñas.txt.
+7. Mantener abierta la terminal. Ctrl+C cierra el sistema conservando los datos.
+
+El lanzador instala dependencias, compila, prepara la base y roles, aplica migraciones y carga la demo. No instala PostgreSQL ni ClamAV. Se crean 3 cuentas, 8 publicaciones y 8 adjuntos, además de personas y catálogos. No se necesita restaurar el dump para una demo nueva.
+
+INSTALACIÓN YA PREPARADA
+   npm run start:demo -- --start-only
+Cierre desde otra terminal:
+   npm run stop:demo
+La base demo predeterminada está en 127.0.0.1:55440/fceadatasys_demo. Sus secretos se generan localmente en .local/deploy/demo.env. No copiarlos al cliente ni compartirlos.
+
+RESTAURAR EL ESTADO DEL BACKUP ENTREGADO
+1. Preparar la demo y detenerla.
+2. Extraer Software/FCEA-Datasys-adjuntos-demo.zip. Copiar solo los ocho archivos al directorio privado server/.local/demo/attachments conservando sus nombres. manifest.json es el inventario y no un adjunto.
+3. Desde la raíz del proyecto, ejecutar el asistente con rutas absolutas reales:
+   npm run restore -- --profile demo --file "RUTA/Backup-demo-verificado.dump" --sha256 741332863e155da07f8171f78295929742929963c0665deb849e46868b2bb1ce
+4. Revisar base, archivo y hash. Escribir la confirmación RESTAURAR fceadatasys_demo cuando la solicite el asistente.
+5. El asistente verifica versión, permisos y archivos y conserva la base anterior. Después:
+   npm run start:demo -- --start-only
+
+COPIAS Y NUBE EN OTRO EQUIPO
+Los tokens y las configuraciones del equipo original no se distribuyen. Para habilitar copias, seguir docs/BACKUPS.md y docs/GOOGLE-DRIVE.md dentro del código fuente, preparar el archivo privado del perfil y autorizar la cuenta propia. Crear copia manual:
+   npm run backup -- --profile demo
+Programar, revisar y aplicar con:
+   npm run backup:schedule -- --profile demo --time 02:00
+La programación necesita PostgreSQL disponible al horario, aunque la web esté cerrada. Si el lanzador inició el clúster demo y luego se cierra, ese clúster se detiene.
+
+PRODUCCIÓN
+   npm run configure -- --profile production
+   npm run start:production
+Se requieren servicio PostgreSQL, HTTPS, certificados, almacenamiento privado, cuenta inicial y configuración institucional propia. Conservar una base existente es la opción predeterminada. La demo no sustituye esa preparación.
+
+PROBLEMAS FRECUENTES
+Puerto 8080 ocupado: liberar el puerto o ajustar PUBLIC_URL en la configuración del perfil. El MCP de Visual Paradigm también puede utilizarlo.
+ClamAV rechaza preparación: comprobar ejecutable, carpeta de firmas y actualización, siguiendo README.md.
+Credenciales cambiadas: usar la contraseña vigente. Repetir el lanzador no la restablece.
+El ZIP no incluye node_modules, .env reales, tokens, certificados ni herramientas del sistema operativo.

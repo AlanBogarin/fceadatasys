@@ -1,0 +1,257 @@
+[
+  {
+    "archivo": "00 LEER PRIMERO.txt",
+    "bytes": 2571,
+    "sha256": "cf5016e73a6228d0a4da2b3747db5684466fa5a80366cfc42f0c129641e72156"
+  },
+  {
+    "archivo": "01 Presentacion de la defensa - redisenada.pdf",
+    "bytes": 3302539,
+    "sha256": "a2099c6b08f42093977f5c99832024f8a4d8c170cb75130fe88b41be28ff39f7"
+  },
+  {
+    "archivo": "01 Presentacion de la defensa - redisenada.pptx",
+    "bytes": 4020883,
+    "sha256": "bd501a5beddfa533fabc645dabba88818e6fcfd2b2929fc46c9cc4070718758a"
+  },
+  {
+    "archivo": "02 Documento del proyecto y defensa.docx",
+    "bytes": 175345,
+    "sha256": "5f6e3d9c91ac2d3d3c9b379d9bd5b6fd350c288676a3121ee16a386b15858d7e"
+  },
+  {
+    "archivo": "02 Documento del proyecto y defensa.pdf",
+    "bytes": 341680,
+    "sha256": "67ff000698cb1405581d7288c94e6b84d40d44517986203d6b897163a5741df8"
+  },
+  {
+    "archivo": "03 Cronograma de trabajo.pdf",
+    "bytes": 74906,
+    "sha256": "5e1a2ac618d082d3078e3af848f3391422fe83e2d7b7b0bb5623ac3b1973d9b6"
+  },
+  {
+    "archivo": "03 Cronograma editable.csv",
+    "bytes": 1006,
+    "sha256": "4068151c02acf4290740e91afaed811ae07425afd485d770e1bfa55c7aa5bc5f"
+  },
+  {
+    "archivo": "04 Usuarios y contraseñas.txt",
+    "bytes": 941,
+    "sha256": "d7dba71b1289f4f22794afd709725f07043e714dbe95c1ce0fa0ba31d5a6dcb1"
+  },
+  {
+    "archivo": "05 Pasos para abrir el software.txt",
+    "bytes": 3575,
+    "sha256": "dc5329313bb81de89af82544e9f6865495f8cf988e59060ca71ef668c3a62727"
+  },
+  {
+    "archivo": "06 Guion de defensa.txt",
+    "bytes": 3123,
+    "sha256": "53bec85832c541cf8714f25b5a4a6278e3bc7244a9e9f81bce0c5f85cfa3bde7"
+  },
+  {
+    "archivo": "07 Manual de usuario.docx",
+    "bytes": 8725948,
+    "sha256": "e562f8e33dfef83aa83d8224b1cf41d3d321725d9c25b255f8bb54b724ad50fb"
+  },
+  {
+    "archivo": "07 Manual de usuario.pdf",
+    "bytes": 5532336,
+    "sha256": "57651538d12a1f9452fdcdd90b48174a054715db56700405750905adeb985844"
+  },
+  {
+    "archivo": "08 Manual de seguridad.docx",
+    "bytes": 1048918,
+    "sha256": "785d401ac7d3edb99b492eb854ae14ff4e0223e58ae5f891acae30645acd9afa"
+  },
+  {
+    "archivo": "08 Manual de seguridad.pdf",
+    "bytes": 642027,
+    "sha256": "c6c088b6a92a5cf3a8c9a9b573e5b27d457bd635bfb5197d502313f5c9944444"
+  },
+  {
+    "archivo": "09 Revision de entrega.md",
+    "bytes": 5977,
+    "sha256": "0f2a143c0fb75dd8d067873aa06c1f3c490be676bd8749deb7dc20545a6ebc8e"
+  },
+  {
+    "archivo": "Evidencias/adjuntos-manifest.json",
+    "bytes": 1834,
+    "sha256": "f029197811761e4487a90af7b4c4de55ed51935a723063bd79da658169a81061"
+  },
+  {
+    "archivo": "Evidencias/adjuntos.json",
+    "bytes": 1834,
+    "sha256": "f029197811761e4487a90af7b4c4de55ed51935a723063bd79da658169a81061"
+  },
+  {
+    "archivo": "Evidencias/backup-automatico-actual.json",
+    "bytes": 381,
+    "sha256": "86068219233c55a7b731e1f1c421a918404f99664b939c9bafc1b3f3cae66a7a"
+  },
+  {
+    "archivo": "Evidencias/build-server.log",
+    "bytes": 347,
+    "sha256": "8230151166957b57ae56dd5a7b98aa41d397876d295ed6368795e34aa9256f84"
+  },
+  {
+    "archivo": "Evidencias/codigo-fuente.json",
+    "bytes": 64020,
+    "sha256": "fed94c5bbf1480ebfa1502e300567443390d5183b901ec1a835349b1d3062439"
+  },
+  {
+    "archivo": "Evidencias/cuentas-verificadas.json",
+    "bytes": 643,
+    "sha256": "9a7b4b3c401f0f73fd4d058eab81d55c41a4f24eff6b6ef885ec70ded3fd7b25"
+  },
+  {
+    "archivo": "Evidencias/previa-backup-automatico-historial.json",
+    "bytes": 426,
+    "sha256": "b62332e7e814a6a9aabe783570d90ffcf912e071e45296e3345ba35e11856b6c"
+  },
+  {
+    "archivo": "Evidencias/previa-recuperacion-drive.json",
+    "bytes": 869,
+    "sha256": "b5ce9cb0ed52d664927f6caf2a78c1bb3676deaf2dc7348349865a0973ce0d73"
+  },
+  {
+    "archivo": "Evidencias/previa-restauracion.json",
+    "bytes": 1309,
+    "sha256": "4574cc6f9afb064d310d87ed970c4e2ed43dc507de5715d2a232ebc9ffea5719"
+  },
+  {
+    "archivo": "Evidencias/previa-tarea-programada-configuracion.json",
+    "bytes": 690,
+    "sha256": "2a1329085a7b8455ee4c2c69321ec574b8caf2e3eacbed527e9d7a8de7330a3e"
+  },
+  {
+    "archivo": "Evidencias/previa-tarea-programada-resultado.json",
+    "bytes": 832,
+    "sha256": "97d387bb61898082811bc682a34367991350aca334d1f62f32ddb5ecc3a74d21"
+  },
+  {
+    "archivo": "Evidencias/programacion-vigente.json",
+    "bytes": 861,
+    "sha256": "1c0ab5e68f2c5717f2b1f91598236b3f4f3670e392a378aa3573dab403c5a928"
+  },
+  {
+    "archivo": "Evidencias/pruebas-backups.log",
+    "bytes": 1292,
+    "sha256": "27ecca42268cd79e69017a5c96fb9401f0f3f8e61c6a82fefcb68396ffe4dce7"
+  },
+  {
+    "archivo": "Evidencias/pruebas-cliente.log",
+    "bytes": 12948,
+    "sha256": "6bf839b10908a284362fd242fcd7c34c2c17946e624d46bf782f4ab8d19cf869"
+  },
+  {
+    "archivo": "Evidencias/pruebas-despliegue.log",
+    "bytes": 2412,
+    "sha256": "05e7864df6dff3fe589440c224f1d50be0d0f7c575adab93f55d4cbc7b34e585"
+  },
+  {
+    "archivo": "Evidencias/pruebas-resumen.json",
+    "bytes": 479,
+    "sha256": "476b2aad1cfdc97095ac9f78894051083b73a396a3634163931d7316dbf749dc"
+  },
+  {
+    "archivo": "Evidencias/pruebas-servidor.log",
+    "bytes": 22783,
+    "sha256": "68644ff145e641b628554813bdd128fd0a2b620f1589b4301b06e99cf39af8e3"
+  },
+  {
+    "archivo": "Evidencias/recuperacion-drive-actual.json",
+    "bytes": 705,
+    "sha256": "2c1f58f7067656562770ffb5f7bf4abb88ac8c1414d9703fd8512680aa6c3d4b"
+  },
+  {
+    "archivo": "Evidencias/reportes-verificados.json",
+    "bytes": 613,
+    "sha256": "cb8576f736e3d12c11309fd4d4b2697012d0f06f4543f72204f8d4f52d05535f"
+  },
+  {
+    "archivo": "Evidencias/restauracion-actual.json",
+    "bytes": 1137,
+    "sha256": "0231afc31e7a637cb7157ca9196e3c5d4d0d2accbf8642eadf5cfa869b035d1d"
+  },
+  {
+    "archivo": "Evidencias/revision-demo.json",
+    "bytes": 4953,
+    "sha256": "696964949b3978776f7d7142e68dd17ec6aeb07d1a6ca4d6b4c673d0d64204b8"
+  },
+  {
+    "archivo": "Evidencias/revision-documental.json",
+    "bytes": 655,
+    "sha256": "a722d74ebe86018745ecca6f2f733ef59bbb8713fd47c9c1e3ce0de28f949117"
+  },
+  {
+    "archivo": "Evidencias/typecheck-server.log",
+    "bytes": 76,
+    "sha256": "04fd106fb6644db8ec918416172f9015a578e0cb3be3e7cee924c64106a50849"
+  },
+  {
+    "archivo": "Evidencias/validacion-archivos.json",
+    "bytes": 794,
+    "sha256": "e441d08072c72ec2157c57fd9453f934b548bfafe0d4941adfda8e01dc8e19ab"
+  },
+  {
+    "archivo": "Evidencias/validacion-excel.json",
+    "bytes": 407,
+    "sha256": "89109af274553013d530d7cbb2aacce565640d193ca1cadf5f5a44e31a79a08e"
+  },
+  {
+    "archivo": "Evidencias/validacion-pdf-auditoria.json",
+    "bytes": 304,
+    "sha256": "b21a33709fbc25e1a1a82a458d5651d992c1cb0764653d69e595e51154f48bd2"
+  },
+  {
+    "archivo": "Evidencias/validacion-presentacion.json",
+    "bytes": 616,
+    "sha256": "8b62a39f52f0f6d2c6e77c9a58e01a661cc71f896d0a8d6d20e720090caa8797"
+  },
+  {
+    "archivo": "Reportes/01-Publicacion-registrada.pdf",
+    "bytes": 166319,
+    "sha256": "14ffc3684877b1868c662855103bf5afb18417853a3935593a2c57ebe3931421"
+  },
+  {
+    "archivo": "Reportes/01-Publicacion-registrada.xlsx",
+    "bytes": 188602,
+    "sha256": "2e5f1bd93ecbd3122360ba10b322818cf05f2ea87aaed51edea4b26f963f7af6"
+  },
+  {
+    "archivo": "Reportes/02-Altas-de-usuarios-auditoria.pdf",
+    "bytes": 16594,
+    "sha256": "ddd55310869c3bef0e6cf15763ba1924dbd5f30173902894288672ce2c8222e4"
+  },
+  {
+    "archivo": "Reportes/02-Altas-de-usuarios-auditoria.xlsx",
+    "bytes": 9118,
+    "sha256": "bca341442d0f95d6ed90b0045c7d14058017b6bd3ae4214b7118440147869825"
+  },
+  {
+    "archivo": "Software/Backup-automatico-demo.dump",
+    "bytes": 101383,
+    "sha256": "0e1b77a36a04404c359e9fcce04c5a060083ef6ef250a464d2d60e632cd83e6d"
+  },
+  {
+    "archivo": "Software/Backup-demo-verificado.dump",
+    "bytes": 93829,
+    "sha256": "741332863e155da07f8171f78295929742929963c0665deb849e46868b2bb1ce"
+  },
+  {
+    "archivo": "Software/Backup-recuperado-Drive.dump",
+    "bytes": 93829,
+    "sha256": "741332863e155da07f8171f78295929742929963c0665deb849e46868b2bb1ce"
+  },
+  {
+    "archivo": "Software/FCEA-Datasys-adjuntos-demo.zip",
+    "bytes": 487476,
+    "sha256": "5b35ae897244c6c5a07fd84fcb307d052b7d95040fbb9405fd5dd50f7b9a9d3e"
+  },
+  {
+    "archivo": "Software/FCEA-Datasys-codigo.zip",
+    "bytes": 4956265,
+    "sha256": "0a71638695c087e568d2b7f60d63a63859ed16b172684c477c46cb24fb91c379"
+  }
+]

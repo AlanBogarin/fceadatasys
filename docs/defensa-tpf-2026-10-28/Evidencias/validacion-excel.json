@@ -1,0 +1,19 @@
+[
+  {
+    "archivo": "01-Publicacion-registrada.xlsx",
+    "contenidoEsperado": [
+      "INV-00008",
+      "Emprendimiento sostenible y desarrollo económico local"
+    ],
+    "resultado": "APROBADO"
+  },
+  {
+    "archivo": "02-Altas-de-usuarios-auditoria.xlsx",
+    "contenidoEsperado": [
+      "USUARIO_CREADO",
+      "digitador",
+      "publico"
+    ],
+    "resultado": "APROBADO"
+  }
+]

@@ -285,7 +285,11 @@ export async function auditDocument(
     doc
       .fontSize(8)
       .text("Dirección de Investigación", 44, 50, { lineBreak: false });
+    // A header without a line break advances x. Reset the body cursor on
+    // every page, including automatic continuations of long event values.
+    doc.x = doc.page.margins.left;
     doc.y = 80;
+    doc.fontSize(9).fillColor("#292633");
   });
   doc.addPage();
   doc.fontSize(12).text(`${rows.length} eventos · fechas UTC`);

@@ -1,0 +1,14 @@
+{
+  "presentacionPaginas": 18,
+  "documentoProyectoPaginas": 14,
+  "ganttPaginas": 1,
+  "manualUsuarioPaginas": 56,
+  "manualSeguridadPaginas": 25,
+  "reportesPaginas": [
+    2,
+    3
+  ],
+  "revision": "Páginas renderizadas con Poppler y revisadas visualmente. Manuales originales conservados; PDF exportados desde copias DOCX mediante Word.",
+  "pdfAuditoria": "Salida corregida, sin caracteres fuera de márgenes en reporte real y caso extenso de 10 páginas.",
+  "presentacion": "Rediseño visual de 18 diapositivas. Revisión individual en PDF y PPTX reimportado, con fotografía institucional, capturas reales y gráficos editables."
+}

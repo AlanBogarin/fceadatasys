@@ -1,0 +1,24 @@
+{
+  "fecha": "2026-10-28T07:51:05.418Z",
+  "origen": "API real del perfil demo. No son registros nuevos creados para esta revisión.",
+  "transaccion1": {
+    "proceso": "Registro de publicación",
+    "id": "d8a2db50-e1d8-4468-95cc-5be0a57b4bb6",
+    "codigo": "INV-00008",
+    "titulo": "Emprendimiento sostenible y desarrollo económico local",
+    "total": 1,
+    "formatos": [
+      "PDF",
+      "XLSX"
+    ]
+  },
+  "transaccion2": {
+    "proceso": "Alta de cuenta de usuario",
+    "reporte": "Auditoría filtrada por USUARIO_CREADO",
+    "eventos": 2,
+    "formatos": [
+      "PDF",
+      "XLSX"
+    ]
+  }
+}

@@ -1,7 +1,0 @@
-﻿DIAGRAMAS FCEA DATASYS
-D01 a D31 son las imágenes finales incluidas en el documento del sistema.
-FCEA-Datasys.vpp es una instantánea editable del proyecto creado en Visual Paradigm mediante MCP.
-El proyecto conserva revisiones de trabajo. indice.json identifica por código el nombre de la vista final que corresponde a cada PNG. Las revisiones finales se distinguen por entrega final o entrega final corregida cuando hubo ajuste.
-modelos-mcp.json conserva la especificación de las vistas y registro-mcp.log conserva las respuestas de creación y guardado.
-Las imágenes utilizan una exportación propia de los modelos dentro de la extensión MCP, independiente de la exportación de Community Edition. No se recortó ni borró una marca de agua de una exportación.
-Cada imagen de secuencia contiene una operación. El organigrama es funcional y el Gantt retrospectivo identifica sus estimaciones en el documento.

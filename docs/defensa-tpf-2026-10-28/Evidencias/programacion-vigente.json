@@ -1,0 +1,23 @@
+[
+  {
+    "Nombre": "fceadatasys-backup-a334d5a8ef-demo",
+    "Estado": "Ready",
+    "UltimaEjecucion": "2026-10-28T02:00:03",
+    "Resultado": 0,
+    "ProximaEjecucion": "2026-10-29T02:00:00",
+    "Acciones": [
+      {
+        "Ejecutable": "C:\\nvm4w\\nodejs\\node.exe",
+        "Argumentos": "\"C:\\Users\\viktor\\Alan\\unc\\6to semestre\\Ingenieria de Software\\Proyecto\\fceadatasys\\scripts\\backup.mjs\" --profile demo --config \"C:\\Users\\viktor\\Alan\\unc\\6to semestre\\Ingenieria de Software\\Proyecto\\fceadatasys\\.local\\deploy\\demo.env\"",
+        "Directorio": "C:\\Users\\viktor\\Alan\\unc\\6to semestre\\Ingenieria de Software\\Proyecto\\fceadatasys"
+      }
+    ],
+    "Disparadores": [
+      {
+        "Inicio": "2026-10-28T02:00:00-03:00",
+        "IntervaloDias": 1,
+        "Habilitado": true
+      }
+    ]
+  }
+]

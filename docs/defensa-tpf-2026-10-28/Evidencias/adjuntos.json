@@ -1,0 +1,50 @@
+[
+  {
+    "nombre": "Educacion-financiera-y-ahorro.pdf",
+    "almacenamiento_clave": "0c405337-7a89-4ce5-80d8-c3762656224e.pdf",
+    "sha256": "d7b2ca5260c4284a7fa2e8ec4e995b389cd14fe079942bea6fdcaa148155ea8b",
+    "tamano": 75471
+  },
+  {
+    "nombre": "Clima-laboral.pdf",
+    "almacenamiento_clave": "13fb52d9-f69e-435a-acd7-2afce46fe881.pdf",
+    "sha256": "d9cc08080c43bfcc5acd5067c12ceea9975d1949ab08f8fd4dbb9b931de38e0f",
+    "tamano": 75414
+  },
+  {
+    "nombre": "Comercio-electronico.pdf",
+    "almacenamiento_clave": "27fbd8df-c4be-48d8-b3b7-688602e3206d.pdf",
+    "sha256": "79d6526ff85bd768aa5efe69a49882a91fa789e35b42e2fc1bc65e74e23fa8dd",
+    "tamano": 75485
+  },
+  {
+    "nombre": "Costos-y-rentabilidad.pdf",
+    "almacenamiento_clave": "5b56af70-3d21-4f80-bad3-c227a65bd863.pdf",
+    "sha256": "ca62a3710c71442ecb9304abba7e40feea9ef8be7b7a97a7877ee9b07f3028b7",
+    "tamano": 75482
+  },
+  {
+    "nombre": "Presupuesto-familiar.pdf",
+    "almacenamiento_clave": "67949ef7-998a-4567-84d4-ec465f7c3fe6.pdf",
+    "sha256": "eb5f8f47d4dfa2ddcf809d8f6526d296d349ecaa784aec4db9cc4ff2a56d6ccd",
+    "tamano": 75454
+  },
+  {
+    "nombre": "Emprendimiento-sostenible.pdf",
+    "almacenamiento_clave": "6cd248d3-1b4f-48da-9b9a-7eaa8478325d.pdf",
+    "sha256": "c1b2b827926f4228f2ed7d6eb292a8698d247f2678118efafdb9ff29ca39bba5",
+    "tamano": 75461
+  },
+  {
+    "nombre": "Digitalizacion-de-microemprendimientos.pdf",
+    "almacenamiento_clave": "877cc28a-413d-439e-980a-7de4f32d31e8.pdf",
+    "sha256": "4f1bc6932b120f2404519c97f36ac3c5bad5be3060374cf161091f37fbdffac2",
+    "tamano": 75489
+  },
+  {
+    "nombre": "Inclusion-financiera-rural.pdf",
+    "almacenamiento_clave": "ed8f5b19-6130-4573-90a5-9c50fe2d7a62.pdf",
+    "sha256": "46e9479b43186fe413e8740900435a093e4973bd379a92baa2b199b497063756",
+    "tamano": 75468
+  }
+]

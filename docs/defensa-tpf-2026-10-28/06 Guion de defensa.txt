@@ -1,0 +1,31 @@
+﻿FCEA-DATASYS - GUION DE DEFENSA
+
+ANTES DE EXPONER
+Abrir la demo, probar accesos, revisar catálogos y tener un PDF ficticio único. Mantener el clúster demo disponible durante las copias. Abrir los reportes y evidencias incluidos como respaldo de la demostración.
+
+1. Presentar el título, FCEA-Datasys, institución, integrantes y problema. Explicar que se catalogan trabajos previamente aprobados por la institución.
+2. Exponer objetivo general y objetivos específicos. Relacionar cada grupo de requerimientos con una ventana del sistema.
+3. Explicar el papel de las herramientas y la integridad de PostgreSQL. Mostrar el Gantt aclarando que su referencia de planificación es estimada y que los hitos provienen de Git.
+4. Transacción 1: registrar una publicación con datos únicos. Mostrar validaciones, guardar, anotar código y recargar. Probar un duplicado. Consultar Reportes por ese código y descargar PDF y Excel.
+5. Transacción 2: crear una cuenta ficticia con datos únicos y rol permitido. Recargar y comprobarla. Intentar duplicado. En Auditoría, filtrar módulo usuarios y USUARIO_CREADO, revisar recurso y valores nuevos y exportar PDF y Excel. La contraseña no aparece en el reporte.
+6. Mostrar que una consulta sin coincidencias no genera un archivo. Explicar permisos y actualización de snapshot.
+7. Backup manual: mostrar o ejecutar Crear copia ahora, revisar estado, archivo y SHA-256. Abrir restauracion-actual.json: base temporal con 3 cuentas, 8 publicaciones y 8 adjuntos verificados.
+8. Backup automático: abrir programacion-vigente.json, acción, disparador diario, última salida 0 y copia programada. Distinguir el historial recuperado del último resultado del Programador.
+9. Nube: mostrar recuperacion-drive-actual.json, acceso de propietario, archivo recuperado y hash coincidente. No abrir archivos privados de OAuth.
+10. Cerrar con la validación, componentes entregados y preparación institucional de producción.
+
+PREGUNTAS PARA ENSAYAR
+¿Qué confirma una transacción? Los datos de negocio, relaciones y auditoría protegida se confirman juntos o se revierten.
+¿Qué ocurre si falla la auditoría? Se cancela la operación protegida.
+¿Qué contiene el dump? Estructura y datos PostgreSQL. Los PDF privados se conservan aparte.
+¿Por qué un respaldo puede figurar interrumpido después de restaurar? La copia captura su propio trabajo en curso; la restauración lo marca fallido y no lo continúa automáticamente.
+¿Por qué el segundo reporte es de auditoría? Registra las altas de cuentas con actor, recurso, resultado y valores nuevos. No es un listado general de usuarios.
+¿El Gantt prueba un plan inicial aprobado? No. Las fechas grises son estimadas; los hitos observados tienen fuente verificable.
+
+GUION DE VIDEO (MÁXIMO 3 MINUTOS)
+00:00-00:20 Nombre, problema y objetivo.
+00:20-01:05 Registro de publicación y reporte.
+01:05-01:50 Alta de usuario y reporte de auditoría.
+01:50-02:35 Copias manual/automática, Drive y restauración.
+02:35-03:00 Acceso, seguridad y cierre.
+Este texto es un guion y no un video terminado.

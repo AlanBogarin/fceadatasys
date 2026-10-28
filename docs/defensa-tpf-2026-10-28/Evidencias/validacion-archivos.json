@@ -1,0 +1,37 @@
+{
+  "pdfs": [
+    {
+      "archivo": "01 Presentacion de la defensa - redisenada.pdf",
+      "paginas": 18
+    },
+    {
+      "archivo": "02 Documento del proyecto y defensa.pdf",
+      "paginas": 14
+    },
+    {
+      "archivo": "03 Cronograma de trabajo.pdf",
+      "paginas": 1
+    },
+    {
+      "archivo": "07 Manual de usuario.pdf",
+      "paginas": 56
+    },
+    {
+      "archivo": "08 Manual de seguridad.pdf",
+      "paginas": 25
+    },
+    {
+      "archivo": "Reportes/01-Publicacion-registrada.pdf",
+      "paginas": 2
+    },
+    {
+      "archivo": "Reportes/02-Altas-de-usuarios-auditoria.pdf",
+      "paginas": 3
+    }
+  ],
+  "pruebas": 395,
+  "fuentes": 358,
+  "adjuntos": 8,
+  "restauracion": "APROBADA",
+  "drive": "RECUPERADO Y VERIFICADO"
+}
