@@ -14,9 +14,11 @@
     "stop:production": "node scripts/run.mjs --profile production --stop",
     "configure": "node scripts/run.mjs --configure",
     "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs",
     "backup:authorize": "node scripts/authorize-drive.mjs",
     "backup:schedule": "node scripts/configure-backups.mjs",
     "test:backups": "node --test scripts/backups/*.test.mjs",
+    "test:restore:integration": "node --test scripts/backups/restore.integration.mjs",
     "test:deployment": "node --test scripts/deployment/*.test.mjs",
     "test:deployment:integration": "node --test scripts/deployment/launch.integration.mjs",
     "test:production-setup": "node --test scripts/deployment/production.integration.mjs"

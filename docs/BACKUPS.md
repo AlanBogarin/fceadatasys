@@ -108,7 +108,44 @@ La institución debe autorizar su cuenta y comprobar el primer respaldo completo
 
 ## Restauración de una copia
 
-El `.dump` permite reconstruir la estructura y los datos al momento de la copia. No incluye cambios posteriores ni permite elegir un instante intermedio entre respaldos. La aplicación no tiene un botón de restauración; el encargado utiliza herramientas administrativas como `pg_restore` o pgAdmin.
+El `.dump` permite reconstruir la estructura y los datos al momento de la copia. No incluye cambios posteriores ni permite elegir un instante intermedio entre respaldos.
+
+### Restauración rápida de una instalación existente
+
+Desde una terminal en la raíz del proyecto:
+
+```powershell
+npm run stop:production
+# Esperar a que la terminal del lanzador confirme el cierre.
+npm run restore -- --profile production
+npm run start:production
+```
+
+Para demo, reemplazar `production` por `demo`. El asistente muestra las copias locales, de más reciente a más antigua, y permite elegir por número. Para una copia descargada de Google Drive o ubicada en otra carpeta:
+
+```powershell
+npm run restore -- --profile production --file "C:/FCEA/copias/copia.dump"
+```
+
+`--list` solo muestra las copias disponibles y no modifica PostgreSQL. `--config RUTA` permite usar un archivo de despliegue alternativo. `npm run restore -- --help` muestra las opciones. La restauración requiere una terminal interactiva y escribir `RESTAURAR nombre_de_la_base` después de revisar archivo, destino y hash; no admite omitir esa confirmación.
+
+El procedimiento:
+
+1. Reserva el bloqueo del lanzador para impedir un arranque concurrente. Rechaza la operación si el sistema sigue iniciado o la base tiene conexiones activas; no fuerza desconexiones. El clúster demo se inicia y se cierra automáticamente cuando corresponde. Los servicios PostgreSQL de producción se conservan en ejecución.
+2. Prepara una copia privada del archivo de entrada y comprueba cabecera, índice y SHA-256. Obtiene el hash original de la auditoría del respaldo; si el archivo fue renombrado o ese evento ya no existe, exige `--sha256 HASH_ORIGINAL`. No usar como referencia un hash calculado únicamente a partir de un archivo de procedencia desconocida.
+3. Restaura en una **base nueva** con `pg_restore --single-transaction`, usando al propietario de migraciones. Compara las migraciones y sus checksums con la versión instalada; no migra automáticamente respaldos de otras versiones. Verifica que exista un Administrador activo con `permissions.manage` y comprueba el contenido de los adjuntos marcados `CLEAN` contra su hash. Si faltan documentos, recuperar primero la carpeta de adjuntos compatible con el respaldo.
+4. Restablece los grants del runtime y del lector de copias, y prueba ambas conexiones. Revoca las sesiones y tokens refresh recuperados, retira los enlaces de recuperación de contraseña anteriores y marca como fallidas las copias que figuran en curso dentro del respaldo.
+5. Registra la validación y activa la base mediante dos renombrados en una misma transacción. La base recuperada toma el nombre configurado; **no hay que cambiar URLs, credenciales ni la tarea diaria**. La base anterior queda completa con el sufijo `_previous_IDENTIFICADOR`, incluida su auditoría posterior al respaldo, y con nuevas conexiones deshabilitadas. Si la activación falla, se revierten ambos renombrados.
+
+El operador necesita acceso autorizado a la configuración privada del servidor, herramientas PostgreSQL y una cuenta técnica con permisos para crear bases y renombrar las del propietario. En producción, si `PG_ADMIN_URL` no está configurado, el asistente solicita usuario y contraseña PostgreSQL, con contraseña oculta; se utilizan en memoria y no se guardan. El acceso del propietario/runtime/lector existente no se modifica. Es un procedimiento de mantenimiento local de TIC; no añade permisos ni endpoints HTTP a la aplicación.
+
+Se insertan eventos `RESTAURACION_INICIADA`, `RESTAURACION_VALIDADA` y, ante un rechazo o fallo después de consultar la auditoría de origen, `RESTAURACION_FALLIDA`; los registros identifican la cuenta del sistema operativo, sin simular un usuario o una sesión web. Las validaciones locales anteriores a la conexión quedan en el registro de mantenimiento. No se modifican ni eliminan logs. Si falla la auditoría obligatoria, no se activa la recuperación. El registro local está en `.local/backups/restores/PERFIL/ID/events.jsonl`; incluye los nombres de las bases y el hash, sin contraseñas. Una recuperación fallida puede conservar su base temporal `_restore_IDENTIFICADOR` y `input.dump` para revisión por TIC; no hay eliminación automática de bases. Tras el éxito se retira únicamente esa copia temporal del archivo de entrada; el respaldo seleccionado se conserva.
+
+Para volver a la base anterior, detener nuevamente la aplicación y conectar un administrador a `postgres`. A partir de los nombres exactos indicados por el asistente, ejecutar los siguientes pasos en **una misma transacción**, sin conexiones activas: deshabilitar conexiones a la base actual, renombrarla a un nombre libre, renombrar la base `_previous_...` a su nombre original y habilitar conexiones a esa base. Conservar también la base que se retira y comprobar los adjuntos antes de reiniciar. No borrar ninguna de las dos bases como parte de la recuperación.
+
+Esta vía exige que la base actual y sus roles sigan accesibles. Para pérdida total de la base, otro servidor o una versión diferente de la aplicación, utilizar el procedimiento administrado siguiente.
+
+### Recuperación administrada en una base vacía
 
 1. Antes de sustituir una instalación activa, entrar en mantenimiento y conservar una copia del estado actual, incluida su auditoría. Mantener un registro del procedimiento.
 2. Descargar el respaldo elegido desde Drive o usar su copia local. Si se descargó, comprobar su SHA-256 contra el registrado en la auditoría del respaldo.
@@ -132,4 +169,6 @@ El respaldo actual cubre PostgreSQL. Los PDF están en `ATTACHMENT_DIRECTORY` y 
 
 ## Validación reproducible
 
-`npm run test:backups`, `npm run test:unit --prefix server` y `server/test/permissions.integration.test.ts` comprueban horarios/idempotencia, permisos, auditoría, exclusión, pg_dump/pg_restore reales y fallos de nube con la API de Drive sustituida. La integración exige la base desechable `fceadatasys_permissions_demo_test`, `PERMISSIONS_TEST_DATABASE_URL`, `PERMISSIONS_TEST_OWNER_URL`, `TEST_PG_DUMP` y `TEST_PG_RESTORE`. La variable de propietario solo debe apuntar al entorno de pruebas.
+`npm run test:backups`, `npm run test:unit --prefix server` y `server/test/permissions.integration.test.ts` comprueban horarios/idempotencia, permisos, auditoría, exclusión, pg_dump/pg_restore reales y fallos de nube con la API de Drive sustituida. La integración de permisos exige la base desechable `fceadatasys_permissions_demo_test`, `PERMISSIONS_TEST_DATABASE_URL`, `PERMISSIONS_TEST_OWNER_URL`, `TEST_PG_DUMP` y `TEST_PG_RESTORE`. La variable de propietario solo debe apuntar al entorno de pruebas.
+
+`npm run test:restore:integration` ensaya el asistente contra un clúster PostgreSQL temporal con puerto libre, base exclusiva y datos desechables. Definir `DEPLOYMENT_PG_BIN_DIRECTORY` con la carpeta de binarios PostgreSQL 18; sin esa variable se omite. Comprueba hash, cancelación, fallo del motor, documentos faltantes, rollback real del cambio de nombres, auditoría, sesiones, grants del runtime/lector y conservación de los datos anteriores.

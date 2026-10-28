@@ -58,6 +58,20 @@ export function BackupsPage() {
         <Alert text="Las copias todavía no están configuradas. TIC debe definir la carpeta privada y autorizar Google Drive siguiendo la guía de instalación." />
       )}
       <section className="panel">
+        <h2>Restaurar una copia</h2>
+        <p>
+          En la terminal del servidor, detené el sistema y ejecutá{" "}
+          <code>npm run restore -- --profile production</code> (o{" "}
+          <code>--profile demo</code>). El asistente permite elegir el respaldo,
+          verifica su contenido y conserva la base anterior antes de activar la
+          recuperación.
+        </p>
+        <p>
+          Para una copia de Google Drive, descargá primero el archivo .dump. Los
+          documentos adjuntos requieren su propia copia.
+        </p>
+      </section>
+      <section className="panel">
         <div className="panel-heading">
           <div>
             <h2>Historial de copias</h2>

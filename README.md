@@ -144,7 +144,7 @@ El proceso permanece en primer plano. Para ejecución después de reiniciar el e
 
 ## Desarrollo y validación
 
-La ventana Roles y permisos permite configurar acciones por rol y excepciones por cuenta. Auditoría muestra una vista amigable con opciones JSON/raw. Copias de seguridad permite respaldos de PostgreSQL y consulta del estado local/en Google Drive. Configuración y acceso a Drive: [GOOGLE-DRIVE.md](docs/GOOGLE-DRIVE.md). Programación y restauración: [BACKUPS.md](docs/BACKUPS.md); accesos: [PERMISSIONS.md](docs/PERMISSIONS.md). Requieren las dos migraciones del 26/10/2026 y los grants actualizados.
+La ventana Roles y permisos permite configurar acciones por rol y excepciones por cuenta. Auditoría muestra una vista amigable con opciones JSON/raw. Copias de seguridad permite respaldos de PostgreSQL y consulta del estado local/en Google Drive. Para recuperar una copia rápidamente, detener el sistema y ejecutar `npm run restore -- --profile production` (o `demo`): el asistente permite elegir un respaldo verificado y conserva la base anterior. Configuración y acceso a Drive: [GOOGLE-DRIVE.md](docs/GOOGLE-DRIVE.md). Programación y restauración: [BACKUPS.md](docs/BACKUPS.md); accesos: [PERMISSIONS.md](docs/PERMISSIONS.md). Requieren las dos migraciones del 26/10/2026 y los grants actualizados.
 
 El cliente de desarrollo también utiliza API real. Las instrucciones manuales y contratos están en [cliente](client/README.md), [servidor](server/README.md), [API](server/docs/API.md) y [conjuntos iniciales](server/docs/INITIAL-DATA.md).
 
