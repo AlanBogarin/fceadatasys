@@ -6,9 +6,18 @@ param(
   [ValidatePattern('^([01]\d|2[0-3]):[0-5]\d$')][string]$Time = '02:00',
   [Parameter(Mandatory=$true)][string]$NodeCommand,
   [Parameter(Mandatory=$true)][string]$TaskName,
-  [switch]$Disable
+  [switch]$Disable,
+  [switch]$NonInteractive
 )
 $ErrorActionPreference = 'Stop'
+function Request-BackupCredential([string]$UserName) {
+  if ($NonInteractive) {
+    throw 'Windows requiere credenciales para la tarea de copias. Ejecutá npm run backup:schedule en una terminal interactiva con el mismo perfil, configuración y horario.'
+  }
+  $credential = Get-Credential -UserName $UserName -Message 'Cuenta del servicio de copias (acceso a configuración, PostgreSQL y Google Drive)'
+  if (-not $credential) { throw 'Se requiere una cuenta para la ejecución sin sesión interactiva.' }
+  return $credential
+}
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($Disable) {
   if ($existing) { Disable-ScheduledTask -TaskName $TaskName | Out-Null }
@@ -26,12 +35,21 @@ $action = New-ScheduledTaskAction -Execute $NodeCommand -Argument $arguments -Wo
 $trigger = New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.Add([timespan]::Parse($Time)))
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 3) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 if ($existing) {
-  Set-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings | Out-Null
+  try {
+    Set-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings | Out-Null
+  } catch {
+    # Updating a password-logon task can require credentials again. This does not
+    # imply that the password supplied when creating the task was incorrect.
+    if ($existing.Principal.LogonType -ne 'Password' -or
+        ($_.FullyQualifiedErrorId -notmatch '0x8007052e' -and $_.Exception.HResult -ne -2147023570)) { throw }
+    Write-Output 'Windows requiere volver a autenticar la cuenta para actualizar la tarea de copias.'
+    $credential = Request-BackupCredential $existing.Principal.UserId
+    Set-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -User $credential.UserName -Password $credential.GetNetworkCredential().Password | Out-Null
+  }
   Enable-ScheduledTask -TaskName $TaskName | Out-Null
 } else {
   # Password logon permits network access when the operator is signed out.
-  $credential = Get-Credential -UserName ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -Message 'Cuenta del servicio de copias (acceso a configuración, PostgreSQL y Google Drive)'
-  if (-not $credential) { throw 'Se requiere una cuenta para la ejecución sin sesión interactiva.' }
+  $credential = Request-BackupCredential ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
   Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -User $credential.UserName -Password $credential.GetNetworkCredential().Password -Description 'Copia diaria FCEA Datasys: servidor y Google Drive' | Out-Null
 }
 Write-Output "Tarea $TaskName configurada diariamente a las $Time (hora local del servidor)."

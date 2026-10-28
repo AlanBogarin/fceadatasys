@@ -60,12 +60,13 @@ try {
         "-TaskName",
         name,
         ...(values.disable ? ["-Disable"] : []),
+        ...(values["non-interactive"] ? ["-NonInteractive"] : []),
       ],
       { stdio: "inherit", windowsHide: true, shell: false },
     );
     if (result.error || result.status !== 0)
       throw Error(
-        "No se pudo registrar la tarea. Revisá los permisos del Programador de tareas.",
+        "No se pudo configurar la tarea de copias. Revisá el error anterior: credenciales de Windows o permisos del Programador de tareas.",
       );
   } else {
     const existing = spawnSync("crontab", ["-l"], { encoding: "utf8" });
