@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve, join, sep } from "node:path";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   defaults,
@@ -11,6 +11,7 @@ import {
   assertPrivateLocation,
 } from "./config.mjs";
 import { configureDeployment, databaseUrl } from "./wizard.mjs";
+import { assertDriveClientFile, importDriveClientFile } from "./drive-client.mjs";
 import {
   configuredBackups,
   prepareBackupTools,
@@ -27,6 +28,13 @@ function fixture(t) {
     rmSync(folder, { recursive: true, force: true });
   });
   return folder;
+}
+function desktopClient(folder) {
+  const file = join(folder, "downloaded-client.json");
+  writeFileSync(file, JSON.stringify({ installed: {
+    client_id: "wizard.apps.googleusercontent.com", client_secret: "private-json-secret",
+  } }));
+  return file;
 }
 function terminal(overrides = {}) {
   const calls = [],
@@ -57,6 +65,8 @@ test("producción usa fceadatasys en el servicio principal y pregunta credencial
   const folder = fixture(t),
     prompt = terminal({
       BACKUP_CONFIG_FILE: join(folder, "backup.env"),
+      DRIVE_CLIENT_FILE: join(folder, "private", "drive-client.json"),
+      DRIVE_CLIENT_SOURCE: desktopClient(folder),
       SMTP_ENABLED: "si",
       SMTP_HOST: "smtp.example.org",
       SMTP_PORT: "465",
@@ -157,6 +167,8 @@ test("demo habilita Drive personal con configuración propia y conserva la base 
     PUBLIC_URL: "http://127.0.0.1:8080",
     BACKUP_ENABLED: "si",
     BACKUP_CONFIG_FILE: join(folder, "demo.env"),
+    DRIVE_CLIENT_FILE: join(folder, "private", "demo-drive-client.json"),
+    DRIVE_CLIENT_SOURCE: '"' + desktopClient(folder) + '"',
     BACKUP_CONFIGURE_DRIVE: "si",
     BACKUP_INSTALL_SCHEDULE: "no",
     SMTP_ENABLED: "no",
@@ -177,6 +189,9 @@ test("demo habilita Drive personal con configuración propia y conserva la base 
   assert.equal(result.backup.DRIVE_FOLDER_ID, "");
   assert.ok(result.backup.DRIVE_CLIENT_FILE.endsWith("demo-drive-client.json"));
   assert.ok(result.backup.DRIVE_TOKEN_FILE.endsWith("demo-drive-token.json"));
+  assertDriveClientFile(result.backup.DRIVE_CLIENT_FILE);
+  assert.ok(prompt.calls.some((call) => call.key === "DRIVE_CLIENT_SOURCE"));
+  assert.ok(!JSON.stringify(prompt.messages).includes("private-json-secret"));
   assert.ok(!prompt.calls.some((call) => call.key === "BOOTSTRAP_ADMIN_EMAIL"));
 });
 test("URLs codifican contraseñas con símbolos; identificadores y carpetas públicas se rechazan", () => {
@@ -229,6 +244,8 @@ test("la configuración privada de copias persiste y se valida contra la base de
     DRIVE_FOLDER_ID: "folder-test",
   };
   writeConfig(file, backup);
+  assert.throws(() => configuredBackups(root, config), /No se encontró el JSON OAuth/);
+  writeFileSync(join(folder, "drive-client.json"), readFileSync(desktopClient(folder)));
   assert.deepEqual(readConfig(file), backup);
   assert.equal(
     configuredBackups(root, config).BACKUP_DIRECTORY,
@@ -242,6 +259,60 @@ test("la configuración privada de copias persiste y se valida contra la base de
     ),
   });
   assert.throws(() => configuredBackups(root, config), /misma base/);
+});
+
+test("Importación OAuth rechaza archivos inexistentes, JSON inválido y clientes que no sean de escritorio", (t) => {
+  const folder = fixture(t);
+  assert.throws(() => assertDriveClientFile(join(folder, "missing.json")), /No se encontró el JSON OAuth/);
+  for (const contents of ["private-json-secret", JSON.stringify({ web: {
+    client_id: "web.apps.googleusercontent.com", client_secret: "private-json-secret",
+  } }), JSON.stringify({ installed: { client_id: "invalid", client_secret: "private-json-secret" } })]) {
+    const source = join(folder, "invalid.json"), destination = join(folder, "private", "client.json");
+    writeFileSync(source, contents);
+    assert.throws(() => importDriveClientFile(source, destination), (error) => {
+      assert.ok(!error.message.includes("private-json-secret"));
+      return true;
+    });
+    assert.equal(existsSync(destination), false);
+  }
+});
+
+test("Importación OAuth conserva bytes, fuente y clientes existentes; rutas relativas siguen el archivo de copias", async (t) => {
+  const folder = fixture(t), source = desktopClient(folder);
+  const destination = join(folder, "private", "client.json");
+  importDriveClientFile(source, destination);
+  assert.deepEqual(readFileSync(destination), readFileSync(source));
+  assert.throws(() => importDriveClientFile(source, destination), /Ya existe un JSON OAuth/);
+  assert.deepEqual(readFileSync(destination), readFileSync(source));
+  const prompt = terminal({
+    PUBLIC_URL: "http://127.0.0.1:8080",
+    BACKUP_ENABLED: "si", BACKUP_CONFIG_FILE: join(folder, "copies.env"),
+    DRIVE_CLIENT_FILE: "private/client.json", SMTP_ENABLED: "no",
+  });
+  await configureDeployment(root, defaults(root, "demo"), prompt);
+  assert.ok(!prompt.calls.some((call) => call.key === "DRIVE_CLIENT_SOURCE"));
+});
+
+test("El asistente vuelve a pedir el archivo descargado cuando la primera ruta no existe", async (t) => {
+  const folder = fixture(t), source = desktopClient(folder);
+  const destination = join(folder, "private", "client.json");
+  const prompt = terminal({
+    PUBLIC_URL: "http://127.0.0.1:8080", SMTP_ENABLED: "no",
+    BACKUP_ENABLED: "si", BACKUP_CONFIG_FILE: join(folder, "copies.env"),
+    DRIVE_CLIENT_FILE: destination, DRIVE_CLIENT_SOURCE: source,
+  });
+  const ask = prompt.ask;
+  let selections = 0;
+  prompt.ask = async (...args) => {
+    const value = await ask(...args);
+    if (args[0].endsWith("(DRIVE_CLIENT_SOURCE)") && selections++ === 0)
+      return join(folder, "missing.json");
+    return value;
+  };
+  await configureDeployment(root, defaults(root, "demo"), prompt);
+  assert.equal(selections, 2);
+  assert.ok(prompt.messages.some((message) => message.includes("No se encontró el JSON OAuth")));
+  assert.deepEqual(readFileSync(destination), readFileSync(source));
 });
 test("preparación de copias: autorización explícita, primera prueba y horario elegidos, sin registrar tareas durante el test", async (t) => {
   const folder = fixture(t),

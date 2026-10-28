@@ -1,6 +1,6 @@
 # Guía para configurar y autorizar Google Drive
 
-Revisada el **27/10/2026**. Dirigida al encargado de instalación o a TIC. Los nombres de las pantallas pueden variar según el idioma de Google Cloud.
+Revisada el **28/10/2026**. Dirigida al encargado de instalación o a TIC. Los nombres de las pantallas pueden variar según el idioma de Google Cloud.
 
 Esta guía conecta las copias de PostgreSQL de fceadatasys con una cuenta de Drive mediante su API. Al terminar, el perfil elegido tendrá una carpeta propia en Drive y una primera copia **COMPLETO**. El sistema conserva además el archivo local. La operación diaria, programación y restauración están en [BACKUPS.md](BACKUPS.md).
 
@@ -70,9 +70,9 @@ Ese alcance permite trabajar con archivos utilizados con la aplicación. Google 
 2. Seleccionar **App de escritorio / Desktop app**.
 3. Asignar un nombre identificable, por ejemplo `FCEA Datasys Demo - Copias` o `FCEA Datasys Producción - Copias`.
 4. Crear el cliente y usar **Descargar JSON**. Esta integración es una tarea de respaldo convencional; no necesita la opción de cliente para agentes de IA.
-5. Localizar el archivo descargado y trasladarlo a la carpeta privada elegida para el entorno. Cambiar su nombre es válido; conservar su contenido original.
+5. Localizar el archivo descargado. El asistente de instalación pedirá su ruta y lo copiará al destino privado del entorno si falta; también se puede trasladar previamente a ese destino. Cambiar su nombre es válido; conservar su contenido original.
 
-El archivo suele llamarse `client_secret_…apps.googleusercontent.com.json`. Su configuración debe contener el objeto `installed`, con el identificador y secreto del cliente. fceadatasys lo valida al autorizar. No transcribir credenciales a mano ni pegar el contenido en chats o documentación. Referencia: [creación de credenciales de escritorio](https://developers.google.com/workspace/guides/create-credentials#desktop-app).
+El archivo suele llamarse `client_secret_…apps.googleusercontent.com.json`. Su configuración debe contener el objeto `installed`, con el identificador y secreto del cliente. fceadatasys lo valida durante el cuestionario y antes de preparar la instalación. Este archivo requiere crear el cliente en Google Cloud: el sistema no lo genera ni lo recupera automáticamente al borrar `.local/`. No transcribir credenciales a mano ni pegar el contenido en chats o documentación. Referencia: [creación de credenciales de escritorio](https://developers.google.com/workspace/guides/create-credentials#desktop-app).
 
 Ejemplos de ubicación, que se deben adaptar al equipo:
 
@@ -108,7 +108,7 @@ En el cuestionario:
 1. Habilitar las copias locales y en Google Drive.
 2. Confirmar el archivo privado de copias y la carpeta local.
 3. Indicar las herramientas PostgreSQL y una cuenta dedicada de lectura para la base de ese perfil.
-4. En `DRIVE_CLIENT_FILE`, ingresar la ruta al JSON descargado.
+4. En `DRIVE_CLIENT_FILE`, elegir el destino privado del JSON. Si allí falta el archivo, el asistente pide `DRIVE_CLIENT_SOURCE`: la ruta del JSON de escritorio ya descargado de Google Cloud, por ejemplo en Escritorio o Descargas. Admite comillas alrededor de la ruta, valida su contenido y copia los bytes al destino privado conservando el original. Un archivo existente se valida y se conserva; si es inválido, se pide otro destino o la ruta de un JSON válido. No hace falta copiarlo mediante otro comando.
 5. En `DRIVE_TOKEN_FILE`, elegir una ruta privada para la autorización que se generará.
 6. Usar un nombre de carpeta, por ejemplo `fceadatasys-demo` o `fceadatasys-production`. Dejar `DRIVE_FOLDER_ID` vacío en la primera conexión.
 7. Elegir autorizar Drive durante la preparación y realizar una primera copia. La programación diaria se decide aparte; para una demostración puede bastar la ejecución manual.
@@ -221,11 +221,11 @@ Para renovar el acceso, usar el comando `backup:authorize` del perfil afectado c
 
 | Síntoma                                            | Comprobación y acción                                                                                                                                                                                    |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Falta JSON o no se puede leer                      | Comprobar la ruta, el nombre real descargado y permisos. Para rutas relativas, contar desde el archivo de copias.                                                                                        |
+| Falta JSON o no se puede leer                      | El asistente solicita el archivo descargado y lo importa al destino privado. Enter en un destino ausente no genera credenciales. Para una instalación existente, el mensaje indica la ruta que falta. Las rutas relativas del destino parten del archivo de copias; las de origen, de la raíz del proyecto. |
 | Se rechaza el JSON                                 | Confirmar que es un cliente de **escritorio** con objeto `installed`, no un cliente web, clave de API o cuenta de servicio.                                                                              |
 | El comando no inicia                               | Ejecutar desde la raíz, elegir el perfil correcto, habilitar sus copias, compilar el servidor y usar una terminal interactiva.                                                                           |
 | Google no permite el acceso de la cuenta           | En Testing, agregar el correo seleccionado como usuario de prueba. En audiencia interna, comprobar que pertenece a la organización.                                                                      |
-| No se encuentra la descarga                        | Buscar el JSON en la ubicación elegida por el navegador. Moverlo a la ruta privada configurada; el sistema no busca automáticamente en Escritorio o Descargas.                                           |
+| No se encuentra la descarga                        | Buscar el JSON en la ubicación elegida por el navegador y proporcionar esa ruta en `DRIVE_CLIENT_SOURCE`. El asistente lo copia al destino privado; no busca automáticamente en Escritorio o Descargas. |
 | Se cierra la terminal o vence el plazo             | Ejecutar nuevamente el autorizador y utilizar el enlace nuevo. La pestaña anterior corresponde a otro callback.                                                                                          |
 | `127.0.0.1` rechaza la conexión                    | Comprobar que el proceso siga esperando y que el navegador llegue al mismo equipo o al túnel correcto. Un proceso vencido ya cerró el puerto; repetir el flujo.                                          |
 | El navegador confirma pero la terminal falla       | Revisar configuración, autorización y conectividad con Google. El acceso solo queda preparado cuando la terminal confirma la carpeta y el archivo privado contiene su ID.                                |

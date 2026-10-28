@@ -1,7 +1,8 @@
 import { dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { localPath, readConfig, secret } from "./config.mjs";
+import { localPath, readConfig, secret, assertPrivateLocation } from "./config.mjs";
 import { validTime } from "../backups/schedule.mjs";
+import { assertDriveClientFile, importDriveClientFile } from "./drive-client.mjs";
 
 export const productionDatabaseName = "fceadatasys";
 export const validIdentifier = (value) => /^[a-z][a-z0-9_]{0,62}$/.test(value);
@@ -459,13 +460,47 @@ export async function configureDeployment(
       backup.PG_RESTORE_COMMAND || tool("pg_restore"),
     );
     log(
-      "Google Drive usa su API directamente. Importá el JSON OAuth de tipo aplicación de escritorio; el navegador solicitará autorización una vez.",
+      "Google Drive requiere un JSON OAuth de aplicación de escritorio descargado de Google Cloud. No se genera automáticamente. Si aún no lo tenés, seguí docs/operacion/GOOGLE-DRIVE.md (proyecto, Drive API, consentimiento y cliente de escritorio). El asistente pedirá el archivo descargado y lo copiará al destino privado; Google solicitará después el consentimiento de la cuenta.",
     );
-    backup.DRIVE_CLIENT_FILE = await field(
-      "DRIVE_CLIENT_FILE",
-      "JSON privado del cliente OAuth de Google",
-      backup.DRIVE_CLIENT_FILE || paths.driveClient,
-    );
+    for (;;) {
+      backup.DRIVE_CLIENT_FILE = await field(
+        "DRIVE_CLIENT_FILE",
+        "Destino privado para el JSON OAuth de Google",
+        backup.DRIVE_CLIENT_FILE || paths.driveClient,
+      );
+      const destination = assertPrivateLocation(
+        root, resolve(dirname(file), backup.DRIVE_CLIENT_FILE),
+      );
+      try {
+        assertDriveClientFile(destination);
+        break;
+      } catch (error) {
+        log(error.message);
+        if (existsSync(destination)) {
+          log("El archivo existente se conserva. Elegí otro destino o la ruta de un JSON de escritorio válido.");
+          continue;
+        }
+      }
+      const source = await field(
+        "DRIVE_CLIENT_SOURCE",
+        "Ruta del JSON de escritorio ya descargado (admite comillas)",
+        "",
+        (value) => {
+          try {
+            assertDriveClientFile(localPath(root, value.replace(/^(["'])(.*)\1$/, "$2")));
+            return true;
+          } catch (error) {
+            log(error.message);
+            return false;
+          }
+        },
+      );
+      importDriveClientFile(
+        localPath(root, source.replace(/^(["'])(.*)\1$/, "$2")), destination,
+      );
+      log("JSON OAuth de escritorio validado e importado al destino privado.");
+      break;
+    }
     backup.DRIVE_TOKEN_FILE = await field(
       "DRIVE_TOKEN_FILE",
       "Archivo privado para guardar la autorización de Google",

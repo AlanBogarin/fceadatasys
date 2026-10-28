@@ -6,7 +6,16 @@ import {
   mergeCrontab,
   scheduleName,
   validTime,
+  windowsPowerShellEnvironment,
 } from "./schedule.mjs";
+
+test("Windows PowerShell usa módulos nativos sin modificar el entorno del instalador", () => {
+  const inherited = { SystemRoot: "C:\\Windows", PSModulePath: "C:\\PowerShell7\\Modules", PATH: "tools" };
+  const result = windowsPowerShellEnvironment(inherited);
+  assert.equal(result.PSModulePath, "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules");
+  assert.equal(result.PATH, "tools");
+  assert.equal(inherited.PSModulePath, "C:\\PowerShell7\\Modules");
+});
 
 test("horario diario estricto: medianoche, fin del día y entradas malformadas", () => {
   assert.deepEqual(validTime("00:00"), [0, 0]);

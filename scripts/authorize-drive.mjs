@@ -3,6 +3,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
+import { assertDriveClientFile, DriveClientFileError } from "./deployment/drive-client.mjs";
 import {
   readConfig,
   localPath,
@@ -24,6 +25,11 @@ try {
   );
   if (config.PROFILE !== values.profile || config.BACKUP_ENABLED !== "true")
     throw Error("Revisá el perfil y habilitá las copias.");
+  const backupFile = localPath(root,
+    config.BACKUP_CONFIG_FILE || `.local/backups/${values.profile}.env`);
+  const backup = readConfig(backupFile);
+  if (backup.DRIVE_CLIENT_FILE)
+    assertDriveClientFile(resolve(dirname(backupFile), backup.DRIVE_CLIENT_FILE));
   const script = resolve(root, "server/dist/scripts/authorize-drive.js");
   if (!existsSync(script)) throw Error("Compilá el servidor primero.");
   const child = spawn(
@@ -51,9 +57,10 @@ try {
   child.on("exit", (code) => {
     process.exitCode = code ?? 1;
   });
-} catch {
+} catch (error) {
   console.error(
-    "Revisá el perfil, la configuración privada de copias y la compilación del servidor.",
+    error instanceof DriveClientFileError ? error.message :
+      "Revisá el perfil, la configuración privada de copias y la compilación del servidor.",
   );
   process.exitCode = 1;
 }

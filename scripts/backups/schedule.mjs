@@ -1,4 +1,16 @@
 import { createHash } from "node:crypto";
+import { win32 } from "node:path";
+
+export function windowsPowerShellEnvironment(inherited = process.env) {
+  // Node does not remove PowerShell 7 module paths when starting Windows
+  // PowerShell 5.1. Mixing their Security modules breaks Get-Credential.
+  const systemRoot = inherited.SystemRoot || inherited.WINDIR || "C:\\Windows";
+  return {
+    ...inherited,
+    PSModulePath: win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"),
+  };
+}
+
 export function validTime(time) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))
     throw Error("La hora debe tener el formato HH:MM, entre 00:00 y 23:59.");

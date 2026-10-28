@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { windowsPowerShellEnvironment } from "./schedule.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 // Exercise the actual installer with substituted Windows cmdlets. No real task
@@ -102,6 +103,19 @@ function install(options = {}) {
 }
 
 const windows = { skip: process.platform !== "win32" };
+test("Windows: Get-Credential se carga desde Node sin módulos incompatibles de PowerShell 7", windows, () => {
+  const result = spawnSync("powershell.exe", [
+    "-NoProfile", "-NonInteractive", "-Command",
+    "$ErrorActionPreference = 'Stop'; Import-Module Microsoft.PowerShell.Security; (Get-Command Get-Credential).Name",
+  ], {
+    env: windowsPowerShellEnvironment(), encoding: "utf8", windowsHide: true, timeout: 15000,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "Get-Credential");
+  assert.equal(result.stderr, "");
+});
+
 test("Windows: actualización válida conserva la cuenta sin pedir contraseña", windows, () => {
   const result = install();
   assert.equal(result.error, null);

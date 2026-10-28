@@ -9,6 +9,7 @@ import {
   scheduleName,
   validTime,
   removeCronTask,
+  windowsPowerShellEnvironment,
 } from "./backups/schedule.mjs";
 import { readConfig } from "./deployment/config.mjs";
 
@@ -62,7 +63,10 @@ try {
         ...(values.disable ? ["-Disable"] : []),
         ...(values["non-interactive"] ? ["-NonInteractive"] : []),
       ],
-      { stdio: "inherit", windowsHide: true, shell: false },
+      {
+        stdio: "inherit", windowsHide: true, shell: false,
+        env: windowsPowerShellEnvironment(),
+      },
     );
     if (result.error || result.status !== 0)
       throw Error(

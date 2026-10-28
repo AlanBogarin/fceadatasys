@@ -7,6 +7,7 @@ import {
   assertPrivateLocation,
 } from "./config.mjs";
 import { validTime } from "../backups/schedule.mjs";
+import { assertDriveClientFile } from "./drive-client.mjs";
 
 export function configuredBackups(root, config) {
   if (config.BACKUP_ENABLED !== "true") return undefined;
@@ -51,6 +52,7 @@ export function configuredBackups(root, config) {
   assertPrivateLocation(root, result.BACKUP_DIRECTORY);
   assertPrivateLocation(root, result.DRIVE_CLIENT_FILE);
   assertPrivateLocation(root, result.DRIVE_TOKEN_FILE);
+  assertDriveClientFile(result.DRIVE_CLIENT_FILE);
   return result;
 }
 export async function prepareBackupTools(
