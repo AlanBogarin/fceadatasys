@@ -1,6 +1,8 @@
 # Contrato API de listado y consulta de publicaciones
 
-**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador permanece independiente.
+**Permisos vigentes.** Las referencias a accesos por rol describen los valores iniciales. Las operaciones utilizan permisos efectivos por rol y excepciones por cuenta conforme a AGENTS.md y [PERMISSIONS.md](../../docs/operacion/PERMISSIONS.md); administrar permisos y ejecutar copias conserva la reserva al Administrador con el permiso correspondiente.
+
+**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/historico/integracion/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador fue retirado del despliegue.
 
 Complementa [API.md](API.md) y [PUBLICATIONS.md](PUBLICATIONS.md). Contrato de consulta vigente al 17/10/2026; el cliente admite consulta por API y simulación independiente. Edición/inactivación, reportes y carga/descarga están implementados en rutas separadas, documentadas en PUBLICATION-MANAGEMENT.md, REPORTS.md y ATTACHMENTS.md.
 

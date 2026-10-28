@@ -1,8 +1,10 @@
 # Consultar reportes y exportar PDF/Excel
 
-**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador permanece independiente.
+**Permisos vigentes.** Las referencias a accesos por rol describen los valores iniciales. Las operaciones utilizan permisos efectivos por rol y excepciones por cuenta conforme a AGENTS.md y [PERMISSIONS.md](../../docs/operacion/PERMISSIONS.md); administrar permisos y ejecutar copias conserva la reserva al Administrador con el permiso correspondiente.
 
-La API consulta PostgreSQL y genera ambos documentos en **server**. El cliente admite API y simulador como modos independientes. Las rutas requieren Bearer y rol ADMINISTRADOR vigente. DIGITADOR/PUBLICO reciben 403 y las solicitudes anónimas 401. Las respuestas tienen `Cache-Control: no-store`.
+**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/historico/integracion/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador fue retirado del despliegue.
+
+La API consulta PostgreSQL y genera ambos documentos en **server**. El cliente desplegado consume únicamente la API real. Las rutas requieren Bearer y rol ADMINISTRADOR vigente. DIGITADOR/PUBLICO reciben 403 y las solicitudes anónimas 401. Las respuestas tienen `Cache-Control: no-store`.
 
 ## Consulta
 

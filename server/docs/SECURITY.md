@@ -1,5 +1,7 @@
 # Seguridad del servidor
 
+**Permisos vigentes.** Las referencias a accesos por rol describen los valores iniciales. Las operaciones utilizan permisos efectivos por rol y excepciones por cuenta conforme a AGENTS.md y [PERMISSIONS.md](../../docs/operacion/PERMISSIONS.md); administrar permisos y ejecutar copias conserva la reserva al Administrador con el permiso correspondiente.
+
 El servidor implementa autenticación, sesiones, recuperación, cambios de contraseña, autorización, catálogos, registro/listado/consulta/búsqueda/edición/inactivación de publicaciones, formatos administrables PDF/TXT, carga/descarga con ClamAV y auditoría inmutable con consulta/detalle/exportación exclusivos de Admin. Contratos vigentes al 17/10/2026 en API.md, ATTACHMENTS.md, PUBLICATION-MANAGEMENT.md y CLIENT-INTEGRATION.md. El cliente conserva su demostración independiente.
 
 ## Credenciales, roles y sesión

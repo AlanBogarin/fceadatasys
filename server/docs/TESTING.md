@@ -1,8 +1,10 @@
 # Pruebas de regresión del servidor
 
-## Cierre vigente — 17/10/2026
+Los resultados que siguen son registros fechados. Esta reorganización no repite las suites ni presenta los conteos históricos como resultados nuevos. Consultar las [validaciones posteriores](../../docs/README.md#validaciones-fechadas).
 
-Último cierre integrado H1–H3: **348 aprobadas** (212 sin servicios y 136 PostgreSQL), cero fallos/omitidas; ClamAV real habilitado, build/tipos correctos, siete comprobaciones de persistencia y connection-smoke correctos. Cliente: **87 pruebas** y build. Detalles y límites en la sección final de H1–H3 y en [la nota de implementación](../../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md). Los conteos de fases anteriores se conservan como evidencia histórica. La consolidación documental no repite las suites ni acredita conexión real desde navegador.
+## Cierre histórico del 17/10/2026
+
+Último cierre integrado H1–H3: **348 aprobadas** (212 sin servicios y 136 PostgreSQL), cero fallos/omitidas; ClamAV real habilitado, build/tipos correctos, siete comprobaciones de persistencia y connection-smoke correctos. Cliente: **87 pruebas** y build. Detalles y límites en la sección final de H1–H3 y en [la nota de implementación](../../docs/historico/integracion/IMPLEMENTACION-H1-H2-H3-2026-10-17.md). Los conteos de fases anteriores se conservan como evidencia histórica. La consolidación documental no repite las suites ni acredita conexión real desde navegador.
 
 Las pruebas de server/test/unit se ejecutan sin PostgreSQL, SMTP ni servidor HTTP escuchando en un puerto. Usan funciones reales del servidor y sustituyen únicamente dependencias externas. Las comprobaciones del manejador HTTP emplean Fastify inject en memoria; son pruebas de componente dentro de la suite sin servicios.
 
@@ -247,7 +249,7 @@ Además, `npm run mail:check` con configuración local verificó TLS/autenticaci
 
 ## Correcciones H1–H3 — 17/10/2026
 
-Resultado final de `npm test`: **348 aprobadas: 212 sin servicios y 136 PostgreSQL**, cero fallos y cero omitidas, con ClamAV real habilitado. Build y `test:typecheck` correctos. Cliente: 87 aprobadas y build correcto. La [nota de implementación](../../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md) documenta archivos, contratos y límites.
+Resultado final de `npm test`: **348 aprobadas: 212 sin servicios y 136 PostgreSQL**, cero fallos y cero omitidas, con ClamAV real habilitado. Build y `test:typecheck` correctos. Cliente: 87 aprobadas y build correcto. La [nota de implementación](../../docs/historico/integracion/IMPLEMENTACION-H1-H2-H3-2026-10-17.md) documenta archivos, contratos y límites.
 
 `publications.integration.test.ts` agrega dos casos de H1: inactivación permitida con publicaciones únicamente inactivas para autores/tutores/clasificaciones, conservación de relaciones y veto de DELETE histórico; y una publicación que confirma mientras la inactivación espera el catálogo. El caso de reemplazo de archivos incorpora listado/detalle con `reservedPublicationId`, restauración por Digitador, rechazo para otra publicación/otro actor y omisión del ID de una publicación inactiva para Digitador.
 

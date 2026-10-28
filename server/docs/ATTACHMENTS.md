@@ -1,6 +1,8 @@
 # Contrato de carga y descarga de adjuntos
 
-**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador permanece independiente.
+**Permisos vigentes.** Las referencias a accesos por rol describen los valores iniciales. Las operaciones utilizan permisos efectivos por rol y excepciones por cuenta conforme a AGENTS.md y [PERMISSIONS.md](../../docs/operacion/PERMISSIONS.md); administrar permisos y ejecutar copias conserva la reserva al Administrador con el permiso correspondiente.
+
+**Actualización del 18/10/2026:** los pasos 16–20 ya utilizan el adaptador HTTP en modo API: archivos, gestión de publicaciones, consulta bibliográfica, búsqueda y reportes. Contratos y evidencias en [conexión 16–20](../../docs/historico/integracion/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md). El simulador fue retirado del despliegue.
 
 Contrato vigente del servidor al 17/10/2026. El cliente conserva IndexedDB y su simulación independiente, con DTO adaptado a las reservas históricas; el transporte HTTP está conectado para el alcance indicado arriba. Complementa API.md, PUBLICATIONS.md, PUBLICATION-MANAGEMENT.md y SECURITY.md. Reportes PDF/Excel implementados en REPORTS.md.
 

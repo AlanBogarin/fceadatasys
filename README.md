@@ -81,9 +81,9 @@ La configuración se guarda en `.local/deploy/production.env`, ignorada por Git.
 
 La primera carga crea únicamente un Administrador (valores iniciales: **Administrador / CI `0000000` / usuario `admin`**), parámetros **300 palabras / PDF / 10 MiB** y auditoría. La identidad inicial se puede ajustar en el asistente y no se cargan muestras UNC. La contraseña inicial y la URL administrativa se retiran del archivo tras preparar la base; la API recibe solo sus credenciales runtime.
 
-Si se habilitan copias, el asistente guarda `.local/backups/production.env`, provisiona una cuenta PostgreSQL de lectura y permite importar el JSON OAuth y abrir el navegador para autorizar Drive, probar la primera copia y registrar o actualizar la tarea diaria Windows/Linux con la hora elegida. También ofrece deshabilitar una tarea previa cuando se desactiva la programación. Solo se requieren las herramientas PostgreSQL; la subida utiliza directamente la API de Google Drive. Preparación de cuenta, proyecto, credenciales y consentimiento: [guía de Google Drive](docs/GOOGLE-DRIVE.md). Instalación y responsabilidades: [INSTALLATION-PRODUCTION.md](docs/INSTALLATION-PRODUCTION.md).
+Si se habilitan copias, el asistente guarda `.local/backups/production.env`, provisiona una cuenta PostgreSQL de lectura y permite importar el JSON OAuth y abrir el navegador para autorizar Drive, probar la primera copia y registrar o actualizar la tarea diaria Windows/Linux con la hora elegida. También ofrece deshabilitar una tarea previa cuando se desactiva la programación. Solo se requieren las herramientas PostgreSQL; la subida utiliza directamente la API de Google Drive. Preparación de cuenta, proyecto, credenciales y consentimiento: [guía de Google Drive](docs/operacion/GOOGLE-DRIVE.md). Instalación y responsabilidades: [INSTALLATION-PRODUCTION.md](docs/operacion/INSTALLATION-PRODUCTION.md).
 
-Demo admite una cuenta personal de Google. Producción utiliza su propia configuración y proyecto de Google. La caducidad semanal corresponde al estado OAuth externo **Prueba/Testing** de Google Cloud; elegir el perfil local `production` no cambia ese estado. En Google **En producción**, el código renueva automáticamente el acceso mientras la autorización siga válida. Detalles y renovación: [Google Drive](docs/GOOGLE-DRIVE.md#10-caducidad-y-uso-en-producción).
+Demo admite una cuenta personal de Google. Producción utiliza su propia configuración y proyecto de Google. La caducidad semanal corresponde al estado OAuth externo **Prueba/Testing** de Google Cloud; elegir el perfil local `production` no cambia ese estado. En Google **En producción**, el código renueva automáticamente el acceso mientras la autorización siga válida. Detalles y renovación: [Google Drive](docs/operacion/GOOGLE-DRIVE.md#10-caducidad-y-uso-en-producción).
 
 La web escucha por defecto en `0.0.0.0`, puerto HTTPS del `PUBLIC_URL`; la API permanece en loopback. El servidor web incluido entrega `client/dist`, sirve configuración pública en ejecución y dirige `/api/v1` a la API. No es necesario ejecutar Vite ni configurar Nginx para este camino de despliegue.
 
@@ -144,7 +144,7 @@ El proceso permanece en primer plano. Para ejecución después de reiniciar el e
 
 ## Desarrollo y validación
 
-La ventana Roles y permisos permite configurar acciones por rol y excepciones por cuenta. Auditoría muestra una vista amigable con opciones JSON/raw. Copias de seguridad permite respaldos de PostgreSQL y consulta del estado local/en Google Drive. Para recuperar una copia rápidamente, detener el sistema y ejecutar `npm run restore -- --profile production` (o `demo`): el asistente permite elegir un respaldo verificado y conserva la base anterior. Configuración y acceso a Drive: [GOOGLE-DRIVE.md](docs/GOOGLE-DRIVE.md). Programación y restauración: [BACKUPS.md](docs/BACKUPS.md); accesos: [PERMISSIONS.md](docs/PERMISSIONS.md). Requieren las dos migraciones del 26/10/2026 y los grants actualizados.
+La ventana Roles y permisos permite configurar acciones por rol y excepciones por cuenta. Auditoría muestra una vista amigable con opciones JSON/raw. Copias de seguridad permite respaldos de PostgreSQL y consulta del estado local/en Google Drive. Para recuperar una copia rápidamente, detener el sistema y ejecutar `npm run restore -- --profile production` (o `demo`): el asistente permite elegir un respaldo verificado y conserva la base anterior. Configuración y acceso a Drive: [GOOGLE-DRIVE.md](docs/operacion/GOOGLE-DRIVE.md). Programación y restauración: [BACKUPS.md](docs/operacion/BACKUPS.md); accesos: [PERMISSIONS.md](docs/operacion/PERMISSIONS.md). Requieren las dos migraciones del 26/10/2026 y los grants actualizados.
 
 El cliente de desarrollo también utiliza API real. Las instrucciones manuales y contratos están en [cliente](client/README.md), [servidor](server/README.md), [API](server/docs/API.md) y [conjuntos iniciales](server/docs/INITIAL-DATA.md).
 
@@ -159,8 +159,12 @@ npm run build --prefix server
 
 Las pruebas de integración requieren bases separadas y configuración explícita: [TESTING.md](server/docs/TESTING.md). Una suite omitida por falta de URL no equivale a una validación aprobada. Los stubs/fixtures de pruebas no forman un backend seleccionable para despliegue.
 
-Revisión y límites del lanzador: [DEPLOYMENT.md](docs/DEPLOYMENT.md). Los [22 pasos de conexión](docs/PLAN-CONEXION-CLIENTE-SERVIDOR-2026-10-17.md) y sus entregas conservan evidencia histórica; las referencias anteriores al simulador corresponden a estados retirados.
+Revisión y límites del lanzador: [DEPLOYMENT.md](docs/operacion/DEPLOYMENT.md). Los [22 pasos de conexión](docs/historico/integracion/PLAN-CONEXION-CLIENTE-SERVIDOR-2026-10-17.md) y sus entregas conservan evidencia histórica; las referencias anteriores al simulador corresponden a estados retirados.
 
 ## Dependencias
 
 Cliente y servidor conservan sus propios lockfiles. El lanzador utiliza `npm ci --include=dev` y no cambia la política npm del equipo. Conservar las medidas de instalación documentadas (`allow-git=none`, `ignore-scripts=true`, `min-release-age=7`, `strict-ssl=true`) según la configuración del entorno; aplicarlas globalmente afecta otros proyectos del mismo usuario.
+
+## Documentación del proyecto
+
+Los entregables editables se mantienen en la [carpeta Proyecto](../), fuera del repositorio. El [índice Word](<../TPF - Indice de documentos.docx>) identifica versiones vigentes, antecedentes y pendientes. La [documentación técnica](docs/README.md) separa operación, contratos, validaciones fechadas e historia. No se mantienen ZIP de entrega ni PDF equivalentes a Word/PowerPoint.

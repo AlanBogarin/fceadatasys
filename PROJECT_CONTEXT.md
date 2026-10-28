@@ -1,5 +1,7 @@
 # Contexto maestro del proyecto — fceadatasys
 
+**Actualización documental del 28/10/2026.** AGENTS.md es el contrato maestro. Cliente y API ya están conectados; el despliegue usa perfiles demo/production con API real. Los permisos efectivos por rol y cuenta sustituyen las restricciones iniciales cuando se delegan, según [PERMISSIONS.md](docs/operacion/PERMISSIONS.md). Los avances e informes históricos se conservan fuera de esta raíz; ver [índice documental](docs/README.md).
+
 ## 1. Identificación del proyecto
 
 **Nombre del proyecto:** `fceadatasys` — susceptible a cambios.
@@ -1011,14 +1013,14 @@ La estructura definitiva debe mantenerse consistente en toda la API.
 Este documento especifica requisitos funcionales y no funcionales. Las siguientes decisiones técnicas ya están registradas en el repositorio al 17/10/2026:
 
 - backend: Fastify/TypeScript en `server/`;
-- frontend: React/TypeScript/Vite en `client/`, todavía con simulador;
-- persistencia: PostgreSQL y Prisma, con siete migraciones versionadas;
+- frontend: React/TypeScript/Vite en `client/`, conectado a la API real;
+- persistencia: PostgreSQL y Prisma, con nueve migraciones versionadas hasta backups;
 - autenticación: Argon2id, JWT Bearer en memoria y refresh/contexto de navegador en cookies HttpOnly;
 - sesiones: una compartida por navegador, máximo siete días y diez minutos de inactividad;
 - archivos: almacenamiento privado del servidor y ClamAV local; PDF inicial y TXT opcional con validadores;
-- contratos, operación y validación: [README del servidor](server/README.md), [API.md](server/docs/API.md), [DATABASE.md](server/docs/DATABASE.md), [TESTING.md](server/docs/TESTING.md) y [adaptaciones del cliente](client/docs/ADAPTACIONES-CLIENTE.md).
+- contratos, operación y validación: [README del servidor](server/README.md), [API.md](server/docs/API.md), [DATABASE.md](server/docs/DATABASE.md), [TESTING.md](server/docs/TESTING.md) y [adaptaciones del cliente](docs/historico/cliente/ADAPTACIONES-CLIENTE.md).
 
-La conexión HTTP real del cliente y su validación completa siguen pendientes. La infraestructura institucional, CI/CD, retención, backups y monitoreo deben concretarse para el despliegue; la validación local no acredita su operación.
+La conexión HTTP del cliente está implementada; las notas de integración conservan las pruebas y límites de sus hitos. La infraestructura institucional, CI/CD, retención, backups y monitoreo deben concretarse para el despliegue; la validación local no acredita su operación.
 
 Las decisiones técnicas que no estén previamente definidas deberán registrarse como decisiones del proyecto.
 

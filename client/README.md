@@ -14,7 +14,7 @@ npm run start:demo
 npm run start:production
 ```
 
-El lanzador prepara y sirve cliente/API bajo el mismo origen. La configuración pública se obtiene de `/runtime-config.js`; permite cambiar dominio/perfil al reiniciar sin recompilar. Producción exige certificado TLS y credenciales propias. Ver [README raíz](../README.md) y [despliegue](../docs/DEPLOYMENT.md).
+El lanzador prepara y sirve cliente/API bajo el mismo origen. La configuración pública se obtiene de `/runtime-config.js`; permite cambiar dominio/perfil al reiniciar sin recompilar. Producción exige certificado TLS y credenciales propias. Ver [README raíz](../README.md) y [despliegue](../docs/operacion/DEPLOYMENT.md).
 
 ## Desarrollo del cliente
 
@@ -50,6 +50,6 @@ npm test
 npm run build
 ```
 
-`npm run test:api` requiere su base exclusiva, SMTP de pruebas y ClamAV según la [entrega 1–10](../docs/IMPLEMENTACION-CONEXION-PASOS-1-10-2026-10-18.md). El fixture PDF se obtiene de `server/data/demo/documents/`, no de un directorio web público.
+`npm run test:api` requiere su base exclusiva, SMTP de pruebas y ClamAV según la [entrega 1–10](../docs/historico/integracion/IMPLEMENTACION-CONEXION-PASOS-1-10-2026-10-18.md). El fixture PDF se obtiene de `server/data/demo/documents/`, no de un directorio web público.
 
-Los [22 pasos de conexión](../docs/PLAN-CONEXION-CLIENTE-SERVIDOR-2026-10-17.md) están implementados. Sus entregas conservan evidencia histórica: [1–10](../docs/IMPLEMENTACION-CONEXION-PASOS-1-10-2026-10-18.md), [11–15](../docs/IMPLEMENTACION-CONEXION-PASOS-11-15-2026-10-18.md), [16–20](../docs/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md) y [21–22](../docs/IMPLEMENTACION-CONEXION-PASOS-21-22-2026-10-18.md). Las instrucciones antiguas del simulador en documentos anteriores describen una modalidad de despliegue retirada.
+Los [22 pasos de conexión](../docs/historico/integracion/PLAN-CONEXION-CLIENTE-SERVIDOR-2026-10-17.md) están implementados. Sus entregas conservan evidencia histórica: [1–10](../docs/historico/integracion/IMPLEMENTACION-CONEXION-PASOS-1-10-2026-10-18.md), [11–15](../docs/historico/integracion/IMPLEMENTACION-CONEXION-PASOS-11-15-2026-10-18.md), [16–20](../docs/historico/integracion/IMPLEMENTACION-CONEXION-PASOS-16-20-2026-10-18.md) y [21–22](../docs/historico/integracion/IMPLEMENTACION-CONEXION-PASOS-21-22-2026-10-18.md). Las instrucciones antiguas del simulador en documentos anteriores describen una modalidad de despliegue retirada.

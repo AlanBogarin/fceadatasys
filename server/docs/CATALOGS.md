@@ -1,6 +1,8 @@
 # Contrato API de catálogos
 
-Base `/api/v1/catalogos/:catalog`. Valores de `catalog`: `autores`, `tutores`, `carreras`, `facultades`, `filiales`, `tipos`, `niveles`. Todos los endpoints exigen Bearer y sesión vigente. Complementa [API.md](API.md), incluidos transporte, paginación y Problem Details. Desde el 18/10, el modo API de `client/` conecta los siete catálogos; el simulador conserva su persistencia independiente. La [ampliación 11–15](../../docs/IMPLEMENTACION-CONEXION-PASOS-11-15-2026-10-18.md) documenta su comprobación sin modificar este contrato.
+**Permisos vigentes.** Las referencias a accesos por rol describen los valores iniciales. Las operaciones utilizan permisos efectivos por rol y excepciones por cuenta conforme a AGENTS.md y [PERMISSIONS.md](../../docs/operacion/PERMISSIONS.md); administrar permisos y ejecutar copias conserva la reserva al Administrador con el permiso correspondiente.
+
+Base `/api/v1/catalogos/:catalog`. Valores de `catalog`: `autores`, `tutores`, `carreras`, `facultades`, `filiales`, `tipos`, `niveles`. Todos los endpoints exigen Bearer y sesión vigente. Complementa [API.md](API.md), incluidos transporte, paginación y Problem Details. Desde el 18/10, el modo API de `client/` conecta los siete catálogos; el despliegue utiliza únicamente la API real. La [ampliación 11–15](../../docs/historico/integracion/IMPLEMENTACION-CONEXION-PASOS-11-15-2026-10-18.md) documenta su comprobación sin modificar este contrato.
 
 | Método y ruta relativa | Respuesta | Permiso |
 | --- | --- | --- |

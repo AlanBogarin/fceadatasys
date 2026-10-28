@@ -146,3 +146,6 @@ vite.config.ts.timestamp-*
 # Project files
 opencode.json
 /.local/
+
+# Archivos temporales de Microsoft Office
+~$*

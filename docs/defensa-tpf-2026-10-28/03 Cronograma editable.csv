@@ -1,8 +1,0 @@
-﻿ID;Tarea;Referencia inicio (estimada);Referencia fin (estimada);Días referencia;Primer hito;Último hito;Días del intervalo observado;Dependencia;Evidencia
-T1;Arquitectura y preparación;2026-10-05;2026-10-06;2;2026-10-05;2026-10-06;2;Relevamiento;Plan y cierre de fase 0 en Git
-T2;Cliente y formularios;2026-10-07;2026-10-14;8;2026-10-13;2026-10-17;5;T1;Hitos del cliente y auditoría
-T3;API, datos y seguridad;2026-10-15;2026-10-17;3;2026-10-15;2026-10-17;3;T1;Servidor, reportes y análisis de archivos
-T4;Integración cliente/API;2026-10-17;2026-10-18;2;2026-10-17;2026-10-18;2;T2, T3;Plan de 22 pasos y commit de integración
-T5;Instalación y reportes;2026-10-19;2026-10-22;4;2026-10-19;2026-10-22;4;T4;Cuentas demo, ClamAV y membretes
-T6;Permisos, backup y Drive;2026-10-23;2026-10-26;4;2026-10-26;2026-10-28;3;T4;Ampliación de permisos, Drive y restauración
-T7;Documentación y revisión;2026-10-27;2026-10-28;2;2026-10-27;2026-10-28;2;T5, T6;Manuales, rúbrica y paquete de defensa

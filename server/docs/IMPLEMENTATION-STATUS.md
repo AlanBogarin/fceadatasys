@@ -1,10 +1,16 @@
 # Estado actual e historial de implementación
 
-## Estado consolidado — 17/10/2026
+## Estado documental al 28 de octubre de 2026
 
-Los dominios de autenticación/sesión, usuarios, catálogos, publicaciones, adjuntos/ClamAV, parámetros, reportes y consulta/exportación de auditoría están implementados. H1–H3 están resueltos; falta el transporte HTTP del cliente y su validación completa desde navegador. El cliente ya cuenta con las adaptaciones de servicios/DTO descritas en [ADAPTACIONES-CLIENTE.md](../../client/docs/ADAPTACIONES-CLIENTE.md).
+El cliente está conectado a la API real. El lanzador admite demo y producción; el simulador no es un modo desplegable. La ampliación del 26/10 incorpora permisos efectivos y copias de seguridad, con nueve migraciones hasta backups. Consultar [operación](../../docs/README.md), [API](API.md) y [permisos](../../docs/operacion/PERMISSIONS.md).
 
-Último cierre integrado: **348 pruebas de servidor** (212 sin servicios y 136 PostgreSQL), **87 de cliente**, builds y tipos correctos. La [nota H1–H3](../../docs/IMPLEMENTACION-H1-H2-H3-2026-10-17.md) y [TESTING.md](TESTING.md) conservan evidencia y límites; este ajuste documental no vuelve a ejecutar las suites. Hay siete migraciones hasta summary_limits; el registro de desarrollo del 16/10 acredita solo las cinco comprobadas entonces.
+Las cifras y pendientes de los apartados siguientes pertenecen a sus fechas. La reorganización documental no vuelve a ejecutar las pruebas del software ni acredita despliegue institucional.
+
+## Hito histórico del 17/10/2026
+
+Los dominios de autenticación/sesión, usuarios, catálogos, publicaciones, adjuntos/ClamAV, parámetros, reportes y consulta/exportación de auditoría están implementados. H1–H3 están resueltos; falta el transporte HTTP del cliente y su validación completa desde navegador. El cliente ya cuenta con las adaptaciones de servicios/DTO descritas en [ADAPTACIONES-CLIENTE.md](../../docs/historico/cliente/ADAPTACIONES-CLIENTE.md).
+
+Último cierre integrado: **348 pruebas de servidor** (212 sin servicios y 136 PostgreSQL), **87 de cliente**, builds y tipos correctos. La [nota H1–H3](../../docs/historico/integracion/IMPLEMENTACION-H1-H2-H3-2026-10-17.md) y [TESTING.md](TESTING.md) conservan evidencia y límites; este ajuste documental no vuelve a ejecutar las suites. Hay siete migraciones hasta summary_limits; el registro de desarrollo del 16/10 acredita solo las cinco comprobadas entonces.
 
 ## Archivo de hitos
 

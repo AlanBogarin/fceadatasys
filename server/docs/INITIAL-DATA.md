@@ -1,6 +1,6 @@
 # Conjuntos de demostración y entrega inicial — 18/10/2026
 
-**Actualización de despliegue:** ejecutar `npm run start:demo` o `npm run start:production` desde la raíz; ver [README](../../README.md) y [DEPLOYMENT.md](../../docs/DEPLOYMENT.md). El backend simulado ya no es desplegable. Las instrucciones manuales siguientes se conservan para administración de los conjuntos y del clúster anterior; el lanzador crea su propio clúster demo en puerto 55440.
+**Actualización de despliegue:** ejecutar `npm run start:demo` o `npm run start:production` desde la raíz; ver [README](../../README.md) y [DEPLOYMENT.md](../../docs/operacion/DEPLOYMENT.md). El backend simulado ya no es desplegable. Las instrucciones manuales siguientes se conservan para administración de los conjuntos y del clúster anterior; el lanzador crea su propio clúster demo en puerto 55440.
 
 | Entorno | Contenido | Destino |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ npm run db:init:demo
 npm run dev:demo
 ```
 
-Omitir el primer comando si el clúster está activo. `prepare-demo.ps1` comprueba que sea el clúster aislado del repositorio en puerto 55439, crea únicamente la base demo/rol limitado si faltan, aplica las siete migraciones/grants y prepara `server/.env.demo` y `client/.env.demo`, ignorados por Git. Genera un JWT aleatorio y conserva archivos existentes. No modifica `.env` institucional, `pg_hba.conf` ni bases del desarrollador. El clúster local conserva su autenticación de pruebas; otras instalaciones requieren roles/contraseñas propios.
+Omitir el primer comando si el clúster está activo. `prepare-demo.ps1` comprueba que sea el clúster aislado del repositorio en puerto 55439, crea únicamente la base demo/rol limitado si faltan, aplica las migraciones/grants vigentes y prepara `server/.env.demo` y `client/.env.demo`, ignorados por Git. Genera un JWT aleatorio y conserva archivos existentes. No modifica `.env` institucional, `pg_hba.conf` ni bases del desarrollador. El clúster local conserva su autenticación de pruebas; otras instalaciones requieren roles/contraseñas propios.
 
 En otra terminal desde la raíz:
 
@@ -95,7 +95,7 @@ Manifiesto independiente: [production/initial.json](../data/production/initial.j
 Estado esperado: **1 usuario, 0 publicaciones, 0 adjuntos, 0 autores/tutores/catálogos**, un evento `USER_BOOTSTRAP` y parámetros **300 palabras / PDF / 10 MiB**. Las migraciones crean los parámetros; no se cargan muestras UNC ni cuentas Digitador/Público. Admin completará los catálogos de la operación real.
 
 1. Crear una base vacía con propietario/migraciones y runtime separados según [DATABASE.md](DATABASE.md).
-2. Aplicar las siete migraciones con el propietario y `scripts/runtime-grants.sql` dirigido al runtime; retirar del entorno la URL de propietario.
+2. Aplicar las nueve migraciones existentes con el propietario y `scripts/runtime-grants.sql` dirigido al runtime; retirar del entorno la URL de propietario.
 3. Copiar [server/.env.production.example](../.env.production.example) a `server/.env.production`. Completar localmente URL runtime/nombre de base, correo/contraseña del Admin, JWT, dominios HTTPS, almacenamiento privado, ClamAV y SMTP. Nombre/CI/usuario ya están definidos. El archivo local está ignorado por Git.
 4. Desde `server/`, ejecutar `npm run db:init:production`.
 5. Retirar las variables `BOOTSTRAP_ADMIN_*` del entorno tras verificar el alta; no se necesitan para arrancar la API.
@@ -122,7 +122,7 @@ Resultados del 18/10/2026:
 - Los siete tests verifican producción mínima, rollback de auditoría, idempotencia, reanudación tras fallo de catálogo/scanner, carga por API y separación de conjuntos. El scanner se sustituye explícitamente solo en esos casos deterministas.
 - Carga real de `fceadatasys_demo`: 3 usuarios, 36 clasificaciones, 14 autores, 12 tutores, 8 publicaciones y **8 PDF CLEAN con fecha de análisis ClamAV real**. Segunda ejecución: cero usuarios/catálogos/publicaciones/adjuntos nuevos.
 - Producción se verificó con credenciales sintéticas en una base de test, incluida CI `0000000`. No se inicializó producción real ni se inventaron correo/contraseña que el usuario indicó configurar localmente.
-- UI IAB: login con los tres roles, Inicio 3/8, listado/ficha con nombres legibles y catálogos del YAML. Público consulta sin botón de descarga; Digitador accede a los 14 autores sin navegación de auditoría. Evidencias: [Inicio](../../client/docs/evidencias/demo-unc-inicio-2026-10-18.png) y [publicación](../../client/docs/evidencias/demo-unc-publicacion-2026-10-18.png).
+- UI IAB: login con los tres roles, Inicio 3/8, listado/ficha con nombres legibles y catálogos del YAML. Público consulta sin botón de descarga; Digitador accede a los 14 autores sin navegación de auditoría. Evidencias: [Inicio](../../docs/historico/cliente/evidencias/demo-unc-inicio-2026-10-18.png) y [publicación](../../docs/historico/cliente/evidencias/demo-unc-publicacion-2026-10-18.png).
 
 Reproducir desde `server/`, con el clúster aislado activo:
 

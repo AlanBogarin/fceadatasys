@@ -2,7 +2,7 @@
 
 **Actualización del 18/10/2026:** las 22 ventanas del cliente están conectadas y verificadas en integración local. Los [conjuntos de demostración y entrega inicial](INITIAL-DATA.md) usan bases/configuraciones separadas de los fixtures del desarrollador. La entrega inicial contiene solo Admin y los parámetros creados por las migraciones; el historial fechado siguiente conserva sus resultados originales.
 
-Estado consolidado al 17/10/2026: usuarios, sesiones compartidas por navegador, rotación refresh, recuperación, catálogos/personas, publicaciones N:M, parámetros, adjuntos/reservas, FTS y auditoría están implementados. Hay siete migraciones versionadas. La conexión del cliente sigue pendiente; los resultados de pruebas y las actualizaciones locales fechadas más abajo son evidencia de cada fase.
+Estado consolidado al 17/10/2026: usuarios, sesiones compartidas por navegador, rotación refresh, recuperación, catálogos/personas, publicaciones N:M, parámetros, adjuntos/reservas, FTS y auditoría están implementados. Ese hito tenía siete migraciones. Actualmente existen nueve, hasta `20261026010000_backups`, y el cliente está conectado a la API real; los resultados de pruebas y las actualizaciones locales fechadas más abajo son evidencia de cada fase.
 
 PostgreSQL 18 y Prisma 7 con `@prisma/adapter-pg`. El cliente Prisma usa nombres ingleses; las tablas y columnas PostgreSQL se mapean al español en `prisma/schema.prisma`. Todas las fechas son `timestamptz(3)` y la API las serializa UTC.
 
